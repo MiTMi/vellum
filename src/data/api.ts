@@ -1,4 +1,5 @@
 import {
+  BacklinkMeta,
   DbProp,
   PageDoc,
   PageId,
@@ -20,6 +21,7 @@ export interface DataApi {
   usePage(id: PageId | null): PageDoc | null | undefined;
   useTrashed(): TrashedMeta[] | undefined;
   useSearch(term: string): SearchHit[] | undefined;
+  useBacklinks(id: PageId | null): BacklinkMeta[] | undefined;
   useMutations(): Mutations;
   useFileUpload(): (file: File) => Promise<string>;
 }

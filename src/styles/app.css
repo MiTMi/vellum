@@ -255,6 +255,225 @@ body.resizing {
   white-space: nowrap;
 }
 
+/* Suggestion menus: when the list's internal scroll hits its end, don't
+   chain the scroll to the page — the page moving mid-pick reads as broken. */
+.bn-suggestion-menu {
+  overscroll-behavior: contain;
+}
+
+/* --- Callout block --- */
+
+.callout-block {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+  margin: 4px 0;
+  border-radius: 6px;
+  background: var(--callout-bg, var(--bg-hover));
+}
+
+.callout-emoji-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.callout-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 16px;
+  line-height: 1;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.callout-emoji:hover {
+  background: rgba(120, 120, 120, 0.18);
+}
+
+.callout-content {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.callout-menu {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  z-index: 60;
+  padding: 8px;
+  width: 208px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-menu, 0 8px 28px rgba(0, 0, 0, 0.18));
+}
+
+.callout-menu-emojis {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.callout-menu-emoji {
+  font-size: 17px;
+  padding: 4px;
+  border: none;
+  background: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.callout-menu-emoji:hover,
+.callout-menu-emoji.active {
+  background: var(--bg-hover);
+}
+
+.callout-menu-colors {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 3px;
+}
+
+.callout-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  background: var(--callout-bg);
+}
+
+.callout-swatch.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Callout color tokens — tuned for the light theme… */
+.callout-gray { --callout-bg: rgba(120, 119, 116, 0.14); }
+.callout-brown { --callout-bg: rgba(159, 107, 83, 0.16); }
+.callout-orange { --callout-bg: rgba(217, 133, 43, 0.16); }
+.callout-yellow { --callout-bg: rgba(219, 179, 45, 0.18); }
+.callout-green { --callout-bg: rgba(47, 158, 91, 0.15); }
+.callout-blue { --callout-bg: rgba(35, 131, 226, 0.14); }
+.callout-purple { --callout-bg: rgba(144, 101, 216, 0.16); }
+.callout-pink { --callout-bg: rgba(212, 76, 172, 0.15); }
+.callout-red { --callout-bg: rgba(212, 76, 71, 0.15); }
+
+/* …and a touch stronger on dark so the tint stays visible. */
+[data-theme="dark"] .callout-gray { --callout-bg: rgba(155, 155, 155, 0.14); }
+[data-theme="dark"] .callout-brown { --callout-bg: rgba(184, 132, 100, 0.22); }
+[data-theme="dark"] .callout-orange { --callout-bg: rgba(233, 152, 68, 0.2); }
+[data-theme="dark"] .callout-yellow { --callout-bg: rgba(233, 197, 70, 0.2); }
+[data-theme="dark"] .callout-green { --callout-bg: rgba(93, 211, 158, 0.16); }
+[data-theme="dark"] .callout-blue { --callout-bg: rgba(82, 156, 202, 0.2); }
+[data-theme="dark"] .callout-purple { --callout-bg: rgba(168, 130, 232, 0.2); }
+[data-theme="dark"] .callout-pink { --callout-bg: rgba(226, 110, 190, 0.18); }
+[data-theme="dark"] .callout-red { --callout-bg: rgba(226, 110, 105, 0.18); }
+
+/* --- Table of contents block --- */
+
+.toc-block {
+  margin: 6px 0;
+  padding: 2px 0;
+}
+
+.toc-item {
+  display: block;
+  width: 100%;
+  padding: 3px 6px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toc-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.toc-empty {
+  padding: 6px;
+  font-size: 13.5px;
+  color: var(--text-tertiary, var(--text-secondary));
+  font-style: italic;
+}
+
+/* Linked mentions (backlinks) */
+
+.backlinks {
+  margin: 28px 0 40px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.backlinks-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.backlinks-header:hover {
+  background: var(--bg-hover);
+}
+
+.backlink-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  margin-top: 2px;
+  border: none;
+  background: none;
+  border-radius: 5px;
+  font-size: 13.5px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.backlink-item:hover {
+  background: var(--bg-hover);
+}
+
+.backlink-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.backlink-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
 .sync-chip {
   display: flex;
   align-items: center;
@@ -797,6 +1016,8 @@ body.resizing {
 
 /* --- code block copy button --- */
 
+/* Sits on the code block, which is dark in BOTH themes — style for the
+   dark surface, not the app theme. */
 .code-copy-btn {
   display: inline-flex;
   align-items: center;
@@ -804,20 +1025,19 @@ body.resizing {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  box-shadow: var(--shadow-card);
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.75);
   z-index: 500;
   animation: pop 0.1s ease-out;
 }
 .code-copy-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
 }
 .code-copy-btn.copied {
-  color: #2f9e5b;
-  border-color: #2f9e5b;
+  color: #5dd39e;
+  border-color: rgba(93, 211, 158, 0.6);
 }
 
 /* softer keyboard-focus ring */
@@ -1180,6 +1400,18 @@ body.resizing {
   font-size: 11.5px;
   color: var(--text-faint);
   border-top: 1px solid var(--border);
+}
+
+.qs-section {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 16px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
 /* --- trash --- */

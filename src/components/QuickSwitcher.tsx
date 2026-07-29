@@ -1,5 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Search, FileText, Database, Plus, CornerDownLeft } from "lucide-react";
+import {
+  Search,
+  FileText,
+  Database,
+  Plus,
+  CornerDownLeft,
+  Moon,
+  Sun,
+  Trash2,
+  Zap,
+} from "lucide-react";
 import Modal from "./ui/Modal";
 import { useMutations, useSearch } from "../data";
 import { PagesIndex, PageId } from "../lib/types";
@@ -9,28 +19,76 @@ import { useNav } from "../state";
 interface QuickSwitcherProps {
   index: PagesIndex;
   onClose: () => void;
+  onOpenTrash: () => void;
 }
 
 interface Row {
-  kind: "page" | "create";
+  kind: "page" | "create" | "action";
   id?: PageId;
   title: string;
   icon: string | null;
+  actionIcon?: React.ReactNode;
   type?: "doc" | "database";
   crumb?: string;
+  run?: () => void | Promise<void>;
+  keywords?: string;
 }
 
-export default function QuickSwitcher({ index, onClose }: QuickSwitcherProps) {
-  const { navigate } = useNav();
+export default function QuickSwitcher({
+  index,
+  onClose,
+  onOpenTrash,
+}: QuickSwitcherProps) {
+  const { navigate, theme, toggleTheme } = useNav();
   const mutations = useMutations();
   const [term, setTerm] = useState("");
   const [selected, setSelected] = useState(0);
   const results = useSearch(term);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // Command-palette actions (⌘K in Notion runs commands, not just search).
+  const actions = useMemo<Row[]>(
+    () => [
+      {
+        kind: "action",
+        title: "New page",
+        icon: null,
+        actionIcon: <Plus size={16} />,
+        keywords: "new page create document",
+        run: async () => navigate(await mutations.create({ type: "doc" })),
+      },
+      {
+        kind: "action",
+        title: "New database",
+        icon: null,
+        actionIcon: <Database size={16} />,
+        keywords: "new database table board collection",
+        run: async () => navigate(await mutations.create({ type: "database" })),
+      },
+      {
+        kind: "action",
+        title: theme === "dark" ? "Switch to light mode" : "Switch to dark mode",
+        icon: null,
+        actionIcon: theme === "dark" ? <Sun size={16} /> : <Moon size={16} />,
+        keywords: "theme dark light mode appearance toggle",
+        run: () => toggleTheme(),
+      },
+      {
+        kind: "action",
+        title: "Open trash",
+        icon: null,
+        actionIcon: <Trash2 size={16} />,
+        keywords: "trash deleted bin restore",
+        run: () => onOpenTrash(),
+      },
+    ],
+    [mutations, navigate, theme, toggleTheme, onOpenTrash],
+  );
+
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
-    if (term.trim()) {
+    const q = term.trim().toLowerCase();
+    if (q) {
       for (const hit of results ?? []) {
         const crumbPath = pathTo(index, hit.parentId)
           .map((p) => p.title || "Untitled")
@@ -44,15 +102,24 @@ export default function QuickSwitcher({ index, onClose }: QuickSwitcherProps) {
           crumb: crumbPath,
         });
       }
+      for (const a of actions) {
+        if (
+          a.title.toLowerCase().includes(q) ||
+          (a.keywords ?? "").includes(q)
+        ) {
+          out.push(a);
+        }
+      }
       out.push({
         kind: "create",
         title: `Create page “${term.trim()}”`,
         icon: null,
       });
     } else {
+      out.push(...actions);
       const recent = [...index.all]
         .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, 8);
+        .slice(0, 6);
       for (const p of recent) {
         const crumbPath = pathTo(index, p.parentId)
           .map((x) => x.title || "Untitled")
@@ -68,7 +135,7 @@ export default function QuickSwitcher({ index, onClose }: QuickSwitcherProps) {
       }
     }
     return out;
-  }, [term, results, index]);
+  }, [term, results, index, actions]);
 
   useEffect(() => setSelected(0), [term, rows.length]);
 
@@ -81,11 +148,15 @@ export default function QuickSwitcher({ index, onClose }: QuickSwitcherProps) {
     if (row.kind === "create") {
       const id = await mutations.create({ type: "doc", title: term.trim() });
       navigate(id);
+    } else if (row.kind === "action") {
+      await row.run?.();
     } else if (row.id) {
       navigate(row.id);
     }
     onClose();
   };
+
+  const firstRecentIdx = !term.trim() ? actions.length : -1;
 
   return (
     <Modal onClose={onClose} className="quick-switcher" top="14vh">
@@ -93,7 +164,7 @@ export default function QuickSwitcher({ index, onClose }: QuickSwitcherProps) {
         <Search size={17} />
         <input
           autoFocus
-          placeholder="Search pages, or type to create…"
+          placeholder="Search pages, run a command, or type to create…"
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           onKeyDown={(e) => {
@@ -111,32 +182,50 @@ export default function QuickSwitcher({ index, onClose }: QuickSwitcherProps) {
         <kbd className="kbd">esc</kbd>
       </div>
       <div className="qs-results" ref={listRef}>
+        {!term.trim() && rows.length > 0 && (
+          <div className="qs-section">
+            <Zap size={11} /> Actions
+          </div>
+        )}
         {rows.map((row, i) => (
-          <button
-            key={row.kind === "create" ? "__create" : row.id}
-            className={`qs-row ${i === selected ? "selected" : ""}`}
-            onMouseEnter={() => setSelected(i)}
-            onClick={() => void activate(row)}
-          >
-            <span className="qs-icon">
-              {row.kind === "create" ? (
-                <Plus size={16} />
-              ) : row.icon ? (
-                row.icon
-              ) : row.type === "database" ? (
-                <Database size={16} />
-              ) : (
-                <FileText size={16} />
+          <React.Fragment key={rowKey(row, i)}>
+            {i === firstRecentIdx && (
+              <div className="qs-section">Recently edited</div>
+            )}
+            <button
+              className={`qs-row ${i === selected ? "selected" : ""}`}
+              onMouseEnter={() => setSelected(i)}
+              onClick={() => void activate(row)}
+            >
+              <span className="qs-icon">
+                {row.kind === "create" ? (
+                  <Plus size={16} />
+                ) : row.kind === "action" ? (
+                  row.actionIcon
+                ) : row.icon ? (
+                  row.icon
+                ) : row.type === "database" ? (
+                  <Database size={16} />
+                ) : (
+                  <FileText size={16} />
+                )}
+              </span>
+              <span className="qs-title">{row.title}</span>
+              {row.crumb && <span className="qs-crumb">{row.crumb}</span>}
+              {i === selected && (
+                <CornerDownLeft size={14} className="qs-enter" />
               )}
-            </span>
-            <span className="qs-title">{row.title}</span>
-            {row.crumb && <span className="qs-crumb">{row.crumb}</span>}
-            {i === selected && <CornerDownLeft size={14} className="qs-enter" />}
-          </button>
+            </button>
+          </React.Fragment>
         ))}
         {rows.length === 0 && <div className="qs-empty">No results</div>}
       </div>
-      {!term.trim() && <div className="qs-footer">Recently edited</div>}
     </Modal>
   );
+}
+
+function rowKey(row: Row, i: number): string {
+  if (row.kind === "create") return "__create";
+  if (row.kind === "action") return `__action_${row.title}`;
+  return row.id ?? `row_${i}`;
 }

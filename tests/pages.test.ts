@@ -9,6 +9,7 @@ const modules = import.meta.glob([
   "../convex/pages.ts",
   "../convex/files.ts",
   "../convex/schema.ts",
+  "../convex/lib/*.ts",
   "../convex/_generated/*.js",
 ]);
 
@@ -188,6 +189,33 @@ test("database defaults, row props, views", async () => {
   });
   const updated = await ctx.query(api.pages.get, { id: db });
   expect(updated?.dbProps?.map((p) => p.name)).toEqual(["Stage", "Estimate"]);
+});
+
+test("backlinks lists linking pages, excluding trashed and self", async () => {
+  const ctx = t();
+  const target = await ctx.mutation(api.pages.create, { type: "doc", title: "Target" });
+  const src1 = await ctx.mutation(api.pages.create, { type: "doc", title: "Src1" });
+  const src2 = await ctx.mutation(api.pages.create, { type: "doc", title: "Src2" });
+  const link = { type: "pageLink", props: { pageId: target }, content: [] };
+  await ctx.mutation(api.pages.updateContent, { id: src1, content: [link], text: "" });
+  // Nested inside children — must still count.
+  await ctx.mutation(api.pages.updateContent, {
+    id: src2,
+    content: [{ type: "paragraph", content: [], children: [link] }],
+    text: "",
+  });
+  // A self-link must not count.
+  await ctx.mutation(api.pages.updateContent, { id: target, content: [link], text: "" });
+
+  let backs = await ctx.query(api.pages.backlinks, { id: target });
+  expect(backs.map((b) => b.title).sort()).toEqual(["Src1", "Src2"]);
+
+  await ctx.mutation(api.pages.trash, { id: src1 });
+  backs = await ctx.query(api.pages.backlinks, { id: target });
+  expect(backs.map((b) => b.title)).toEqual(["Src2"]);
+
+  // Pages that merely mention text don't count.
+  expect(await ctx.query(api.pages.backlinks, { id: src2 })).toEqual([]);
 });
 
 /* ------------------------------------------------------------------ */

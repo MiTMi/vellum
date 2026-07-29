@@ -2,7 +2,14 @@ import { useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { DataApi, Mutations } from "./api";
-import { PageDoc, PageId, PageMeta, SearchHit, TrashedMeta } from "../lib/types";
+import {
+  BacklinkMeta,
+  PageDoc,
+  PageId,
+  PageMeta,
+  SearchHit,
+  TrashedMeta,
+} from "../lib/types";
 
 const realApi: DataApi = {
   usePagesList() {
@@ -25,6 +32,13 @@ const realApi: DataApi = {
       api.pages.search,
       term.trim() ? { term } : "skip",
     ) as SearchHit[] | undefined;
+  },
+
+  useBacklinks(id: PageId | null) {
+    return useQuery(
+      api.pages.backlinks,
+      id ? { id } : "skip",
+    ) as BacklinkMeta[] | undefined;
   },
 
   useMutations(): Mutations {

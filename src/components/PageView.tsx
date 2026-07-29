@@ -1,7 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Smile, ImageIcon } from "lucide-react";
+import {
+  Smile,
+  ImageIcon,
+  Link2,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Database,
+} from "lucide-react";
 import { PageDoc, PageId, PagesIndex } from "../lib/types";
-import { usePage, useMutations } from "../data";
+import { usePage, useMutations, useBacklinks } from "../data";
+import { useNav } from "../state";
 import { coverBackground } from "../lib/colors";
 import Editor from "./Editor";
 import DatabaseView from "./database/DatabaseView";
@@ -184,6 +193,8 @@ function PageBody({
         ) : (
           <Editor page={page} />
         )}
+
+        <LinkedMentions pageId={page._id} />
       </div>
 
       {iconAnchor && (
@@ -205,6 +216,49 @@ function PageBody({
           onPick={(cover) => void mutations.setCover({ id: page._id, cover })}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * "Linked mentions" — every page whose content links here, Notion-style.
+ * Hidden when the page has no backlinks.
+ */
+function LinkedMentions({ pageId }: { pageId: PageId }) {
+  const backlinks = useBacklinks(pageId);
+  const { navigate } = useNav();
+  const [open, setOpen] = useState(true);
+
+  if (!backlinks || backlinks.length === 0) return null;
+
+  return (
+    <div className="backlinks">
+      <button className="backlinks-header" onClick={() => setOpen((o) => !o)}>
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        <Link2 size={13} />
+        <span>
+          {backlinks.length} linked mention{backlinks.length === 1 ? "" : "s"}
+        </span>
+      </button>
+      {open &&
+        backlinks.map((b) => (
+          <button
+            key={b._id}
+            className="backlink-item"
+            onClick={() => navigate(b._id)}
+          >
+            <span className="backlink-icon">
+              {b.icon ? (
+                b.icon
+              ) : b.type === "database" ? (
+                <Database size={14} />
+              ) : (
+                <FileText size={14} />
+              )}
+            </span>
+            <span className="backlink-title">{b.title || "Untitled"}</span>
+          </button>
+        ))}
     </div>
   );
 }

@@ -58,6 +58,37 @@ Invariants to preserve when touching `convex/pages.ts`:
 - Ops replayed from the outbox must be absolute-valued (e.g. the
   `toggleFavorite` `value` arg), never relative.
 
+### Editor (`src/components/Editor.tsx`)
+
+BlockNote with custom block specs registered on one shared `schema`:
+
+- `pageLink` (`PageLinkBlock.tsx`) — inline link to another page. Inserted
+  via the `/` menu ("Sub-page"/"Database") and the `@` mention menu ("Link
+  to page"). Stores only `pageId`; title/icon are looked up live from the
+  page registry.
+- `callout` (`CalloutBlock.tsx`) — tinted box with an emoji + color popover.
+- `toc` (`TocBlock.tsx`) — auto-updating table of contents; reads heading
+  blocks via `editor.onChange` and scrolls to `[data-id]` targets.
+
+Two `SuggestionMenuController`s (`/` and `@`) share
+`suggestionMenuFloatingOptions` — custom floating-UI middleware enforcing a
+min menu height so the popover flips above the caret near the viewport
+bottom instead of clipping. Keep the `@floating-ui/react` dependency pinned
+to the version BlockNote resolves.
+
+### Backlinks
+
+`extractPageLinks` (`convex/lib/pageLinks.ts`) is shared by the server
+`pages.backlinks` query (direct mode) and the client replica hooks
+(`storeHooks.ts`, offline/mock modes) so both agree on what counts as a
+link. `PageView.tsx` renders the "Linked mentions" section from it.
+
+### Command palette
+
+`QuickSwitcher.tsx` (⌘K) mixes page search/create with an Actions section
+(new page/database, theme toggle, open trash). Actions are plain rows with a
+`run()` callback.
+
 ## Commands
 
 - `npm run dev` — convex + vite + electron. `npm run dev:web` — no electron.

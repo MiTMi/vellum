@@ -95,3 +95,11 @@ export interface SearchHit {
   type: "doc" | "database";
   parentId: PageId | null;
 }
+
+/** A page that links to the current page ("Linked mentions"). */
+export interface BacklinkMeta {
+  _id: PageId;
+  title: string;
+  icon: string | null;
+  type: "doc" | "database";
+}

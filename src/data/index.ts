@@ -3,6 +3,7 @@ import realApi from "./real";
 import mockApi from "./mock";
 import offlineApi from "./offline";
 import {
+  BacklinkMeta,
   PageDoc,
   PageId,
   PageMeta,
@@ -26,6 +27,9 @@ export function useTrashed(): TrashedMeta[] | undefined {
 }
 export function useSearch(term: string): SearchHit[] | undefined {
   return impl.useSearch(term);
+}
+export function useBacklinks(id: PageId | null): BacklinkMeta[] | undefined {
+  return impl.useBacklinks(id);
 }
 export function useMutations(): Mutations {
   return impl.useMutations();

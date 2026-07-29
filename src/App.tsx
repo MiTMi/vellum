@@ -124,7 +124,11 @@ function Workspace() {
       </div>
 
       {searchOpen && (
-        <QuickSwitcher index={index} onClose={() => setSearchOpen(false)} />
+        <QuickSwitcher
+          index={index}
+          onClose={() => setSearchOpen(false)}
+          onOpenTrash={() => setTrashOpen(true)}
+        />
       )}
       {trashOpen && <TrashModal onClose={() => setTrashOpen(false)} />}
     </div>

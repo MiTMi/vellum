@@ -15,12 +15,16 @@ import {
   DefaultReactSuggestionItem,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
-import { FileText, Database } from "lucide-react";
+import { autoPlacement, offset, shift, size } from "@floating-ui/react";
+import { FileText, Database, Link2, Info, List } from "lucide-react";
 import { PageDoc } from "../lib/types";
 import { extractText } from "../lib/blocks";
 import { useFileUpload, useMutations } from "../data";
 import { useNav } from "../state";
+import { registrySnapshot } from "../lib/pageRegistry";
 import { PageLinkSpec } from "./PageLinkBlock";
+import { CalloutSpec } from "./CalloutBlock";
+import { TocSpec } from "./TocBlock";
 import { setActiveEditor } from "../lib/editorRegistry";
 import CodeCopyOverlay from "./CodeCopyOverlay";
 
@@ -28,8 +32,46 @@ const schema = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
     pageLink: PageLinkSpec(),
+    callout: CalloutSpec(),
+    toc: TocSpec(),
   },
 });
+
+/*
+ * BlockNote's default popover middleware has a feedback loop: when the menu
+ * opens on a side with very little room, size() clamps it to that sliver;
+ * on the next update the now-tiny menu "fits" on both sides, so
+ * autoPlacement keeps the cramped side and the menu ends up a few rows tall
+ * (or clipped at the window edge). Enforcing a minimum height keeps the
+ * cramped side overflowing, which makes placement flip to the roomier one.
+ */
+const MENU_MIN_HEIGHT = 220;
+const MENU_MAX_HEIGHT = 420;
+const suggestionMenuFloatingOptions = {
+  useFloatingOptions: {
+    middleware: [
+      offset(10),
+      autoPlacement({
+        allowedPlacements: ["bottom-start", "top-start"] as const,
+        padding: 10,
+      }),
+      shift({ padding: 10 }),
+      size({
+        padding: 10,
+        apply({
+          elements,
+          availableHeight,
+        }: {
+          elements: { floating: HTMLElement };
+          availableHeight: number;
+        }) {
+          const height = Math.max(MENU_MIN_HEIGHT, availableHeight);
+          elements.floating.style.maxHeight = `${Math.min(height, MENU_MAX_HEIGHT)}px`;
+        },
+      }),
+    ],
+  },
+};
 
 interface EditorProps {
   page: PageDoc;
@@ -120,11 +162,88 @@ export default function PageEditor({ page }: EditorProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page._id, editor]);
 
+  const insertPageLink = (pageId: string) => {
+    insertOrUpdateBlockForSlashMenu(
+      editor as unknown as BlockNoteEditor,
+      { type: "pageLink", props: { pageId } } as never,
+    );
+  };
+
+  // "@" menu — link an existing page inline, Notion-style. Every link also
+  // shows up as a backlink ("Linked mentions") on the target page.
+  const getMentionItems = async (
+    query: string,
+  ): Promise<DefaultReactSuggestionItem[]> => {
+    const q = query.trim().toLowerCase();
+    const items: DefaultReactSuggestionItem[] = [];
+    for (const [id, p] of registrySnapshot()) {
+      if (id === page._id || p.inTrash) continue;
+      const title = p.title || "Untitled";
+      if (q && !title.toLowerCase().includes(q)) continue;
+      items.push({
+        title,
+        subtext: p.type === "database" ? "Database" : "Page",
+        group: "Link to page",
+        icon: p.icon ? (
+          <span>{p.icon}</span>
+        ) : p.type === "database" ? (
+          <Database size={18} />
+        ) : (
+          <FileText size={18} />
+        ),
+        onItemClick: () => insertPageLink(id),
+      });
+      if (items.length >= 12) break;
+    }
+    return items;
+  };
+
+  const openMentionMenu = () => {
+    const suggestions = editor.getExtension("suggestionMenu") as
+      | { openSuggestionMenu?: (trigger: string) => void }
+      | undefined;
+    suggestions?.openSuggestionMenu?.("@");
+  };
+
   const getSlashItems = async (
     query: string,
   ): Promise<DefaultReactSuggestionItem[]> => {
     const defaults = getDefaultReactSlashMenuItems(editor);
     const custom: DefaultReactSuggestionItem[] = [
+      {
+        title: "Link to page",
+        subtext: "Link an existing page (or type @)",
+        aliases: ["link", "mention", "backlink", "@"],
+        group: "Vellum",
+        icon: <Link2 size={18} />,
+        onItemClick: openMentionMenu,
+      },
+      {
+        title: "Callout",
+        subtext: "Make text stand out in a colored box",
+        aliases: ["callout", "note", "info", "tip", "highlight"],
+        group: "Vellum",
+        icon: <Info size={18} />,
+        onItemClick: () => {
+          insertOrUpdateBlockForSlashMenu(
+            editor as unknown as BlockNoteEditor,
+            { type: "callout" } as never,
+          );
+        },
+      },
+      {
+        title: "Table of contents",
+        subtext: "Auto-updating outline of this page's headings",
+        aliases: ["toc", "table of contents", "outline", "contents"],
+        group: "Vellum",
+        icon: <List size={18} />,
+        onItemClick: () => {
+          insertOrUpdateBlockForSlashMenu(
+            editor as unknown as BlockNoteEditor,
+            { type: "toc" } as never,
+          );
+        },
+      },
       {
         title: "Sub-page",
         subtext: "Create a page inside this page",
@@ -178,7 +297,16 @@ export default function PageEditor({ page }: EditorProps) {
         onChange={scheduleSave}
         slashMenu={false}
       >
-        <SuggestionMenuController triggerCharacter="/" getItems={getSlashItems} />
+        <SuggestionMenuController
+          triggerCharacter="/"
+          getItems={getSlashItems}
+          floatingUIOptions={suggestionMenuFloatingOptions}
+        />
+        <SuggestionMenuController
+          triggerCharacter="@"
+          getItems={getMentionItems}
+          floatingUIOptions={suggestionMenuFloatingOptions}
+        />
       </BlockNoteView>
       <CodeCopyOverlay container={wrapEl} />
     </div>

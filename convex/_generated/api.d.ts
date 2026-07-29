@@ -9,6 +9,7 @@
  */
 
 import type * as files from "../files.js";
+import type * as lib_pageLinks from "../lib/pageLinks.js";
 import type * as pages from "../pages.js";
 
 import type {
@@ -19,6 +20,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   files: typeof files;
+  "lib/pageLinks": typeof lib_pageLinks;
   pages: typeof pages;
 }>;
 

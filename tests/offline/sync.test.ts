@@ -21,6 +21,7 @@ const modules = import.meta.glob([
   "../../convex/pages.ts",
   "../../convex/files.ts",
   "../../convex/schema.ts",
+  "../../convex/lib/*.ts",
   "../../convex/_generated/*.js",
 ]);
 

@@ -2,6 +2,7 @@ import { query, mutation, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
 import { dbProp } from "./schema";
+import { extractPageLinks } from "./lib/pageLinks";
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -117,6 +118,28 @@ export const getMany = query({
       if (doc) docs.push(doc);
     }
     return docs;
+  },
+});
+
+/** Pages whose content links to this page ("Linked mentions" in the UI). */
+export const backlinks = query({
+  args: { id: v.id("pages") },
+  handler: async (ctx, args) => {
+    const pages = await ctx.db.query("pages").collect();
+    return pages
+      .filter(
+        (p) =>
+          !p.inTrash &&
+          p._id !== args.id &&
+          extractPageLinks(p.content).includes(args.id),
+      )
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map((p) => ({
+        _id: p._id,
+        title: p.title,
+        icon: p.icon ?? null,
+        type: p.type,
+      }));
   },
 });
 

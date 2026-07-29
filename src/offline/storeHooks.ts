@@ -1,5 +1,7 @@
 import { useMemo, useSyncExternalStore } from "react";
+import { extractPageLinks } from "../../convex/lib/pageLinks";
 import {
+  BacklinkMeta,
   PageDoc,
   PageId,
   PageMeta,
@@ -75,6 +77,32 @@ export function createStoreReadHooks(store: PageStore) {
             })),
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [v],
+      );
+    },
+
+    useBacklinks(id: PageId | null): BacklinkMeta[] | undefined {
+      const v = useVersion();
+      return useMemo<BacklinkMeta[]>(
+        () => {
+          if (!id) return [];
+          return store
+            .all()
+            .filter(
+              (p) =>
+                !p.inTrash &&
+                p._id !== id &&
+                extractPageLinks(p.content).includes(id),
+            )
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .map((p) => ({
+              _id: p._id,
+              title: p.title,
+              icon: p.icon ?? null,
+              type: p.type,
+            }));
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [id, v],
       );
     },
 

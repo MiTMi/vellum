@@ -22,6 +22,7 @@
     "@blocknote/react": "0.52.1",
     "@mantine/core": "^9.4.2",
     "@mantine/hooks": "^9.4.2",
+    "@floating-ui/react": "^0.27.18",
     "convex": "^1.42.3",
     "emoji-picker-react": "^4.19.1",
     "lucide-react": "^1.27.0",
