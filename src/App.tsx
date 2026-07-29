@@ -9,6 +9,9 @@ import TabBar from "./components/TabBar";
 import PageView from "./components/PageView";
 import QuickSwitcher from "./components/QuickSwitcher";
 import TrashModal from "./components/TrashModal";
+import PeekModal from "./components/PeekModal";
+import { PageId } from "./lib/types";
+import { parseAnchor, scrollToBlock } from "./lib/anchors";
 import { FileText, Plus } from "lucide-react";
 
 export default function App() {
@@ -25,6 +28,7 @@ function Workspace() {
   const { pageId, navigate, theme, newTab } = useNav();
   const [searchOpen, setSearchOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
+  const [peekId, setPeekId] = useState<PageId | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const w = Number(localStorage.getItem("vellum:sidebarWidth"));
@@ -35,6 +39,35 @@ function Workspace() {
   useEffect(() => {
     localStorage.setItem("vellum:sidebarWidth", String(sidebarWidth));
   }, [sidebarWidth]);
+
+  // Database views ask for a row "peek" through a window event (same pattern
+  // as vellum:navigate) rather than threading a callback through four views.
+  // Closing on remap/navigation keeps the overlay from outliving its row.
+  useEffect(() => {
+    const onPeek = (e: Event) =>
+      setPeekId((e as CustomEvent<string>).detail as PageId);
+    window.addEventListener("vellum:peek", onPeek);
+    return () => window.removeEventListener("vellum:peek", onPeek);
+  }, []);
+
+  useEffect(() => setPeekId(null), [pageId]);
+
+  // Block deep links (#/page/<id>/block/<id>): navigate, then scroll to and
+  // flash the block once the editor has mounted it.
+  useEffect(() => {
+    const go = () => {
+      const anchor = parseAnchor(window.location.hash);
+      if (!anchor) return;
+      navigate(anchor.pageId as PageId);
+      scrollToBlock(anchor.blockId);
+      // Clear the hash so a later reload doesn't re-navigate away from
+      // wherever the user has since gone.
+      history.replaceState(null, "", window.location.pathname);
+    };
+    go();
+    window.addEventListener("hashchange", go);
+    return () => window.removeEventListener("hashchange", go);
+  }, [navigate]);
 
   // Mirror the page index into the module registry for editor blocks.
   useEffect(() => {
@@ -131,6 +164,13 @@ function Workspace() {
         />
       )}
       {trashOpen && <TrashModal onClose={() => setTrashOpen(false)} />}
+      {peekId && index.byId.has(peekId) && (
+        <PeekModal
+          pageId={peekId}
+          index={index}
+          onClose={() => setPeekId(null)}
+        />
+      )}
     </div>
   );
 }

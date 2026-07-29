@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { extractPageLinks } from "../../convex/lib/pageLinks";
+import { makeSnippet } from "../../convex/lib/snippet";
 import {
   BacklinkMeta,
   PageDoc,
@@ -125,6 +126,7 @@ export function createStoreReadHooks(store: PageStore) {
             icon: p.icon ?? null,
             type: p.type,
             parentId: p.parentId ?? null,
+            snippet: makeSnippet(p.contentText, term),
           }));
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [term, v]);

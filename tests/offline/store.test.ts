@@ -209,3 +209,30 @@ test("remapId rewrites relation prop values and dbProps.targetId", () => {
   expect(store.get(pid("db"))?.dbProps?.[0].targetId).toBe("real_projects");
   expect(store.get(pid("row"))?.props?.proj).toEqual(["real_projects", "other"]);
 });
+
+test("remapId rewrites inline pageMention ids, not just pageLink blocks", () => {
+  const store = createPageStore();
+  store.create({ type: "doc", title: "Source" }, pid("src"), 1);
+  store.updateContent(
+    pid("src"),
+    [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "see " },
+          { type: "pageMention", props: { pageId: "local_target" } },
+        ],
+      },
+      { type: "pageLink", props: { pageId: "local_target" } },
+    ],
+    "see ",
+    2,
+  );
+  store.create({ type: "doc", title: "Target" }, pid("local_target"), 3);
+
+  store.remapId(pid("local_target"), pid("real_target"));
+
+  const content = store.get(pid("src"))!.content as Array<Record<string, any>>;
+  expect(content[0].content[1].props.pageId).toBe("real_target");
+  expect(content[1].props.pageId).toBe("real_target");
+});

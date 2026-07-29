@@ -224,13 +224,15 @@ try {
     (await page.locator(".gallery-view").count()) === 1,
   );
 
-  // Clicking a card opens the row.
+  // Clicking a card peeks the row (Notion-style overlay).
   await page.click(".gallery-card:has-text('Apollo')");
-  await page.waitForTimeout(600);
+  await page.waitForSelector(".peek-modal", { timeout: 5000 });
   check(
-    "clicking a gallery card opens the row page",
-    (await page.inputValue(".page-title")) === "Apollo",
+    "clicking a gallery card peeks the row",
+    (await page.inputValue(".peek-modal .page-title")) === "Apollo",
   );
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
 
   /* ---------------- 5. Relation property ---------------- */
 

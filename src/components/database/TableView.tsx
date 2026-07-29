@@ -1,23 +1,45 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Plus, ArrowUpRight, Trash2, GripVertical } from "lucide-react";
+import {
+  Plus,
+  ArrowUpRight,
+  Trash2,
+  GripVertical,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import { DbProp, PageDoc, PageMeta, PageId, SelectOption } from "../../lib/types";
 import { useMutations } from "../../data";
-import { useNav } from "../../state";
+import { requestPeek, useNav } from "../../state";
 import Cell from "./Cell";
 import PropertyMenu, { PROP_TYPE_META } from "./PropertyMenu";
 import { uid } from "../../lib/ranks";
 
-import { Sort } from "../../lib/dbviews";
+import { RowGroup, Sort } from "../../lib/dbviews";
 
 interface TableViewProps {
   page: PageDoc;
   rows: PageMeta[];
+  /** Non-null when the view is grouped; rows are then rendered per group. */
+  groups?: RowGroup[] | null;
+  groupBy?: string | null;
+  collapsedGroups?: string[];
+  toggleGroup?: (key: string) => void;
   sort: Sort;
   setSort: (s: Sort) => void;
   locked?: boolean;
 }
 
-export default function TableView({ page, rows, sort, setSort, locked }: TableViewProps) {
+export default function TableView({
+  page,
+  rows,
+  groups,
+  groupBy,
+  collapsedGroups = [],
+  toggleGroup,
+  sort,
+  setSort,
+  locked,
+}: TableViewProps) {
   const mutations = useMutations();
   const { navigate } = useNav();
   const dbProps = useMemo(() => page.dbProps ?? [], [page.dbProps]);
@@ -116,9 +138,79 @@ export default function TableView({ page, rows, sort, setSort, locked }: TableVi
             </th>
           </tr>
         </thead>
-        <tbody>
-          {sorted.map((row) => (
-            <tr key={row._id}>
+        {groups
+          ? groups.map((g) => (
+              <tbody key={g.key} className="db-group">
+                <tr className="group-row">
+                  <td colSpan={dbProps.length + 2}>
+                    <button
+                      className="group-toggle"
+                      onClick={() => toggleGroup?.(g.key)}
+                    >
+                      {collapsedGroups.includes(g.key) ? (
+                        <ChevronRight size={13} />
+                      ) : (
+                        <ChevronDown size={13} />
+                      )}
+                      <span className={`chip chip-${g.color}`}>{g.label}</span>
+                      <span className="board-count">{g.rows.length}</span>
+                    </button>
+                    {!locked && (
+                      <button
+                        className="icon-btn small group-add"
+                        title={`New row in ${g.label}`}
+                        onClick={() => void newRowInGroup(g)}
+                      >
+                        <Plus size={13} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+                {!collapsedGroups.includes(g.key) &&
+                  // A multi-select row shows under each of its values, so the
+                  // key has to include the group.
+                  g.rows.map((row) => renderRow(row, g.key))}
+              </tbody>
+            ))
+          : <tbody>{sorted.map((row) => renderRow(row))}</tbody>}
+      </table>
+
+      {!locked && !groups && (
+        <button className="new-row-btn" onClick={() => void newRow()}>
+          <Plus size={15} /> New
+        </button>
+      )}
+
+      <div className="table-footer">
+        <span>{rows.length} {rows.length === 1 ? "row" : "rows"}</span>
+        {sort && (
+          <button className="btn subtle" onClick={() => setSort(null)}>
+            Clear sort
+          </button>
+        )}
+      </div>
+
+      {menuFor && (
+        <PropertyMenu
+          anchor={menuFor.anchor}
+          onClose={() => setMenuFor(null)}
+          prop={dbProps.find((p) => p.id === menuFor.propId)!}
+          dbProps={dbProps}
+          update={(next) =>
+            saveProps(dbProps.map((p) => (p.id === next.id ? next : p)))
+          }
+          remove={() => saveProps(dbProps.filter((p) => p.id !== menuFor.propId))}
+          sort={(dir) =>
+            setSort(dir ? { key: menuFor.propId, dir } : null)
+          }
+        />
+      )}
+    </div>
+  );
+
+  function renderRow(row: PageMeta, groupKey?: string) {
+    return (
+            <tr key={groupKey ? `${groupKey}:${row._id}` : row._id}>
               <td className="col-title">
                 <div className="title-cell">
                   <span className="row-drag">
@@ -149,7 +241,7 @@ export default function TableView({ page, rows, sort, setSort, locked }: TableVi
                   )}
                   <button
                     className="open-btn"
-                    onClick={() => navigate(row._id)}
+                    onClick={() => requestPeek(row._id)}
                     title="Open as page"
                   >
                     <ArrowUpRight size={13} /> Open
@@ -166,48 +258,32 @@ export default function TableView({ page, rows, sort, setSort, locked }: TableVi
               {dbProps.map((prop) => (
                 <td key={prop.id}>
                   <Cell
-                    rowId={row._id}
+                    row={row}
                     prop={prop}
-                    value={row.props?.[prop.id]}
+                    dbProps={dbProps}
                     onAddOption={addOption}
                   />
                 </td>
               ))}
               <td className="col-add" />
             </tr>
-          ))}
-        </tbody>
-      </table>
+    );
+  }
 
-      {!locked && (
-        <button className="new-row-btn" onClick={() => void newRow()}>
-          <Plus size={15} /> New
-        </button>
-      )}
-
-      <div className="table-footer">
-        <span>{rows.length} {rows.length === 1 ? "row" : "rows"}</span>
-        {sort && (
-          <button className="btn subtle" onClick={() => setSort(null)}>
-            Clear sort
-          </button>
-        )}
-      </div>
-
-      {menuFor && (
-        <PropertyMenu
-          anchor={menuFor.anchor}
-          onClose={() => setMenuFor(null)}
-          prop={dbProps.find((p) => p.id === menuFor.propId)!}
-          update={(next) =>
-            saveProps(dbProps.map((p) => (p.id === next.id ? next : p)))
-          }
-          remove={() => saveProps(dbProps.filter((p) => p.id !== menuFor.propId))}
-          sort={(dir) =>
-            setSort(dir ? { key: menuFor.propId, dir } : null)
-          }
-        />
-      )}
-    </div>
-  );
+  /** New row pre-filled with the group's value, Notion-style. */
+  async function newRowInGroup(g: RowGroup) {
+    const prop = dbProps.find((p) => p.id === groupBy);
+    const props: Record<string, unknown> = {};
+    if (prop && g.key !== "__none") {
+      if (prop.type === "checkbox") props[prop.id] = g.key === "__checked";
+      else if (prop.type === "multiSelect") props[prop.id] = [g.key];
+      else props[prop.id] = g.key;
+    }
+    const id = await mutations.create({
+      parentId: page._id,
+      type: "doc",
+      props: Object.keys(props).length ? props : undefined,
+    });
+    setTitleEdit({ id, value: "" });
+  }
 }

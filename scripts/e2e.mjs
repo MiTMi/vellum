@@ -269,6 +269,10 @@ try {
   await page.keyboard.type("Row body text works too");
   await page.waitForTimeout(700);
   await shot("07-row-page");
+  // Rows now open in the peek overlay — dismiss it before touching the
+  // sidebar again.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
 
   // ---------- trash & restore ----------
   await page.hover(".tree-row:has-text('Sub note')");

@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
 import { activeView, dbProp } from "./schema";
 import { extractPageLinks } from "./lib/pageLinks";
+import { makeSnippet } from "./lib/snippet";
 import {
   MAX_VERSIONS_PER_PAGE,
   shouldSnapshot,
@@ -29,13 +30,18 @@ async function nextRank(ctx: MutationCtx, parentId: Id<"pages"> | undefined) {
   return max + 1024;
 }
 
-/** Delete every history snapshot belonging to a page. */
-async function deleteVersionsOf(ctx: MutationCtx, pageId: Id<"pages">) {
+/** Delete every history snapshot and comment belonging to a page. */
+async function deleteSidecarsOf(ctx: MutationCtx, pageId: Id<"pages">) {
   const versions = await ctx.db
     .query("pageVersions")
     .withIndex("by_page", (q) => q.eq("pageId", pageId))
     .collect();
   for (const v of versions) await ctx.db.delete("pageVersions", v._id);
+  const comments = await ctx.db
+    .query("comments")
+    .withIndex("by_page", (q) => q.eq("pageId", pageId))
+    .collect();
+  for (const c of comments) await ctx.db.delete("comments", c._id);
 }
 
 async function forSubtree(
@@ -174,6 +180,7 @@ export const search = query({
         icon: p.icon ?? null,
         type: p.type,
         parentId: p.parentId ?? null,
+        snippet: makeSnippet(p.contentText, args.term),
       }));
   },
 });
@@ -582,7 +589,7 @@ export const deleteForever = mutation({
       ids.push(p._id);
     });
     for (const id of ids) {
-      await deleteVersionsOf(ctx, id);
+      await deleteSidecarsOf(ctx, id);
       await ctx.db.delete("pages", id);
     }
   },
@@ -594,7 +601,7 @@ export const emptyTrash = mutation({
     const pages = await ctx.db.query("pages").collect();
     for (const p of pages) {
       if (p.inTrash) {
-        await deleteVersionsOf(ctx, p._id);
+        await deleteSidecarsOf(ctx, p._id);
         await ctx.db.delete("pages", p._id);
       }
     }

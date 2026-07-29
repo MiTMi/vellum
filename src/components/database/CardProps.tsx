@@ -1,6 +1,11 @@
 import React from "react";
 import { DbProp, PageMeta } from "../../lib/types";
-import { formatDateLong } from "../../lib/dbviews";
+import {
+  computeRollup,
+  formatDateLong,
+  formatTimestamp,
+  RowIndex,
+} from "../../lib/dbviews";
 
 /**
  * Compact property rendering for a database card (board + gallery). Select
@@ -11,13 +16,41 @@ import { formatDateLong } from "../../lib/dbviews";
 export default function CardProps({
   row,
   props,
+  dbProps,
+  byId,
 }: {
   row: PageMeta;
   props: DbProp[];
+  /** All sibling properties — rollups follow their relation column. */
+  dbProps?: DbProp[];
+  byId?: RowIndex;
 }) {
   const chips: React.ReactNode[] = [];
   const lines: React.ReactNode[] = [];
   for (const p of props) {
+    // Computed types have no stored value, so they're handled before the
+    // "skip empty" guard below.
+    if (p.type === "createdTime" || p.type === "lastEditedTime") {
+      lines.push(
+        <div key={p.id} className="board-date">
+          {formatTimestamp(
+            p.type === "createdTime" ? row._creationTime : row.updatedAt,
+          )}
+        </div>,
+      );
+      continue;
+    }
+    if (p.type === "rollup") {
+      const { display } = computeRollup(row, p, dbProps ?? props, byId);
+      if (display !== "—") {
+        lines.push(
+          <div key={p.id} className="board-plain">
+            {display}
+          </div>,
+        );
+      }
+      continue;
+    }
     const v = row.props?.[p.id];
     if (v === undefined || v === null || v === "") continue;
     if (p.type === "select" && typeof v === "string") {

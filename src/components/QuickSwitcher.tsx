@@ -31,6 +31,7 @@ interface Row {
   actionIcon?: React.ReactNode;
   type?: "doc" | "database";
   crumb?: string;
+  snippet?: string | null;
   run?: () => void | Promise<void>;
   keywords?: string;
 }
@@ -117,6 +118,7 @@ export default function QuickSwitcher({
           icon: hit.icon,
           type: hit.type,
           crumb: crumbPath,
+          snippet: hit.snippet,
         });
       }
       for (const a of actions) {
@@ -227,8 +229,17 @@ export default function QuickSwitcher({
                   <FileText size={16} />
                 )}
               </span>
-              <span className="qs-title">{row.title}</span>
-              {row.crumb && <span className="qs-crumb">{row.crumb}</span>}
+              <span className="qs-main">
+                <span className="qs-title-row">
+                  <span className="qs-title">{row.title}</span>
+                  {row.crumb && <span className="qs-crumb">{row.crumb}</span>}
+                </span>
+                {row.snippet && (
+                  <span className="qs-snippet">
+                    {highlight(row.snippet, term.trim())}
+                  </span>
+                )}
+              </span>
               {i === selected && (
                 <CornerDownLeft size={14} className="qs-enter" />
               )}
@@ -239,6 +250,29 @@ export default function QuickSwitcher({
       </div>
     </Modal>
   );
+}
+
+/**
+ * Wrap every occurrence of `term` in <mark>. Split client-side rather than
+ * sending HTML from the server — the snippet stays plain text everywhere.
+ */
+function highlight(text: string, term: string): React.ReactNode {
+  if (!term) return text;
+  const lower = text.toLowerCase();
+  const needle = term.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let at = 0;
+  let found = lower.indexOf(needle, at);
+  while (found !== -1) {
+    if (found > at) parts.push(text.slice(at, found));
+    parts.push(
+      <mark key={`${found}`}>{text.slice(found, found + term.length)}</mark>,
+    );
+    at = found + term.length;
+    found = lower.indexOf(needle, at);
+  }
+  parts.push(text.slice(at));
+  return parts;
 }
 
 function rowKey(row: Row, i: number): string {

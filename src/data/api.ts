@@ -1,5 +1,6 @@
 import {
   BacklinkMeta,
+  CommentMeta,
   DbProp,
   LinkPreview,
   PageDoc,
@@ -36,12 +37,23 @@ export interface DataApi {
   useVersionHistory(): VersionHistoryApi;
   /** Fetch Open Graph metadata for a URL (bookmark block). Null if offline. */
   useLinkPreview(): (url: string) => Promise<LinkPreview | null>;
+  /** Page comments — same server-only shape as version history. */
+  useComments(): CommentsApi;
 }
 
 export interface VersionHistoryApi {
   available: boolean;
   list(pageId: PageId): Promise<VersionMeta[]>;
   get(id: string): Promise<VersionDoc | null>;
+}
+
+export interface CommentsApi {
+  /** False while offline: comments live in a table the replica never mirrors. */
+  available: boolean;
+  list(pageId: PageId): Promise<CommentMeta[]>;
+  add(pageId: PageId, text: string): Promise<void>;
+  setResolved(id: string, value: boolean): Promise<void>;
+  remove(id: string): Promise<void>;
 }
 
 export interface Mutations {

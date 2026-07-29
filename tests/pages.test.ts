@@ -9,6 +9,7 @@ const modules = import.meta.glob([
   "../convex/pages.ts",
   "../convex/files.ts",
   "../convex/versions.ts",
+  "../convex/comments.ts",
   "../convex/schema.ts",
   "../convex/lib/*.ts",
   "../convex/_generated/*.js",
@@ -557,4 +558,119 @@ test("deleteForever removes a page's history", async () => {
   await ctx.mutation(api.pages.trash, { id });
   await ctx.mutation(api.pages.deleteForever, { id });
   expect(await ctx.query(api.versions.list, { pageId: id })).toHaveLength(0);
+});
+
+/* ------------------------------------------------------------------ */
+/* Search snippets                                                     */
+/* ------------------------------------------------------------------ */
+
+test("search returns a body snippet, or null when only the title matched", async () => {
+  const ctx = t();
+  const id = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Zoology",
+  });
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: para("the aardvark forages at night"),
+    text: "the aardvark forages at night",
+  });
+
+  const bodyHit = (await ctx.query(api.pages.search, { term: "aardvark" }))[0];
+  expect(bodyHit.snippet).toContain("aardvark");
+
+  const titleHit = (await ctx.query(api.pages.search, { term: "Zoology" }))[0];
+  expect(titleHit.snippet).toBeNull();
+});
+
+/* ------------------------------------------------------------------ */
+/* Comments                                                            */
+/* ------------------------------------------------------------------ */
+
+test("comments add / list / resolve (absolute) / remove", async () => {
+  const ctx = t();
+  const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
+
+  await ctx.mutation(api.comments.add, { pageId: id, text: "  fix this  " });
+  let list = await ctx.query(api.comments.list, { pageId: id });
+  expect(list).toHaveLength(1);
+  expect(list[0].text).toBe("fix this"); // trimmed
+  expect(list[0].resolved).toBeUndefined();
+
+  const commentId = list[0]._id;
+  await ctx.mutation(api.comments.setResolved, { id: commentId, value: true });
+  // Absolute, so a replay doesn't flip it back.
+  await ctx.mutation(api.comments.setResolved, { id: commentId, value: true });
+  list = await ctx.query(api.comments.list, { pageId: id });
+  expect(list[0].resolved).toBe(true);
+
+  await ctx.mutation(api.comments.remove, { id: commentId });
+  expect(await ctx.query(api.comments.list, { pageId: id })).toHaveLength(0);
+});
+
+test("comments ignore empty text and never bump the page's updatedAt", async () => {
+  const ctx = t();
+  const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
+  const before = (await ctx.query(api.pages.get, { id }))!.updatedAt;
+
+  await ctx.mutation(api.comments.add, { pageId: id, text: "   " });
+  expect(await ctx.query(api.comments.list, { pageId: id })).toHaveLength(0);
+
+  await ctx.mutation(api.comments.add, { pageId: id, text: "real" });
+  const after = (await ctx.query(api.pages.get, { id }))!.updatedAt;
+  // A comment is not an edit — reconcile and LWW must not see one.
+  expect(after).toBe(before);
+});
+
+test("deleteForever and emptyTrash cascade to comments", async () => {
+  const ctx = t();
+  const a = await ctx.mutation(api.pages.create, { type: "doc", title: "A" });
+  const b = await ctx.mutation(api.pages.create, { type: "doc", title: "B" });
+  await ctx.mutation(api.comments.add, { pageId: a, text: "on a" });
+  await ctx.mutation(api.comments.add, { pageId: b, text: "on b" });
+
+  await ctx.mutation(api.pages.trash, { id: a });
+  await ctx.mutation(api.pages.deleteForever, { id: a });
+  expect(await ctx.query(api.comments.list, { pageId: a })).toHaveLength(0);
+  expect(await ctx.query(api.comments.list, { pageId: b })).toHaveLength(1);
+
+  await ctx.mutation(api.pages.trash, { id: b });
+  await ctx.mutation(api.pages.emptyTrash, {});
+  expect(await ctx.query(api.comments.list, { pageId: b })).toHaveLength(0);
+});
+
+/* ------------------------------------------------------------------ */
+/* Computed + relation property types round-trip                       */
+/* ------------------------------------------------------------------ */
+
+test("rollup and timestamp property configs persist through updateDbProps", async () => {
+  const ctx = t();
+  const db = await ctx.mutation(api.pages.create, {
+    type: "database",
+    title: "Tasks",
+  });
+  await ctx.mutation(api.pages.updateDbProps, {
+    id: db,
+    dbProps: [
+      { id: "rel", name: "Projects", type: "relation", targetId: "other" },
+      {
+        id: "roll",
+        name: "Total",
+        type: "rollup",
+        relationPropId: "rel",
+        rollupPropId: "budget",
+        rollupCalc: "sum",
+      },
+      { id: "made", name: "Created", type: "createdTime" },
+      { id: "edited", name: "Edited", type: "lastEditedTime" },
+    ],
+  });
+  const doc = await ctx.query(api.pages.get, { id: db });
+  expect(doc?.dbProps?.map((p) => p.type)).toEqual([
+    "relation",
+    "rollup",
+    "createdTime",
+    "lastEditedTime",
+  ]);
+  expect(doc?.dbProps?.[1].rollupCalc).toBe("sum");
 });

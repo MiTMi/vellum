@@ -37,9 +37,9 @@ export default function RowPropsPanel({
             {prop.name}
           </span>
           <Cell
-            rowId={row._id}
+            row={row}
             prop={prop}
-            value={row.props?.[prop.id]}
+            dbProps={dbProps}
             onAddOption={addOption}
             bare
           />

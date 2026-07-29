@@ -1,9 +1,10 @@
 import { useCallback, useMemo } from "react";
 import { useQuery, useMutation, useAction, useConvex } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { DataApi, Mutations, VersionHistoryApi } from "./api";
+import { CommentsApi, DataApi, Mutations, VersionHistoryApi } from "./api";
 import {
   BacklinkMeta,
+  CommentMeta,
   LinkPreview,
   PageDoc,
   PageId,
@@ -116,6 +117,30 @@ const realApi: DataApi = {
     return useCallback(
       (url: string) => fetchMeta({ url }) as Promise<LinkPreview | null>,
       [fetchMeta],
+    );
+  },
+
+  useComments(): CommentsApi {
+    const client = useConvex();
+    const add = useMutation(api.comments.add);
+    const setResolved = useMutation(api.comments.setResolved);
+    const remove = useMutation(api.comments.remove);
+    return useMemo<CommentsApi>(
+      () => ({
+        available: true,
+        list: (pageId) =>
+          client.query(api.comments.list, { pageId }) as Promise<CommentMeta[]>,
+        add: async (pageId, text) => {
+          await add({ pageId, text });
+        },
+        setResolved: async (id, value) => {
+          await setResolved({ id: id as Id<"comments">, value });
+        },
+        remove: async (id) => {
+          await remove({ id: id as Id<"comments"> });
+        },
+      }),
+      [client, add, setResolved, remove],
     );
   },
 

@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
-import { DataApi, Mutations, VersionHistoryApi } from "./api";
+import { CommentsApi, DataApi, Mutations, VersionHistoryApi } from "./api";
 import {
+  CommentMeta,
   LinkPreview,
   PageDoc,
   PageId,
@@ -99,7 +100,37 @@ function captureVersion(id: PageId, now: number) {
   saveVersions();
 }
 
+/** Comments sidecar — same read-only-projection argument as versions. */
+const comments = new Map<string, CommentMeta[]>();
+
+function loadComments() {
+  try {
+    const raw = localStorage.getItem("vellum:mockcomments");
+    if (raw) {
+      for (const [k, v] of Object.entries(
+        JSON.parse(raw) as Record<string, CommentMeta[]>,
+      )) {
+        comments.set(k, v);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveComments() {
+  try {
+    localStorage.setItem(
+      "vellum:mockcomments",
+      JSON.stringify(Object.fromEntries(comments)),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
 loadVersions();
+loadComments();
 
 const mutations: Mutations = {
   async create(args) {
@@ -141,12 +172,20 @@ const mutations: Mutations = {
     store.restore(id, Date.now());
   },
   async deleteForever({ id }) {
-    for (const removed of store.deleteForever(id)) versions.delete(removed);
+    for (const removed of store.deleteForever(id)) {
+      versions.delete(removed);
+      comments.delete(removed);
+    }
     saveVersions();
+    saveComments();
   },
   async emptyTrash() {
-    for (const removed of store.emptyTrash()) versions.delete(removed);
+    for (const removed of store.emptyTrash()) {
+      versions.delete(removed);
+      comments.delete(removed);
+    }
     saveVersions();
+    saveComments();
   },
   async updateDbProps({ id, dbProps }) {
     store.updateDbProps(id, dbProps, Date.now());
@@ -186,6 +225,52 @@ const mockApi: DataApi = {
             if (hit) return structuredClone(hit);
           }
           return null;
+        },
+      }),
+      [],
+    );
+  },
+
+  useComments(): CommentsApi {
+    return useMemo<CommentsApi>(
+      () => ({
+        available: true,
+        async list(pageId: PageId): Promise<CommentMeta[]> {
+          return structuredClone(comments.get(pageId) ?? []);
+        },
+        async add(pageId: PageId, text: string) {
+          const t = text.trim();
+          if (!t || !store.get(pageId)) return;
+          const list = comments.get(pageId) ?? [];
+          list.push({
+            _id: `mockcmt_${Date.now().toString(36)}_${(seq++).toString(36)}`,
+            pageId,
+            text: t.slice(0, 5000),
+            createdAt: Date.now(),
+          });
+          comments.set(pageId, list);
+          saveComments();
+        },
+        async setResolved(id: string, value: boolean) {
+          for (const list of comments.values()) {
+            const hit = list.find((c) => c._id === id);
+            if (hit) {
+              hit.resolved = value;
+              saveComments();
+              return;
+            }
+          }
+        },
+        async remove(id: string) {
+          for (const [pageId, list] of comments) {
+            const idx = list.findIndex((c) => c._id === id);
+            if (idx !== -1) {
+              list.splice(idx, 1);
+              comments.set(pageId, list);
+              saveComments();
+              return;
+            }
+          }
         },
       }),
       [],

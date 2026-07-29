@@ -58,10 +58,22 @@ try {
   await shot("mention-menu");
   await page.keyboard.press("Enter");
   await page.waitForTimeout(600);
-  const linkCount = await page
-    .locator(".page-link-block:has-text('Target Alpha')")
+  // @ now inserts an *inline* chip inside the paragraph (Notion-style),
+  // rather than the standalone pageLink block the slash "Sub-page" item uses.
+  const mentionCount = await page
+    .locator(".page-mention:has-text('Target Alpha')")
     .count();
-  check("@-mention inserts a link to the existing page", linkCount === 1);
+  check("@-mention inserts an inline chip for the existing page", mentionCount === 1);
+  check(
+    "the chip is inline, inside a paragraph",
+    (await page
+      .locator("[data-content-type='paragraph'] .page-mention")
+      .count()) === 1,
+  );
+  check(
+    "@-mention does not insert a block-level page link",
+    (await page.locator(".page-link-block").count()) === 0,
+  );
 
   // ---------- slash command variant ----------
   await page.keyboard.press("Enter");
@@ -79,16 +91,20 @@ try {
   await page.waitForTimeout(400);
   await page.keyboard.press("Enter");
   await page.waitForTimeout(600);
-  const linkCount2 = await page
-    .locator(".page-link-block:has-text('Target Alpha')")
+  const mentionCount2 = await page
+    .locator(".page-mention:has-text('Target Alpha')")
     .count();
-  check("slash 'Link to page' inserts a link too", linkCount2 === 2, String(linkCount2));
+  check(
+    "slash 'Link to page' inserts a mention too",
+    mentionCount2 === 2,
+    String(mentionCount2),
+  );
 
   // ---------- backlinks on the target ----------
-  await page.click(".page-link-block:has-text('Target Alpha') >> nth=0");
+  await page.click(".page-mention:has-text('Target Alpha') >> nth=0");
   await page.waitForTimeout(500);
   check(
-    "clicking the link navigates to the target",
+    "clicking the inline mention navigates to the target",
     (await page.inputValue(".page-title")) === "Target Alpha",
   );
   await page.waitForSelector(".backlinks", { timeout: 5000 });

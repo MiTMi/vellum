@@ -21,6 +21,22 @@ export function setActiveEditor(editor: ActiveEditor | null, pageId?: string) {
   activePageId = editor ? (pageId ?? null) : null;
 }
 
+/**
+ * Unregister, but only if `editor` is still the active one.
+ *
+ * Two editors can be mounted at once (a row peeked over a doc page), and
+ * they unmount in an order React doesn't guarantee. An unconditional
+ * `setActiveEditor(null)` on unmount lets the closing editor wipe the
+ * registration of the one still on screen, silently breaking export/import
+ * and history restore for it.
+ */
+export function clearActiveEditor(editor: ActiveEditor) {
+  if (active === editor) {
+    active = null;
+    activePageId = null;
+  }
+}
+
 export function getActiveEditor(): ActiveEditor | null {
   return active;
 }

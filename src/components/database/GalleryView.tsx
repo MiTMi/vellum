@@ -1,7 +1,8 @@
 import { Plus } from "lucide-react";
 import { PageDoc, PageMeta } from "../../lib/types";
 import { useMutations } from "../../data";
-import { useNav } from "../../state";
+import { usePagesIndex } from "../../hooks/usePagesIndex";
+import { requestPeek, useNav } from "../../state";
 import { coverBackground } from "../../lib/colors";
 import CardProps from "./CardProps";
 
@@ -19,6 +20,7 @@ export default function GalleryView({
   locked?: boolean;
 }) {
   const mutations = useMutations();
+  const index = usePagesIndex();
   const { navigate } = useNav();
   const dbProps = page.dbProps ?? [];
   const cardProps = dbProps.filter((p) => p.type !== "checkbox").slice(0, 3);
@@ -29,7 +31,7 @@ export default function GalleryView({
         <button
           key={row._id}
           className="gallery-card"
-          onClick={() => navigate(row._id)}
+          onClick={() => requestPeek(row._id)}
         >
           <div
             className={`gallery-cover ${row.cover ? "" : "empty"}`}
@@ -44,7 +46,12 @@ export default function GalleryView({
               {row.cover && <span className="row-icon">{row.icon ?? "📄"}</span>}
               <span>{row.title || "Untitled"}</span>
             </div>
-            <CardProps row={row} props={cardProps} />
+            <CardProps
+              row={row}
+              props={cardProps}
+              dbProps={dbProps}
+              byId={index.byId}
+            />
           </div>
         </button>
       ))}
@@ -59,7 +66,7 @@ export default function GalleryView({
               parentId: page._id,
               type: "doc",
             });
-            navigate(id);
+            requestPeek(id);
           }}
         >
           <Plus size={16} /> New page

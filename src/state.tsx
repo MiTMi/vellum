@@ -47,6 +47,15 @@ export function requestNavigate(id: string) {
   window.dispatchEvent(new CustomEvent("vellum:navigate", { detail: id }));
 }
 
+/**
+ * Open a database row in the peek overlay (Notion's row preview). Same
+ * window-event indirection as requestNavigate, so the four database views
+ * don't each need a callback threaded down from App.
+ */
+export function requestPeek(id: string) {
+  window.dispatchEvent(new CustomEvent("vellum:peek", { detail: id }));
+}
+
 function initialTheme(): Theme {
   const saved = localStorage.getItem("vellum:theme");
   if (saved === "light" || saved === "dark") return saved;

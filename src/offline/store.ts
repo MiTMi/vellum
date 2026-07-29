@@ -1,3 +1,4 @@
+import { PAGE_REF_TYPES } from "../../convex/lib/pageLinks";
 import { DbProp, PageDoc, PageId, ViewKind } from "../lib/types";
 
 /**
@@ -48,7 +49,12 @@ export const WELCOME_CONTENT: unknown[] = [
   { type: "quote", content: [{ type: "text", text: "Drag pages in the sidebar to nest them, star the ones you love, and everything else works the way you'd expect.", styles: {} }] },
 ];
 
-/** Rewrite pageLink blocks pointing at `from` to point at `to`. */
+/**
+ * Rewrite page references (pageLink blocks, inline pageMention chips)
+ * pointing at `from` to point at `to`. Shares PAGE_REF_TYPES with the
+ * backlink extractor so a new reference type can't be added to one and
+ * forgotten in the other.
+ */
 function rewriteContentIds(node: unknown, from: string, to: string): boolean {
   let changed = false;
   if (Array.isArray(node)) {
@@ -58,7 +64,12 @@ function rewriteContentIds(node: unknown, from: string, to: string): boolean {
   } else if (node && typeof node === "object") {
     const obj = node as Record<string, unknown>;
     const props = obj.props as Record<string, unknown> | undefined;
-    if (obj.type === "pageLink" && props && props.pageId === from) {
+    if (
+      typeof obj.type === "string" &&
+      PAGE_REF_TYPES.includes(obj.type) &&
+      props &&
+      props.pageId === from
+    ) {
       props.pageId = to;
       changed = true;
     }

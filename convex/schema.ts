@@ -20,6 +20,11 @@ export const propType = v.union(
   v.literal("checkbox"),
   v.literal("url"),
   v.literal("relation"),
+  // Computed, never stored: read off the row's own timestamps.
+  v.literal("createdTime"),
+  v.literal("lastEditedTime"),
+  // Computed: aggregates a property of related rows through a relation.
+  v.literal("rollup"),
 );
 
 export const dbProp = v.object({
@@ -40,6 +45,11 @@ export const dbProp = v.object({
   // Deliberately v.string(), not v.id("pages") — offline clients hold temp
   // ids until their create replays, and dbProps ride through createWithDoc.
   targetId: v.optional(v.string()),
+  // Rollup properties. All three hold client-generated prop ids (or the
+  // "__title" sentinel), never page ids — nothing here needs id remapping.
+  relationPropId: v.optional(v.string()), // which relation column to follow
+  rollupPropId: v.optional(v.string()), // which property of the target rows
+  rollupCalc: v.optional(v.string()), // count | sum | avg | min | max | …
 });
 
 export const activeView = v.union(
@@ -102,4 +112,16 @@ export default defineSchema({
     content: v.optional(v.any()),
     savedAt: v.number(),
   }).index("by_page", ["pageId", "savedAt"]),
+
+  /**
+   * Page comments. Like pageVersions, a separate table the offline replica
+   * never mirrors — so commenting touches neither `syncIndex`, reconcile,
+   * nor the outbox, and is simply unavailable while offline.
+   */
+  comments: defineTable({
+    pageId: v.id("pages"),
+    text: v.string(),
+    createdAt: v.number(),
+    resolved: v.optional(v.boolean()),
+  }).index("by_page", ["pageId", "createdAt"]),
 });

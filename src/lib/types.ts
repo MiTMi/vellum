@@ -26,7 +26,28 @@ export type PropType =
   | "date"
   | "checkbox"
   | "url"
-  | "relation";
+  | "relation"
+  | "createdTime"
+  | "lastEditedTime"
+  | "rollup";
+
+/** Aggregations a rollup property can apply to the related rows. */
+export type RollupCalc =
+  | "count"
+  | "countValues"
+  | "sum"
+  | "average"
+  | "min"
+  | "max"
+  | "percentChecked"
+  | "showOriginal";
+
+/** Property types whose value is computed at render, never stored. */
+export const COMPUTED_PROP_TYPES: PropType[] = [
+  "createdTime",
+  "lastEditedTime",
+  "rollup",
+];
 
 export type ViewKind = "table" | "board" | "calendar" | "gallery";
 
@@ -44,6 +65,12 @@ export interface DbProp {
   options?: SelectOption[];
   /** relation props: the database page whose rows this links to */
   targetId?: string;
+  /** rollup props: which relation column of this database to follow */
+  relationPropId?: string;
+  /** rollup props: which property of the target rows ("__title" allowed) */
+  rollupPropId?: string;
+  /** rollup props: how to aggregate the collected values */
+  rollupCalc?: RollupCalc | string;
 }
 
 export interface PagesIndex {
@@ -101,6 +128,14 @@ export interface VersionDoc extends VersionMeta {
   content?: unknown;
 }
 
+export interface CommentMeta {
+  _id: string;
+  pageId: PageId;
+  text: string;
+  createdAt: number;
+  resolved?: boolean;
+}
+
 /** Open Graph metadata for a bookmark block. */
 export interface LinkPreview {
   url: string;
@@ -123,6 +158,8 @@ export interface SearchHit {
   icon: string | null;
   type: "doc" | "database";
   parentId: PageId | null;
+  /** Body-text context around the match; null when only the title matched. */
+  snippet: string | null;
 }
 
 /** A page that links to the current page ("Linked mentions"). */

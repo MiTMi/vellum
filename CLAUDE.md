@@ -72,10 +72,15 @@ Invariants to preserve when touching `convex/pages.ts`:
 
 BlockNote with custom block specs registered on one shared `schema`:
 
-- `pageLink` (`PageLinkBlock.tsx`) — inline link to another page. Inserted
-  via the `/` menu ("Sub-page"/"Database") and the `@` mention menu ("Link
-  to page"). Stores only `pageId`; title/icon are looked up live from the
-  page registry.
+- `pageLink` (`PageLinkBlock.tsx`) — *block-level* link to another page,
+  inserted by the `/` menu's "Sub-page"/"Database" items. Stores only
+  `pageId`; title/icon are looked up live from the page registry.
+- `pageMention` (`PageMentionInline.tsx`) — the `@` menu's *inline* chip
+  (custom inline content, not a block), so a mention sits mid-sentence.
+  Note `createReactInlineContentSpec` returns the spec itself, unlike
+  `createReactBlockSpec`, which returns a factory.
+- `equation` (`EquationBlock.tsx`) — KaTeX display math; LaTeX lives in
+  block props.
 - `callout` (`CalloutBlock.tsx`) — tinted box with an emoji + color popover.
 - `toc` (`TocBlock.tsx`) — auto-updating table of contents; reads heading
   blocks via `editor.onChange` and scrolls to `[data-id]` targets.
@@ -96,18 +101,38 @@ min menu height so the popover flips above the caret near the viewport
 bottom instead of clipping. Keep the `@floating-ui/react` dependency pinned
 to the version BlockNote resolves.
 
+Two overlays float over the editor rather than injecting DOM into
+ProseMirror (fragile): `CodeCopyOverlay` (copy code, block's top-right) and
+`BlockAnchorOverlay` ("Copy link to block", right-hand margin). **Keep the
+anchor button out of the left gutter** — BlockNote's drag handle and "+" sit
+there and swallow the click.
+
 ### Backlinks
 
 `extractPageLinks` (`convex/lib/pageLinks.ts`) is shared by the server
 `pages.backlinks` query (direct mode) and the client replica hooks
 (`storeHooks.ts`, offline/mock modes) so both agree on what counts as a
-link. `PageView.tsx` renders the "Linked mentions" section from it.
+link. It walks `PAGE_REF_TYPES` — exported from the same file and reused by
+`store.ts`'s `rewriteContentIds`, so a new reference type can't be taught to
+one and forgotten in the other. `PageView.tsx` renders the "Linked mentions"
+section from it.
+
+### Block anchor links
+
+"Copy link to block" yields `…#/page/<pageId>/block/<blockId>` — a URL hash,
+not a custom scheme, so the same string works in the browser build and in
+Electron. `App.tsx` parses it on load and on `hashchange`, navigates, then
+`scrollToBlock` polls for the target (the editor mounts asynchronously) and
+flashes it. See `src/lib/anchors.ts`.
 
 ### Databases (`src/components/database/`)
 
 Four views off one `activeView` field: table, board, calendar, gallery.
 `BoardView`/`GalleryView` share card rendering via `CardProps.tsx`. Filters,
-sorts and search are local-only (`lib/dbviews.ts` + localStorage).
+sorts, search, **and table grouping** are local-only (`lib/dbviews.ts` +
+localStorage) — grouping therefore touches no backend and no outbox. Note
+`loadViewState` must default any newly added key: state persisted by an
+older build won't have it.
 
 `relation` properties store an **array of row page-ids** in `props`, with the
 target database on `dbProp.targetId`. `targetId` is `v.string()`, not
@@ -115,12 +140,40 @@ target database on `dbProp.targetId`. `targetId` is `v.string()`, not
 and `dbProps` rides through `createWithDoc`. Chips resolve titles live from
 the page index, so renames propagate and deleted targets just drop out.
 
+Three property types are **computed at render and never stored**:
+`createdTime` / `lastEditedTime` (read `_creationTime` / `updatedAt` off the
+row) and `rollup` (aggregates a property of the rows reached through a
+relation column — see `computeRollup` in `lib/dbviews.ts`). Because they
+read the row rather than `props`, `Cell` takes the whole `row` plus its
+sibling `dbProps`; rollups additionally need `index.byId`, and unresolvable
+ids (deleted row, unsynced temp id) drop out rather than erroring. Adding a
+type to `PropType` forces updates in `PROP_TYPE_META`, `Cell`, `CardProps`
+and `sortValue` — let the typechecker find them.
+
+### Row peek (`PeekModal.tsx`)
+
+Database rows open in a centered overlay rather than navigating. It reuses
+`PageView` wholesale and is triggered by a `vellum:peek` window event
+(`requestPeek` in `state.tsx`), the same indirection as `vellum:navigate`.
+
+Two editors can therefore be mounted at once. `Editor` unregisters via
+`clearActiveEditor(editor)`, which is a no-op unless that editor is still the
+active one — an unconditional `setActiveEditor(null)` lets a closing peek
+wipe the registration of the page still on screen.
+
 ### Templates
 
 `isTemplate` marks a page as a template: `usePagesIndex` pulls those roots
 out of the tree into `index.templates` (their children stay in `children` so
 the subtree still renders). Instantiating is `duplicate` with
 `{ asInstance: true }` — clears the flag on the root copy only.
+
+`TemplatePrompt` in `PageView.tsx` offers templates on an empty page and
+applies one by *composing existing mutations* (`updateContent` + `setIcon` /
+`setCover` + one `duplicate` per child) — no new mutation, so it works
+offline. It must bump the `<Editor>` key afterwards: `initialContent` is
+memoized on `page._id`, so a mounted editor won't show content written
+underneath it.
 
 ### Page history
 
@@ -136,9 +189,26 @@ Restoring must also repaint the open editor via
 never re-reads the replica, so persisting alone leaves stale text on screen
 *and* lets the editor's next debounced save undo the restore.
 
+### Comments
+
+Same shape as page history: its own `comments` table, never mirrored by the
+replica, so it stays out of `syncIndex`, reconcile and the outbox. Comment
+mutations deliberately **do not bump the page's `updatedAt`** — a comment
+isn't an edit, and churning that timestamp would confuse reconcile and LWW.
+Offline, `useComments().available` is false; it's also inert for a page whose
+id is still a temp id (nothing to attach to server-side yet).
+
 Because offline mode has no `ConvexProvider`, server-only reads (history,
-link previews) are plain callbacks through `convexClient()` — never
-`useQuery`. See `useVersionHistory` / `useLinkPreview` in `src/data/`.
+comments, link previews) are plain callbacks through `convexClient()` —
+never `useQuery`. See `useVersionHistory` / `useComments` / `useLinkPreview`
+in `src/data/`. They're not reactive, so callers refetch after each write.
+
+### Search
+
+`pages.search` and the replica's `useSearch` both build contextual snippets
+with `makeSnippet` (`convex/lib/snippet.ts`) — shared for the same reason as
+`extractPageLinks`. The snippet is plain text; `QuickSwitcher` wraps matches
+in `<mark>` client-side rather than accepting HTML from the server.
 
 ### Command palette
 
@@ -150,8 +220,11 @@ plain rows with a `run()` callback.
 
 - `npm run dev` — convex + vite + electron. `npm run dev:web` — no electron.
 - `npx vitest run` — all tests: Convex function tests (`tests/pages.test.ts`,
-  convex-test), pure-helper tests (`tests/linkMeta.test.ts`) and
-  offline-layer unit/integration tests (`tests/offline/`).
+  convex-test), pure-helper tests (`tests/linkMeta.test.ts`,
+  `tests/snippet.test.ts`, `tests/dbviews.test.ts`) and offline-layer
+  unit/integration tests (`tests/offline/`). New `convex/*.ts` modules must
+  be added to the `import.meta.glob` list in `tests/pages.test.ts` or
+  convex-test can't resolve them.
 - `npm run build` — typecheck + vite build.
 - `node scripts/e2e*.mjs` — Playwright UI suites against a mock-mode vite
   server on port 5199 (`VITE_MOCK_CONVEX=1 npx vite --port 5199`).

@@ -8,11 +8,13 @@ import {
   FileText,
   Database,
 } from "lucide-react";
-import { PageDoc, PageId, PagesIndex } from "../lib/types";
+import { PageDoc, PageId, PagesIndex, childrenKey } from "../lib/types";
 import { usePage, useMutations, useBacklinks } from "../data";
 import { useNav } from "../state";
 import { coverBackground } from "../lib/colors";
+import { extractText } from "../lib/blocks";
 import Editor from "./Editor";
+import Comments from "./Comments";
 import DatabaseView from "./database/DatabaseView";
 import RowPropsPanel from "./database/RowProps";
 import IconPicker from "./IconPicker";
@@ -117,6 +119,18 @@ function PageBody({
   const isDatabase = page.type === "database";
   const locked = page.locked ?? false;
 
+  // Notion offers templates on a brand-new empty page. Same emptiness test
+  // the Editor uses to decide whether to seed initialContent.
+  const [appliedCount, setAppliedCount] = useState(0);
+  const isEmpty = !Array.isArray(page.content) || page.content.length === 0;
+  const showTemplatePrompt =
+    !isDatabase &&
+    !locked &&
+    !page.isTemplate &&
+    isEmpty &&
+    appliedCount === 0 &&
+    index.templates.length > 0;
+
   return (
     <div
       className={`page-view font-${page.font ?? "default"} ${page.smallText ? "small-text" : ""} ${locked ? "locked" : ""}`}
@@ -191,10 +205,23 @@ function PageBody({
         {isDatabase ? (
           <DatabaseView page={page} index={index} locked={locked} />
         ) : (
-          <Editor page={page} />
+          <>
+            {showTemplatePrompt && (
+              <TemplatePrompt
+                page={page}
+                index={index}
+                onApplied={() => setAppliedCount((n) => n + 1)}
+              />
+            )}
+            {/* Remount after applying a template: the editor memoizes its
+                initialContent on page._id, so it would otherwise keep
+                showing the empty document we just filled in. */}
+            <Editor key={`${page._id}:${appliedCount}`} page={page} />
+          </>
         )}
 
         <LinkedMentions pageId={page._id} />
+        <Comments pageId={page._id} />
       </div>
 
       {iconAnchor && (
@@ -216,6 +243,83 @@ function PageBody({
           onPick={(cover) => void mutations.setCover({ id: page._id, cover })}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Notion's "start with a template" prompt on an empty page.
+ *
+ * Applying composes existing mutations rather than adding a new one: copy
+ * the template's content/icon/cover onto this page, then `duplicate` each of
+ * its children into it. Works fully offline — every op is one the outbox
+ * already knows, and duplicate enqueues parent-before-child creates.
+ */
+function TemplatePrompt({
+  page,
+  index,
+  onApplied,
+}: {
+  page: PageDoc;
+  index: PagesIndex;
+  onApplied: () => void;
+}) {
+  const mutations = useMutations();
+  const [applyingId, setApplyingId] = useState<PageId | null>(null);
+  // The template's *content* lives on the full doc, not on PageMeta — so
+  // fetch it via the ordinary hook once the user picks one.
+  const template = usePage(applyingId);
+  const ranRef = useRef(false);
+
+  useEffect(() => {
+    if (!applyingId || !template || ranRef.current) return;
+    ranRef.current = true;
+    void (async () => {
+      const content = template.content ?? [];
+      await mutations.updateContent({
+        id: page._id,
+        content,
+        text: extractText(content),
+      });
+      if (template.icon && !page.icon) {
+        await mutations.setIcon({ id: page._id, icon: template.icon });
+      }
+      if (template.cover && !page.cover) {
+        await mutations.setCover({ id: page._id, cover: template.cover });
+      }
+      for (const child of index.children.get(childrenKey(applyingId)) ?? []) {
+        await mutations.duplicate({
+          id: child._id,
+          parentId: page._id,
+          suffix: "",
+        });
+      }
+      onApplied();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyingId, template]);
+
+  if (applyingId) {
+    return <div className="template-prompt busy">Applying template…</div>;
+  }
+
+  return (
+    <div className="template-prompt">
+      <span className="template-prompt-label">Start with a template</span>
+      <div className="template-prompt-list">
+        {index.templates.map((t) => (
+          <button
+            key={t._id}
+            className="template-prompt-btn"
+            onClick={() => setApplyingId(t._id)}
+          >
+            <span className="tree-icon">
+              {t.icon ?? <FileText size={14} />}
+            </span>
+            <span>{t.title || "Untitled"}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

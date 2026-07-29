@@ -21,12 +21,14 @@ import {
   ViewKind,
 } from "../../lib/types";
 import { useMutations } from "../../data";
-import { useNav } from "../../state";
+import { requestPeek, useNav } from "../../state";
 import {
   applyFilters,
   applySearch,
   applySort,
   Filters,
+  groupRows,
+  LocalViewState,
   loadViewState,
   saveViewState,
   Sort,
@@ -55,7 +57,7 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
 
   const [state, setState] = useState(() => loadViewState(page._id));
   useEffect(() => setState(loadViewState(page._id)), [page._id]);
-  const update = (next: { sort: Sort; filters: Filters }) => {
+  const update = (next: LocalViewState) => {
     setState(next);
     saveViewState(page._id, next);
   };
@@ -65,15 +67,26 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
   const [filterAnchor, setFilterAnchor] = useState<HTMLElement | null>(null);
   const [sortAnchor, setSortAnchor] = useState<HTMLElement | null>(null);
   const [groupAnchor, setGroupAnchor] = useState<HTMLElement | null>(null);
+  const [tableGroupAnchor, setTableGroupAnchor] = useState<HTMLElement | null>(
+    null,
+  );
 
   const rows = useMemo(() => {
     let r = applyFilters(allRows, state.filters, dbProps);
     r = applySearch(r, term);
-    return applySort(r, state.sort, dbProps);
-  }, [allRows, state, term, dbProps]);
+    // byId lets rollup columns resolve their related rows while sorting.
+    return applySort(r, state.sort, dbProps, index.byId);
+  }, [allRows, state, term, dbProps, index.byId]);
 
   const selectProps = dbProps.filter((p) => p.type === "select");
   const dateProps = dbProps.filter((p) => p.type === "date");
+  const groupableProps = dbProps.filter((p) =>
+    ["select", "multiSelect", "checkbox"].includes(p.type),
+  );
+  const groups = useMemo(
+    () => (view === "table" ? groupRows(rows, state.groupBy, dbProps) : null),
+    [view, rows, state.groupBy, dbProps],
+  );
   const activeFilterEntries = Object.entries(state.filters).filter(
     ([, v]) => v.length > 0,
   );
@@ -91,7 +104,8 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
       type: "doc",
       props: Object.keys(props).length ? props : undefined,
     });
-    if (view !== "table") navigate(id);
+    // Table gets an inline title editor; the other views open the new row.
+    if (view !== "table") requestPeek(id);
   };
 
   const filterLabel = (propId: string, values: string[]): string => {
@@ -140,6 +154,17 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
             <button className="btn subtle" onClick={(e) => setGroupAnchor(e.currentTarget)}>
               {dbProps.find((p) => p.id === page.boardGroupBy)?.name ??
                 selectProps[0]?.name}
+              <ChevronDown size={13} />
+            </button>
+          )}
+          {view === "table" && groupableProps.length > 0 && (
+            <button
+              className={`btn subtle ${state.groupBy ? "accent" : ""}`}
+              onClick={(e) => setTableGroupAnchor(e.currentTarget)}
+            >
+              {state.groupBy
+                ? `Group: ${dbProps.find((p) => p.id === state.groupBy)?.name ?? "—"}`
+                : "Group"}
               <ChevronDown size={13} />
             </button>
           )}
@@ -246,6 +271,17 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
         <TableView
           page={page}
           rows={rows}
+          groups={groups}
+          groupBy={state.groupBy}
+          collapsedGroups={state.collapsedGroups}
+          toggleGroup={(key) =>
+            update({
+              ...state,
+              collapsedGroups: state.collapsedGroups.includes(key)
+                ? state.collapsedGroups.filter((k) => k !== key)
+                : [...state.collapsedGroups, key],
+            })
+          }
           sort={state.sort}
           setSort={(sort) => update({ ...state, sort })}
           locked={locked}
@@ -273,6 +309,24 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
             label: p.name,
             onClick: () => void mutations.setView({ id: page._id, calendarBy: p.id }),
           }))}
+        />
+      )}
+      {tableGroupAnchor && (
+        <Menu
+          anchor={tableGroupAnchor}
+          onClose={() => setTableGroupAnchor(null)}
+          items={[
+            ...groupableProps.map((p) => ({
+              label: p.name,
+              onClick: () =>
+                update({ ...state, groupBy: p.id, collapsedGroups: [] }),
+            })),
+            {
+              label: "No grouping",
+              onClick: () =>
+                update({ ...state, groupBy: null, collapsedGroups: [] }),
+            },
+          ]}
         />
       )}
       {filterAnchor && (

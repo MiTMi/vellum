@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BlockNoteSchema,
   defaultBlockSpecs,
+  defaultInlineContentSpecs,
   BlockNoteEditor,
 } from "@blocknote/core";
 import {
@@ -16,7 +17,15 @@ import {
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { autoPlacement, offset, shift, size } from "@floating-ui/react";
-import { FileText, Database, Link2, Info, List, Bookmark } from "lucide-react";
+import {
+  FileText,
+  Database,
+  Link2,
+  Info,
+  List,
+  Bookmark,
+  Sigma,
+} from "lucide-react";
 import { PageDoc } from "../lib/types";
 import { extractText } from "../lib/blocks";
 import { useFileUpload, useLinkPreview, useMutations } from "../data";
@@ -27,7 +36,10 @@ import { PageLinkSpec } from "./PageLinkBlock";
 import { CalloutSpec } from "./CalloutBlock";
 import { TocSpec } from "./TocBlock";
 import { BookmarkSpec } from "./BookmarkBlock";
-import { setActiveEditor } from "../lib/editorRegistry";
+import { EquationSpec } from "./EquationBlock";
+import { PageMentionSpec } from "./PageMentionInline";
+import BlockAnchorOverlay from "./BlockAnchorOverlay";
+import { clearActiveEditor, setActiveEditor } from "../lib/editorRegistry";
 import CodeCopyOverlay from "./CodeCopyOverlay";
 
 export const schema = BlockNoteSchema.create({
@@ -37,6 +49,13 @@ export const schema = BlockNoteSchema.create({
     callout: CalloutSpec(),
     toc: TocSpec(),
     bookmark: BookmarkSpec(),
+    equation: EquationSpec(),
+  },
+  inlineContentSpecs: {
+    ...defaultInlineContentSpecs,
+    // Unlike createReactBlockSpec, createReactInlineContentSpec returns the
+    // spec itself rather than a factory — no call here.
+    pageMention: PageMentionSpec,
   },
 });
 
@@ -167,7 +186,7 @@ export default function PageEditor({ page }: EditorProps) {
     return () => {
       window.removeEventListener("beforeunload", flush);
       window.removeEventListener("vellum:flush-edits", flush);
-      setActiveEditor(null);
+      clearActiveEditor(editor as never);
       flush();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -178,6 +197,15 @@ export default function PageEditor({ page }: EditorProps) {
       editor as unknown as BlockNoteEditor,
       { type: "pageLink", props: { pageId } } as never,
     );
+  };
+
+  // Inline chip inside the current paragraph (Notion's @-mention), as
+  // opposed to insertPageLink's standalone block.
+  const insertPageMention = (pageId: string) => {
+    editor.insertInlineContent([
+      { type: "pageMention", props: { pageId } },
+      " ",
+    ] as never);
   };
 
   // "@" menu — link an existing page inline, Notion-style. Every link also
@@ -202,7 +230,7 @@ export default function PageEditor({ page }: EditorProps) {
         ) : (
           <FileText size={18} />
         ),
-        onItemClick: () => insertPageLink(id),
+        onItemClick: () => insertPageMention(id),
       });
       if (items.length >= 12) break;
     }
@@ -252,6 +280,19 @@ export default function PageEditor({ page }: EditorProps) {
           insertOrUpdateBlockForSlashMenu(
             editor as unknown as BlockNoteEditor,
             { type: "bookmark" } as never,
+          );
+        },
+      },
+      {
+        title: "Equation",
+        subtext: "Display a LaTeX formula",
+        aliases: ["equation", "math", "latex", "katex", "formula"],
+        group: "Vellum",
+        icon: <Sigma size={18} />,
+        onItemClick: () => {
+          insertOrUpdateBlockForSlashMenu(
+            editor as unknown as BlockNoteEditor,
+            { type: "equation" } as never,
           );
         },
       },
@@ -333,6 +374,7 @@ export default function PageEditor({ page }: EditorProps) {
         />
       </BlockNoteView>
       <CodeCopyOverlay container={wrapEl} />
+      <BlockAnchorOverlay container={wrapEl} pageId={page._id} />
     </div>
   );
 }

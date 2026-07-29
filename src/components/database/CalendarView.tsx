@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { DbProp, PageDoc, PageMeta } from "../../lib/types";
 import { useMutations } from "../../data";
-import { useNav } from "../../state";
+import { requestPeek, useNav } from "../../state";
 import { toDateKey } from "../../lib/dbviews";
 
 interface CalendarViewProps {
@@ -147,7 +147,7 @@ export default function CalendarView({ page, rows, locked }: CalendarViewProps) 
                   <button
                     key={row._id}
                     className="cal-card"
-                    onClick={() => navigate(row._id)}
+                    onClick={() => requestPeek(row._id)}
                     title={row.title || "Untitled"}
                   >
                     <span className="row-icon">{row.icon ?? "📄"}</span>

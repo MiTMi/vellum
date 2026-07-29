@@ -14,12 +14,15 @@ import {
   X,
   GitBranch,
   Database,
+  Clock,
+  History,
+  Sigma,
 } from "lucide-react";
 import Popover from "../ui/Popover";
-import { DbProp, PropType, SelectOption } from "../../lib/types";
+import { DbProp, PropType, RollupCalc, SelectOption } from "../../lib/types";
 import { SELECT_COLORS, randomColor } from "../../lib/colors";
 import { uid } from "../../lib/ranks";
-import { usePagesList } from "../../data";
+import { usePage, usePagesList } from "../../data";
 
 export const PROP_TYPE_META: Record<
   PropType,
@@ -33,12 +36,28 @@ export const PROP_TYPE_META: Record<
   checkbox: { label: "Checkbox", icon: <CheckSquare size={15} /> },
   url: { label: "URL", icon: <LinkIcon size={15} /> },
   relation: { label: "Relation", icon: <GitBranch size={15} /> },
+  createdTime: { label: "Created time", icon: <Clock size={15} /> },
+  lastEditedTime: { label: "Last edited time", icon: <History size={15} /> },
+  rollup: { label: "Rollup", icon: <Sigma size={15} /> },
 };
+
+const ROLLUP_CALCS: { id: RollupCalc; label: string }[] = [
+  { id: "count", label: "Count all" },
+  { id: "countValues", label: "Count values" },
+  { id: "sum", label: "Sum" },
+  { id: "average", label: "Average" },
+  { id: "min", label: "Min" },
+  { id: "max", label: "Max" },
+  { id: "percentChecked", label: "Percent checked" },
+  { id: "showOriginal", label: "Show original" },
+];
 
 interface PropertyMenuProps {
   anchor: HTMLElement | null;
   onClose: () => void;
   prop: DbProp;
+  /** All properties of this database — rollups pick a relation from them. */
+  dbProps?: DbProp[];
   update: (next: DbProp) => void;
   remove: () => void;
   sort?: (dir: "asc" | "desc" | null) => void;
@@ -48,6 +67,7 @@ export default function PropertyMenu({
   anchor,
   onClose,
   prop,
+  dbProps = [],
   update,
   remove,
   sort,
@@ -133,6 +153,10 @@ export default function PropertyMenu({
         </>
       )}
 
+      {prop.type === "rollup" && (
+        <RollupConfig prop={prop} dbProps={dbProps} update={update} />
+      )}
+
       {isSelect && (
         <>
           <div className="prop-menu-label">Options</div>
@@ -200,6 +224,105 @@ export default function PropertyMenu({
         <span>Delete property</span>
       </button>
     </Popover>
+  );
+}
+
+/**
+ * Rollup configuration: follow one of this database's relation columns, pick
+ * a property on the *target* database's rows, pick an aggregation.
+ *
+ * The target's `dbProps` live on its full PageDoc, not on PageMeta, so this
+ * reads it through the ordinary `usePage` hook — which works identically in
+ * all three data modes.
+ */
+function RollupConfig({
+  prop,
+  dbProps,
+  update,
+}: {
+  prop: DbProp;
+  dbProps: DbProp[];
+  update: (next: DbProp) => void;
+}) {
+  const relations = dbProps.filter((p) => p.type === "relation");
+  const chosen = relations.find((p) => p.id === prop.relationPropId);
+  const targetDb = usePage((chosen?.targetId as never) ?? null);
+  const targetProps = targetDb?.dbProps ?? [];
+
+  return (
+    <>
+      <div className="prop-menu-label">Relation</div>
+      <div className="prop-options">
+        {relations.map((r) => (
+          <button
+            key={r.id}
+            className={`menu-item ${r.id === prop.relationPropId ? "active" : ""}`}
+            onClick={() =>
+              update({
+                ...prop,
+                relationPropId: r.id,
+                // Target changed — the old property id is meaningless now.
+                rollupPropId: undefined,
+              })
+            }
+          >
+            <span className="menu-icon">
+              <GitBranch size={15} />
+            </span>
+            <span>{r.name}</span>
+          </button>
+        ))}
+        {relations.length === 0 && (
+          <div className="select-empty">
+            Add a relation property first — a rollup summarises the rows it
+            links to.
+          </div>
+        )}
+      </div>
+
+      {chosen && (
+        <>
+          <div className="prop-menu-label">Property</div>
+          <div className="prop-options">
+            <button
+              className={`menu-item ${prop.rollupPropId === "__title" ? "active" : ""}`}
+              onClick={() => update({ ...prop, rollupPropId: "__title" })}
+            >
+              <span className="menu-icon">
+                <Type size={15} />
+              </span>
+              <span>Name</span>
+            </button>
+            {targetProps.map((tp) => (
+              <button
+                key={tp.id}
+                className={`menu-item ${tp.id === prop.rollupPropId ? "active" : ""}`}
+                onClick={() => update({ ...prop, rollupPropId: tp.id })}
+              >
+                <span className="menu-icon">{PROP_TYPE_META[tp.type].icon}</span>
+                <span>{tp.name}</span>
+              </button>
+            ))}
+            {!targetDb && (
+              <div className="select-empty">Loading related database…</div>
+            )}
+          </div>
+
+          <div className="prop-menu-label">Calculate</div>
+          <div className="prop-options">
+            {ROLLUP_CALCS.map((c) => (
+              <button
+                key={c.id}
+                className={`menu-item ${(prop.rollupCalc ?? "count") === c.id ? "active" : ""}`}
+                onClick={() => update({ ...prop, rollupCalc: c.id as RollupCalc })}
+              >
+                <span>{c.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
   );
 }
 

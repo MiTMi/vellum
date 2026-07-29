@@ -3,14 +3,29 @@ import { ExternalLink, Search } from "lucide-react";
 import { DbProp, PageId, PageMeta, SelectOption, childrenKey } from "../../lib/types";
 import { useMutations } from "../../data";
 import { usePagesIndex } from "../../hooks/usePagesIndex";
+import { computeRollup, formatTimestamp } from "../../lib/dbviews";
 import { useNav } from "../../state";
 import SelectPopover from "./SelectPopover";
 import Popover from "../ui/Popover";
 
+/**
+ * The shape Cell needs from a row. Structural rather than `PageMeta` so the
+ * row-page property panel can pass a full `PageDoc` — computed property
+ * types (createdTime / lastEditedTime / rollup) read the row's own
+ * timestamps, not `props`, so the whole row has to come through.
+ */
+export interface CellRow {
+  _id: PageId;
+  _creationTime: number;
+  updatedAt: number;
+  props?: Record<string, unknown> | null;
+}
+
 interface CellProps {
-  rowId: PageId;
+  row: CellRow;
   prop: DbProp;
-  value: unknown;
+  /** Sibling properties — rollups resolve their relation column through these. */
+  dbProps: DbProp[];
   /** persist new options created inline */
   onAddOption: (propId: string, option: SelectOption) => void;
   bare?: boolean; // borderless style for row-page property panel
@@ -26,7 +41,15 @@ function formatDate(value: string): string {
   });
 }
 
-export default function Cell({ rowId, prop, value, onAddOption, bare }: CellProps) {
+export default function Cell({
+  row,
+  prop,
+  dbProps,
+  onAddOption,
+  bare,
+}: CellProps) {
+  const rowId = row._id;
+  const value = row.props?.[prop.id];
   const mutations = useMutations();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -61,6 +84,25 @@ export default function Cell({ rowId, prop, value, onAddOption, bare }: CellProp
   const cls = `cell cell-${prop.type} ${bare ? "bare" : ""}`;
 
   switch (prop.type) {
+    // Computed, read-only: value comes from the row itself or from related
+    // rows, never from `props`, so there is nothing to edit or persist.
+    case "createdTime":
+      return (
+        <div className={`${cls} computed`}>
+          <span className="cell-value">{formatTimestamp(row._creationTime)}</span>
+        </div>
+      );
+
+    case "lastEditedTime":
+      return (
+        <div className={`${cls} computed`}>
+          <span className="cell-value">{formatTimestamp(row.updatedAt)}</span>
+        </div>
+      );
+
+    case "rollup":
+      return <RollupCell row={row} prop={prop} dbProps={dbProps} cls={cls} />;
+
     case "checkbox":
       return (
         <div className={cls}>
@@ -235,6 +277,39 @@ export default function Cell({ rowId, prop, value, onAddOption, bare }: CellProp
         </div>
       );
   }
+}
+
+/**
+ * A rollup aggregates *other* rows, so it needs the page index. Split into
+ * its own component to keep the hook out of Cell's switch.
+ */
+function RollupCell({
+  row,
+  prop,
+  dbProps,
+  cls,
+}: {
+  row: CellRow;
+  prop: DbProp;
+  dbProps: DbProp[];
+  cls: string;
+}) {
+  const index = usePagesIndex();
+  const meta = index.byId.get(row._id);
+  // A rollup reads the row through the index (it needs PageMeta's shape);
+  // a row missing from it — e.g. mid-remap — shows as empty rather than
+  // throwing.
+  const result = meta
+    ? computeRollup(meta, prop, dbProps, index.byId)
+    : { display: "—", sortVal: 0 };
+  const configured = prop.relationPropId && prop.rollupPropId;
+  return (
+    <div className={`${cls} computed`} title={configured ? undefined : "Configure this rollup in the property menu"}>
+      <span className={result.display === "—" ? "cell-placeholder" : "cell-value"}>
+        {configured ? result.display : "—"}
+      </span>
+    </div>
+  );
 }
 
 /**

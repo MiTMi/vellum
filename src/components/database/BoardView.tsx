@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { Plus, ArrowUpRight } from "lucide-react";
 import { DbProp, PageDoc, PageMeta, PageId } from "../../lib/types";
 import { useMutations } from "../../data";
-import { useNav } from "../../state";
+import { usePagesIndex } from "../../hooks/usePagesIndex";
+import { requestPeek, useNav } from "../../state";
 import CardProps from "./CardProps";
 
 interface BoardViewProps {
@@ -13,6 +14,7 @@ interface BoardViewProps {
 
 export default function BoardView({ page, rows, locked }: BoardViewProps) {
   const mutations = useMutations();
+  const index = usePagesIndex();
   const { navigate } = useNav();
   const dbProps = page.dbProps ?? [];
   const [dragRow, setDragRow] = useState<PageId | null>(null);
@@ -99,14 +101,19 @@ export default function BoardView({ page, rows, locked }: BoardViewProps) {
                   e.dataTransfer.effectAllowed = "move";
                 }}
                 onDragEnd={() => setDragRow(null)}
-                onClick={() => navigate(row._id)}
+                onClick={() => requestPeek(row._id)}
               >
                 <div className="board-card-title">
                   <span className="row-icon">{row.icon ?? "📄"}</span>
                   <span>{row.title || "Untitled"}</span>
                   <ArrowUpRight size={13} className="board-open" />
                 </div>
-                <CardProps row={row} props={otherProps} />
+                <CardProps
+                  row={row}
+                  props={otherProps}
+                  dbProps={dbProps}
+                  byId={index.byId}
+                />
               </div>
             ))}
           </div>
@@ -119,7 +126,7 @@ export default function BoardView({ page, rows, locked }: BoardViewProps) {
                   type: "doc",
                   props: col.id ? { [groupProp.id]: col.id } : undefined,
                 });
-                navigate(id);
+                requestPeek(id);
               }}
             >
               <Plus size={14} /> New page

@@ -1,9 +1,15 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { DataApi, VersionHistoryApi } from "./api";
-import { LinkPreview, VersionDoc, VersionMeta } from "../lib/types";
+import { CommentsApi, DataApi, VersionHistoryApi } from "./api";
+import {
+  CommentMeta,
+  LinkPreview,
+  VersionDoc,
+  VersionMeta,
+} from "../lib/types";
 import { createOfflineMutations } from "../offline/mutations";
+import { isLocalId } from "../offline/ops";
 import {
   convexClient,
   offlineEngine,
@@ -68,6 +74,43 @@ const offlineApi: DataApi = {
         url,
       })) as LinkPreview | null;
     }, []);
+  },
+
+  useComments(): CommentsApi {
+    const connected = useSyncExternalStore(
+      (cb) => offlineEngine().subscribeStatus(cb),
+      () => offlineEngine().getStatus().connected,
+      () => false,
+    );
+    return useMemo<CommentsApi>(
+      () => ({
+        available: connected,
+        list: (pageId) =>
+          // A page created offline has no server id yet, so it can't own
+          // server-side comments until its create replays.
+          isLocalId(pageId)
+            ? Promise.resolve([])
+            : (convexClient().query(api.comments.list, { pageId }) as Promise<
+                CommentMeta[]
+              >),
+        add: async (pageId, text) => {
+          if (isLocalId(pageId)) return;
+          await convexClient().mutation(api.comments.add, { pageId, text });
+        },
+        setResolved: async (id, value) => {
+          await convexClient().mutation(api.comments.setResolved, {
+            id: id as Id<"comments">,
+            value,
+          });
+        },
+        remove: async (id) => {
+          await convexClient().mutation(api.comments.remove, {
+            id: id as Id<"comments">,
+          });
+        },
+      }),
+      [connected],
+    );
   },
 
   useFileUpload() {
