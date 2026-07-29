@@ -8,6 +8,7 @@ import schema from "../convex/schema";
 const modules = import.meta.glob([
   "../convex/pages.ts",
   "../convex/files.ts",
+  "../convex/versions.ts",
   "../convex/schema.ts",
   "../convex/lib/*.ts",
   "../convex/_generated/*.js",
@@ -361,4 +362,199 @@ test("favorites toggle and clear on trash", async () => {
   await ctx.mutation(api.pages.restore, { id });
   meta = (await ctx.query(api.pages.list, {})).find((p) => p._id === id)!;
   expect(meta.isFavorite).toBe(false);
+});
+
+/* ------------------------------------------------------------------ */
+/* Templates                                                           */
+/* ------------------------------------------------------------------ */
+
+test("setTemplate is absolute and surfaces in list", async () => {
+  const ctx = t();
+  const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Meeting" });
+  let meta = (await ctx.query(api.pages.list, {})).find((p) => p._id === id)!;
+  expect(meta.isTemplate).toBe(false);
+
+  await ctx.mutation(api.pages.setTemplate, { id, value: true });
+  meta = (await ctx.query(api.pages.list, {})).find((p) => p._id === id)!;
+  expect(meta.isTemplate).toBe(true);
+
+  // Replaying the same absolute op must not flip it back.
+  await ctx.mutation(api.pages.setTemplate, { id, value: true });
+  meta = (await ctx.query(api.pages.list, {})).find((p) => p._id === id)!;
+  expect(meta.isTemplate).toBe(true);
+
+  await ctx.mutation(api.pages.setTemplate, { id, value: false });
+  meta = (await ctx.query(api.pages.list, {})).find((p) => p._id === id)!;
+  expect(meta.isTemplate).toBe(false);
+});
+
+test("duplicate asInstance clears the template flag and reparents", async () => {
+  const ctx = t();
+  const tpl = await ctx.mutation(api.pages.create, { type: "doc", title: "Weekly" });
+  await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Agenda",
+    parentId: tpl,
+  });
+  await ctx.mutation(api.pages.setTemplate, { id: tpl, value: true });
+
+  const instance = (await ctx.mutation(api.pages.duplicate, {
+    id: tpl,
+    toRoot: true,
+    suffix: "",
+    asInstance: true,
+  }))!;
+  const pages = await ctx.query(api.pages.list, {});
+  const inst = pages.find((p) => p._id === instance)!;
+  expect(inst.title).toBe("Weekly");
+  expect(inst.isTemplate).toBe(false);
+  expect(inst.parentId).toBeNull();
+  // The whole subtree comes along.
+  expect(pages.filter((p) => p.parentId === instance)).toHaveLength(1);
+  // The template itself is untouched.
+  expect(pages.find((p) => p._id === tpl)!.isTemplate).toBe(true);
+});
+
+test("plain duplicate still copies alongside with a suffix", async () => {
+  const ctx = t();
+  const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Notes" });
+  const copy = (await ctx.mutation(api.pages.duplicate, { id }))!;
+  const meta = (await ctx.query(api.pages.list, {})).find((p) => p._id === copy)!;
+  expect(meta.title).toBe("Notes (copy)");
+});
+
+test("createWithDoc accepts isTemplate and gallery view", async () => {
+  const ctx = t();
+  const id = await ctx.mutation(api.pages.createWithDoc, {
+    clientKey: "local_tpl",
+    title: "Offline template",
+    type: "database",
+    rank: 1024,
+    isTemplate: true,
+    activeView: "gallery",
+    updatedAt: 5,
+  });
+  const doc = await ctx.query(api.pages.get, { id });
+  expect(doc?.isTemplate).toBe(true);
+  expect(doc?.activeView).toBe("gallery");
+});
+
+/* ------------------------------------------------------------------ */
+/* Relations                                                           */
+/* ------------------------------------------------------------------ */
+
+test("relation props round-trip through updateDbProps and setRowProp", async () => {
+  const ctx = t();
+  const projects = await ctx.mutation(api.pages.create, {
+    type: "database",
+    title: "Projects",
+  });
+  const tasks = await ctx.mutation(api.pages.create, {
+    type: "database",
+    title: "Tasks",
+  });
+  const projectRow = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Apollo",
+    parentId: projects,
+  });
+  const taskRow = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Ship it",
+    parentId: tasks,
+  });
+
+  await ctx.mutation(api.pages.updateDbProps, {
+    id: tasks,
+    dbProps: [{ id: "proj", name: "Project", type: "relation", targetId: projects }],
+  });
+  await ctx.mutation(api.pages.setRowProp, {
+    id: taskRow,
+    propId: "proj",
+    value: [projectRow],
+  });
+
+  const db = await ctx.query(api.pages.get, { id: tasks });
+  expect(db?.dbProps?.[0].targetId).toBe(projects);
+  const row = await ctx.query(api.pages.get, { id: taskRow });
+  expect(row?.props?.proj).toEqual([projectRow]);
+});
+
+/* ------------------------------------------------------------------ */
+/* Page history                                                        */
+/* ------------------------------------------------------------------ */
+
+const para = (text: string) => [
+  { type: "paragraph", content: [{ type: "text", text, styles: {} }] },
+];
+
+test("updateContent snapshots the previous content, throttled", async () => {
+  const ctx = t();
+  const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
+
+  // First write has no previous content — nothing to snapshot.
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: para("v1"),
+    text: "v1",
+  });
+  expect(await ctx.query(api.versions.list, { pageId: id })).toHaveLength(0);
+
+  // Second write snapshots v1.
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: para("v2"),
+    text: "v2",
+  });
+  let versions = await ctx.query(api.versions.list, { pageId: id });
+  expect(versions).toHaveLength(1);
+
+  // A third write moments later is inside the throttle window.
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: para("v3"),
+    text: "v3",
+  });
+  versions = await ctx.query(api.versions.list, { pageId: id });
+  expect(versions).toHaveLength(1);
+
+  const snap = await ctx.query(api.versions.get, { id: versions[0]._id });
+  expect(snap?.content).toEqual(para("v1"));
+});
+
+test("a write past the throttle window captures another snapshot", async () => {
+  const ctx = t();
+  const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
+  // clientUpdatedAt drives `now`. It must stay monotonically ahead of the
+  // first write's wall-clock stamp or last-writer-wins discards it.
+  const t0 = Date.now() + 1000;
+  await ctx.mutation(api.pages.updateContent, { id, content: para("a"), text: "a" });
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: para("b"),
+    text: "b",
+    clientUpdatedAt: t0,
+  });
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: para("c"),
+    text: "c",
+    clientUpdatedAt: t0 + 11 * 60 * 1000,
+  });
+  const versions = await ctx.query(api.versions.list, { pageId: id });
+  expect(versions).toHaveLength(2);
+  // Newest first.
+  expect(versions[0].savedAt).toBeGreaterThan(versions[1].savedAt);
+});
+
+test("deleteForever removes a page's history", async () => {
+  const ctx = t();
+  const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
+  await ctx.mutation(api.pages.updateContent, { id, content: para("a"), text: "a" });
+  await ctx.mutation(api.pages.updateContent, { id, content: para("b"), text: "b" });
+  expect(await ctx.query(api.versions.list, { pageId: id })).toHaveLength(1);
+
+  await ctx.mutation(api.pages.trash, { id });
+  await ctx.mutation(api.pages.deleteForever, { id });
+  expect(await ctx.query(api.versions.list, { pageId: id })).toHaveLength(0);
 });

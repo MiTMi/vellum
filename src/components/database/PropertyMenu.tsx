@@ -12,11 +12,14 @@ import {
   ArrowUp,
   ArrowDown,
   X,
+  GitBranch,
+  Database,
 } from "lucide-react";
 import Popover from "../ui/Popover";
 import { DbProp, PropType, SelectOption } from "../../lib/types";
 import { SELECT_COLORS, randomColor } from "../../lib/colors";
 import { uid } from "../../lib/ranks";
+import { usePagesList } from "../../data";
 
 export const PROP_TYPE_META: Record<
   PropType,
@@ -29,6 +32,7 @@ export const PROP_TYPE_META: Record<
   date: { label: "Date", icon: <Calendar size={15} /> },
   checkbox: { label: "Checkbox", icon: <CheckSquare size={15} /> },
   url: { label: "URL", icon: <LinkIcon size={15} /> },
+  relation: { label: "Relation", icon: <GitBranch size={15} /> },
 };
 
 interface PropertyMenuProps {
@@ -51,6 +55,8 @@ export default function PropertyMenu({
   const [typeOpen, setTypeOpen] = useState(false);
   const [name, setName] = useState(prop.name);
   const isSelect = prop.type === "select" || prop.type === "multiSelect";
+  const pages = usePagesList();
+  const databases = (pages ?? []).filter((p) => p.type === "database");
 
   const commitName = () => {
     const n = name.trim();
@@ -100,6 +106,31 @@ export default function PropertyMenu({
             </button>
           ))}
         </div>
+      )}
+
+      {prop.type === "relation" && (
+        <>
+          <div className="prop-menu-label">Related database</div>
+          <div className="prop-options">
+            {databases.map((db) => (
+              <button
+                key={db._id}
+                className={`menu-item ${db._id === prop.targetId ? "active" : ""}`}
+                onClick={() => update({ ...prop, targetId: db._id })}
+              >
+                <span className="menu-icon">
+                  {db.icon ?? <Database size={15} />}
+                </span>
+                <span>{db.title || "Untitled database"}</span>
+              </button>
+            ))}
+            {databases.length === 0 && (
+              <div className="select-empty">
+                Create a database to relate rows to.
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {isSelect && (

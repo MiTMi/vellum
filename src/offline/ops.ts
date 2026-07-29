@@ -1,4 +1,4 @@
-import { DbProp, PageDoc, PageId } from "../lib/types";
+import { DbProp, PageDoc, PageId, ViewKind } from "../lib/types";
 
 /**
  * Outbox operations — the durable record of every local write made while
@@ -47,6 +47,7 @@ export type OutboxOp =
   | { kind: "setIcon"; id: string; icon: string | null }
   | { kind: "setCover"; id: string; cover: string | null }
   | { kind: "setFavorite"; id: string; value: boolean }
+  | { kind: "setTemplate"; id: string; value: boolean }
   | {
       kind: "setPageOptions";
       id: string;
@@ -65,7 +66,7 @@ export type OutboxOp =
   | {
       kind: "setView";
       id: string;
-      activeView?: "table" | "board" | "calendar";
+      activeView?: ViewKind;
       boardGroupBy?: string;
       calendarBy?: string;
     };
@@ -87,6 +88,7 @@ export function coalesceKey(op: OutboxOp): string | null {
     case "setIcon":
     case "setCover":
     case "setFavorite":
+    case "setTemplate":
     case "setPageOptions":
     case "move":
     case "updateDbProps":
@@ -140,7 +142,15 @@ export function mapIdsDeep<T>(value: T, idMap: Map<string, string>): T {
   return walk(structuredClone(value)) as T;
 }
 
-/** After id-mapping, does this op still reference an unsynced temp page id? */
+/**
+ * After id-mapping, does this op still reference an unsynced temp page id?
+ *
+ * Only *structural* references count (the op's own page, a move's parent, a
+ * create's parent). Temp ids appearing in relation property values or in a
+ * relation column's targetId deliberately do not block a drain: FIFO
+ * guarantees the referenced page's create replays first, so mapIdsDeep has
+ * already rewritten them by the time this op is sent.
+ */
 export function referencesTempId(op: OutboxOp): boolean {
   if (op.kind === "emptyTrash") return false;
   if (op.kind === "createWithDoc") {

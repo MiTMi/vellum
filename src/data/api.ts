@@ -1,11 +1,15 @@
 import {
   BacklinkMeta,
   DbProp,
+  LinkPreview,
   PageDoc,
   PageId,
   PageMeta,
   SearchHit,
   TrashedMeta,
+  VersionDoc,
+  VersionMeta,
+  ViewKind,
 } from "../lib/types";
 
 /**
@@ -24,6 +28,20 @@ export interface DataApi {
   useBacklinks(id: PageId | null): BacklinkMeta[] | undefined;
   useMutations(): Mutations;
   useFileUpload(): (file: File) => Promise<string>;
+  /**
+   * Page history. Plain callbacks rather than reactive hooks: offline mode
+   * has no ConvexProvider, so these read straight through the Convex client
+   * and are only available while connected (`available`).
+   */
+  useVersionHistory(): VersionHistoryApi;
+  /** Fetch Open Graph metadata for a URL (bookmark block). Null if offline. */
+  useLinkPreview(): (url: string) => Promise<LinkPreview | null>;
+}
+
+export interface VersionHistoryApi {
+  available: boolean;
+  list(pageId: PageId): Promise<VersionMeta[]>;
+  get(id: string): Promise<VersionDoc | null>;
 }
 
 export interface Mutations {
@@ -39,6 +57,7 @@ export interface Mutations {
   setIcon(args: { id: PageId; icon: string | null }): Promise<void>;
   setCover(args: { id: PageId; cover: string | null }): Promise<void>;
   toggleFavorite(args: { id: PageId }): Promise<void>;
+  setTemplate(args: { id: PageId; value: boolean }): Promise<void>;
   setPageOptions(args: {
     id: PageId;
     font?: "default" | "serif" | "mono";
@@ -47,7 +66,17 @@ export interface Mutations {
     locked?: boolean;
   }): Promise<void>;
   move(args: { id: PageId; parentId?: PageId; rank: number }): Promise<void>;
-  duplicate(args: { id: PageId }): Promise<PageId | null>;
+  duplicate(args: {
+    id: PageId;
+    /** Destination parent; requires `toRoot` to target the top level. */
+    parentId?: PageId;
+    /** Title suffix for the root copy. Defaults to " (copy)". */
+    suffix?: string;
+    /** Spawning from a template — the copy is a normal page. */
+    asInstance?: boolean;
+    /** Reparent the copy (to `parentId`, or the top level when omitted). */
+    toRoot?: boolean;
+  }): Promise<PageId | null>;
   trash(args: { id: PageId }): Promise<void>;
   restore(args: { id: PageId }): Promise<void>;
   deleteForever(args: { id: PageId }): Promise<void>;
@@ -56,7 +85,7 @@ export interface Mutations {
   setRowProp(args: { id: PageId; propId: string; value: unknown }): Promise<void>;
   setView(args: {
     id: PageId;
-    activeView?: "table" | "board" | "calendar";
+    activeView?: ViewKind;
     boardGroupBy?: string;
     calendarBy?: string;
   }): Promise<void>;

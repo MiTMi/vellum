@@ -1,4 +1,4 @@
-import { DbProp, PageDoc, PageId } from "../lib/types";
+import { DbProp, PageDoc, PageId, ViewKind } from "../lib/types";
 
 /**
  * The local page replica: a Map of full page docs plus every mutation the
@@ -69,6 +69,32 @@ function rewriteContentIds(node: unknown, from: string, to: string): boolean {
   return changed;
 }
 
+/**
+ * Rewrite every string exactly equal to `from` inside a property-value tree
+ * (relation values are arrays of page ids). Temp ids are long random
+ * strings, so exact-match replacement anywhere is safe — the same argument
+ * mapIdsDeep makes for outbox ops.
+ */
+function rewriteValueIds(node: unknown, from: string, to: string): unknown {
+  if (node === from) return to;
+  if (Array.isArray(node)) return node.map((n) => rewriteValueIds(n, from, to));
+  if (node && typeof node === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      out[k] = rewriteValueIds(v, from, to);
+    }
+    return out;
+  }
+  return node;
+}
+
+export interface DuplicateOptions {
+  parentId?: PageId;
+  suffix?: string;
+  asInstance?: boolean;
+  toRoot?: boolean;
+}
+
 export interface PageStore {
   get(id: PageId): PageDoc | undefined;
   all(): PageDoc[];
@@ -91,6 +117,7 @@ export interface PageStore {
   setIcon(id: PageId, icon: string | null, now: number): PageDoc | undefined;
   setCover(id: PageId, cover: string | null, now: number): PageDoc | undefined;
   toggleFavorite(id: PageId, now: number): PageDoc | undefined;
+  setTemplate(id: PageId, value: boolean, now: number): PageDoc | undefined;
   setPageOptions(
     args: {
       id: PageId;
@@ -106,6 +133,7 @@ export interface PageStore {
     id: PageId,
     newId: () => PageId,
     now: number,
+    opts?: DuplicateOptions,
   ): { rootId: PageId; created: PageDoc[] } | null;
   trash(id: PageId, now: number): PageId[];
   restore(id: PageId, now: number): PageId[];
@@ -121,7 +149,7 @@ export interface PageStore {
   setView(
     args: {
       id: PageId;
-      activeView?: "table" | "board" | "calendar";
+      activeView?: ViewKind;
       boardGroupBy?: string;
       calendarBy?: string;
     },
@@ -268,6 +296,15 @@ export function createPageStore(): PageStore {
       return p;
     },
 
+    setTemplate(id, value, now) {
+      const p = map.get(id);
+      if (!p) return undefined;
+      p.isTemplate = value;
+      p.updatedAt = now;
+      commit([id]);
+      return p;
+    },
+
     setPageOptions({ id, font, smallText, fullWidth, locked }, now) {
       const p = map.get(id);
       if (!p) return undefined;
@@ -296,15 +333,17 @@ export function createPageStore(): PageStore {
       return true;
     },
 
-    duplicate(id, newId, now) {
+    duplicate(id, newId, now, opts) {
       const src = map.get(id);
       if (!src) return null;
       const created: PageDoc[] = [];
+      const reparent = opts?.parentId !== undefined || opts?.toRoot === true;
       const clone = (
         page: PageDoc,
         parentId: PageId | undefined,
         rank: number,
         suffix: string,
+        isRoot: boolean,
       ): PageId => {
         const copy: PageDoc = {
           ...structuredClone(page),
@@ -316,14 +355,22 @@ export function createPageStore(): PageStore {
           isFavorite: false,
           updatedAt: now,
         };
+        // Spawning *from* a template yields a normal page, not another one.
+        if (isRoot && opts?.asInstance) delete copy.isTemplate;
         map.set(copy._id, copy);
         created.push(copy);
         for (const kid of childrenOf(page._id).sort((a, b) => a.rank - b.rank)) {
-          clone(kid, copy._id, kid.rank, "");
+          clone(kid, copy._id, kid.rank, "", false);
         }
         return copy._id;
       };
-      const rootId = clone(src, src.parentId, src.rank + 1, " (copy)");
+      const rootId = clone(
+        src,
+        reparent ? opts?.parentId : src.parentId,
+        reparent ? nextRank(opts?.parentId) : src.rank + 1,
+        opts?.suffix ?? " (copy)",
+        true,
+      );
       commit(created.map((c) => c._id));
       return { rootId, created };
     },
@@ -457,6 +504,24 @@ export function createPageStore(): PageStore {
           touched = true;
         }
         if (p.content && rewriteContentIds(p.content, from, to)) touched = true;
+        // Relation property values hold page ids; so does a relation
+        // column's targetId. Without these, an offline-created row stays
+        // linked to a dead temp id after its create syncs.
+        if (p.props) {
+          const next = rewriteValueIds(p.props, from, to) as PageDoc["props"];
+          if (JSON.stringify(next) !== JSON.stringify(p.props)) {
+            p.props = next;
+            touched = true;
+          }
+        }
+        if (p.dbProps) {
+          for (const dp of p.dbProps) {
+            if (dp.targetId === from) {
+              dp.targetId = to;
+              touched = true;
+            }
+          }
+        }
         if (touched && p._id !== to) changed.push(p._id);
       }
       commit(changed, [from]);

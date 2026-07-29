@@ -19,6 +19,31 @@ function textFromInline(content: unknown): string {
   return out;
 }
 
+/**
+ * Line-per-block rendering of a document, for the page-history preview.
+ * Unlike extractText (one search blob) this keeps block boundaries so an old
+ * version reads like the page it was.
+ */
+export function blocksToPlainText(blocks: unknown, depth = 0): string {
+  if (!Array.isArray(blocks)) return "";
+  const lines: string[] = [];
+  const indent = "  ".repeat(depth);
+  for (const block of blocks as AnyBlock[]) {
+    if (!block) continue;
+    const content = block.content;
+    let line = Array.isArray(content) ? textFromInline(content).trim() : "";
+    if (block.type === "bulletListItem") line = `• ${line}`;
+    else if (block.type === "checkListItem") line = `☐ ${line}`;
+    else if (block.type === "heading") line = line ? `# ${line}` : "";
+    else if (block.type === "quote") line = line ? `❝ ${line}` : "";
+    lines.push(indent + line);
+    if (Array.isArray(block.children) && block.children.length) {
+      lines.push(blocksToPlainText(block.children, depth + 1));
+    }
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 20000);
+}
+
 export function extractText(blocks: unknown): string {
   if (!Array.isArray(blocks)) return "";
   let out = "";

@@ -1,9 +1,16 @@
-import { IS_DIRECT, IS_MOCK, DataApi, Mutations } from "./api";
+import {
+  IS_DIRECT,
+  IS_MOCK,
+  DataApi,
+  Mutations,
+  VersionHistoryApi,
+} from "./api";
 import realApi from "./real";
 import mockApi from "./mock";
 import offlineApi from "./offline";
 import {
   BacklinkMeta,
+  LinkPreview,
   PageDoc,
   PageId,
   PageMeta,
@@ -37,6 +44,12 @@ export function useMutations(): Mutations {
 export function useFileUpload(): (file: File) => Promise<string> {
   return impl.useFileUpload();
 }
+export function useVersionHistory(): VersionHistoryApi {
+  return impl.useVersionHistory();
+}
+export function useLinkPreview(): (url: string) => Promise<LinkPreview | null> {
+  return impl.useLinkPreview();
+}
 
 export { IS_MOCK, IS_DIRECT };
-export type { Mutations };
+export type { Mutations, VersionHistoryApi };

@@ -9,8 +9,12 @@
  */
 
 import type * as files from "../files.js";
+import type * as lib_linkMeta from "../lib/linkMeta.js";
 import type * as lib_pageLinks from "../lib/pageLinks.js";
+import type * as lib_versions from "../lib/versions.js";
+import type * as linkPreview from "../linkPreview.js";
 import type * as pages from "../pages.js";
+import type * as versions from "../versions.js";
 
 import type {
   ApiFromModules,
@@ -20,8 +24,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   files: typeof files;
+  "lib/linkMeta": typeof lib_linkMeta;
   "lib/pageLinks": typeof lib_pageLinks;
+  "lib/versions": typeof lib_versions;
+  linkPreview: typeof linkPreview;
   pages: typeof pages;
+  versions: typeof versions;
 }>;
 
 /**

@@ -16,24 +16,27 @@ import {
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { autoPlacement, offset, shift, size } from "@floating-ui/react";
-import { FileText, Database, Link2, Info, List } from "lucide-react";
+import { FileText, Database, Link2, Info, List, Bookmark } from "lucide-react";
 import { PageDoc } from "../lib/types";
 import { extractText } from "../lib/blocks";
-import { useFileUpload, useMutations } from "../data";
+import { useFileUpload, useLinkPreview, useMutations } from "../data";
 import { useNav } from "../state";
 import { registrySnapshot } from "../lib/pageRegistry";
+import { setLinkPreviewFetcher } from "../lib/linkPreviewRegistry";
 import { PageLinkSpec } from "./PageLinkBlock";
 import { CalloutSpec } from "./CalloutBlock";
 import { TocSpec } from "./TocBlock";
+import { BookmarkSpec } from "./BookmarkBlock";
 import { setActiveEditor } from "../lib/editorRegistry";
 import CodeCopyOverlay from "./CodeCopyOverlay";
 
-const schema = BlockNoteSchema.create({
+export const schema = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
     pageLink: PageLinkSpec(),
     callout: CalloutSpec(),
     toc: TocSpec(),
+    bookmark: BookmarkSpec(),
   },
 });
 
@@ -82,9 +85,17 @@ export default function PageEditor({ page }: EditorProps) {
   const [wrapEl, setWrapEl] = useState<HTMLDivElement | null>(null);
   const mutations = useMutations();
   const upload = useFileUpload();
+  const linkPreview = useLinkPreview();
 
   const pageIdRef = useRef(page._id);
   pageIdRef.current = page._id;
+
+  // Custom blocks can't reach React context — hand the fetcher to the
+  // module registry the bookmark block reads from.
+  useEffect(() => {
+    setLinkPreviewFetcher(linkPreview);
+    return () => setLinkPreviewFetcher(null);
+  }, [linkPreview]);
 
   const initialContent = useMemo(
     () =>
@@ -152,7 +163,7 @@ export default function PageEditor({ page }: EditorProps) {
     // id and get remapped with everything else.
     window.addEventListener("beforeunload", flush);
     window.addEventListener("vellum:flush-edits", flush);
-    setActiveEditor(editor as never);
+    setActiveEditor(editor as never, page._id);
     return () => {
       window.removeEventListener("beforeunload", flush);
       window.removeEventListener("vellum:flush-edits", flush);
@@ -228,6 +239,19 @@ export default function PageEditor({ page }: EditorProps) {
           insertOrUpdateBlockForSlashMenu(
             editor as unknown as BlockNoteEditor,
             { type: "callout" } as never,
+          );
+        },
+      },
+      {
+        title: "Web bookmark",
+        subtext: "Save a link as a visual card",
+        aliases: ["bookmark", "link", "url", "embed", "preview", "web"],
+        group: "Vellum",
+        icon: <Bookmark size={18} />,
+        onItemClick: () => {
+          insertOrUpdateBlockForSlashMenu(
+            editor as unknown as BlockNoteEditor,
+            { type: "bookmark" } as never,
           );
         },
       },

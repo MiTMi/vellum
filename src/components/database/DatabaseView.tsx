@@ -3,6 +3,7 @@ import {
   Table2,
   Kanban,
   Calendar as CalendarIcon,
+  LayoutGrid,
   ChevronDown,
   ListFilter,
   ArrowUpDown,
@@ -11,7 +12,14 @@ import {
   X,
   ChevronLeft,
 } from "lucide-react";
-import { PageDoc, PageMeta, childrenKey, PagesIndex, DbProp } from "../../lib/types";
+import {
+  PageDoc,
+  PageMeta,
+  childrenKey,
+  PagesIndex,
+  DbProp,
+  ViewKind,
+} from "../../lib/types";
 import { useMutations } from "../../data";
 import { useNav } from "../../state";
 import {
@@ -27,6 +35,7 @@ import {
 import TableView from "./TableView";
 import BoardView from "./BoardView";
 import CalendarView from "./CalendarView";
+import GalleryView from "./GalleryView";
 import Menu from "../ui/Menu";
 import Popover from "../ui/Popover";
 import { PROP_TYPE_META } from "./PropertyMenu";
@@ -69,7 +78,7 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
     ([, v]) => v.length > 0,
   );
 
-  const setView = (activeView: "table" | "board" | "calendar") =>
+  const setView = (activeView: ViewKind) =>
     void mutations.setView({ id: page._id, activeView });
 
   const newRow = async () => {
@@ -118,6 +127,12 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
             onClick={() => setView("calendar")}
           >
             <CalendarIcon size={15} /> Calendar
+          </button>
+          <button
+            className={`db-tab ${view === "gallery" ? "active" : ""}`}
+            onClick={() => setView("gallery")}
+          >
+            <LayoutGrid size={15} /> Gallery
           </button>
         </div>
         <div className="db-toolbar-right">
@@ -238,6 +253,7 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
       )}
       {view === "board" && <BoardView page={page} rows={rows} locked={locked} />}
       {view === "calendar" && <CalendarView page={page} rows={rows} locked={locked} />}
+      {view === "gallery" && <GalleryView page={page} rows={rows} locked={locked} />}
 
       {groupAnchor && view === "board" && (
         <Menu

@@ -11,6 +11,10 @@ export function usePagesIndex(): PagesIndex {
     const children = new Map<string, PageMeta[]>();
     for (const p of all) byId.set(p._id, p);
     for (const p of all) {
+      // Template roots live in their own sidebar section, not the tree —
+      // but their children still land in `children` so the template's own
+      // subtree renders normally once you open it.
+      if (p.isTemplate) continue;
       const key = childrenKey(p.parentId);
       const list = children.get(key);
       if (list) list.push(p);
@@ -20,7 +24,17 @@ export function usePagesIndex(): PagesIndex {
     const favorites = all
       .filter((p) => p.isFavorite)
       .sort((a, b) => a.title.localeCompare(b.title));
-    return { loading: pages === undefined, all, byId, children, favorites };
+    const templates = all
+      .filter((p) => p.isTemplate)
+      .sort((a, b) => a.title.localeCompare(b.title));
+    return {
+      loading: pages === undefined,
+      all,
+      byId,
+      children,
+      favorites,
+      templates,
+    };
   }, [pages]);
 }
 

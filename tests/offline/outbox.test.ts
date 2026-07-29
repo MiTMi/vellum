@@ -159,3 +159,25 @@ test("touchedIds covers ids and clientKeys of queued ops", async () => {
   outbox.enqueue({ kind: "emptyTrash" });
   expect([...outbox.touchedIds()].sort()).toEqual(["a", "local_x"]);
 });
+
+test("setTemplate ops coalesce to the last absolute value", async () => {
+  const outbox = await createOutbox(createMemoryDb());
+  outbox.enqueue({ kind: "setTemplate", id: "a", value: true });
+  outbox.enqueue({ kind: "setTemplate", id: "a", value: false });
+  outbox.enqueue({ kind: "setTemplate", id: "a", value: true });
+  expect(outbox.size()).toBe(1);
+  const op = outbox.peek()!.op;
+  expect(op.kind === "setTemplate" && op.value).toBe(true);
+});
+
+test("setTemplate does not coalesce across an order-sensitive op", async () => {
+  const outbox = await createOutbox(createMemoryDb());
+  outbox.enqueue({ kind: "setTemplate", id: "a", value: true });
+  outbox.enqueue({ kind: "trash", id: "b" });
+  outbox.enqueue({ kind: "setTemplate", id: "a", value: false });
+  expect(outbox.list().map((o) => o.op.kind)).toEqual([
+    "setTemplate",
+    "trash",
+    "setTemplate",
+  ]);
+});

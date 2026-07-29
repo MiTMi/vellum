@@ -19,6 +19,7 @@ export const propType = v.union(
   v.literal("date"),
   v.literal("checkbox"),
   v.literal("url"),
+  v.literal("relation"),
 );
 
 export const dbProp = v.object({
@@ -35,7 +36,18 @@ export const dbProp = v.object({
       }),
     ),
   ),
+  // Relation properties: the database page whose rows this prop links to.
+  // Deliberately v.string(), not v.id("pages") — offline clients hold temp
+  // ids until their create replays, and dbProps ride through createWithDoc.
+  targetId: v.optional(v.string()),
 });
+
+export const activeView = v.union(
+  v.literal("table"),
+  v.literal("board"),
+  v.literal("calendar"),
+  v.literal("gallery"),
+);
 
 export default defineSchema({
   pages: defineTable({
@@ -50,6 +62,9 @@ export default defineSchema({
     searchText: v.optional(v.string()), // title + contentText (search index field)
     props: v.optional(v.record(v.string(), v.any())), // row property values
     isFavorite: v.optional(v.boolean()),
+    // Marks a page as a reusable template — excluded from the page tree and
+    // listed in the sidebar's Templates section instead.
+    isTemplate: v.optional(v.boolean()),
     font: v.optional(
       v.union(v.literal("default"), v.literal("serif"), v.literal("mono")),
     ),
@@ -60,9 +75,7 @@ export default defineSchema({
     trashRoot: v.optional(v.boolean()), // true only on the page the user trashed
     trashedAt: v.optional(v.number()),
     dbProps: v.optional(v.array(dbProp)),
-    activeView: v.optional(
-      v.union(v.literal("table"), v.literal("board"), v.literal("calendar")),
-    ),
+    activeView: v.optional(activeView),
     boardGroupBy: v.optional(v.string()),
     calendarBy: v.optional(v.string()),
     updatedAt: v.number(),
@@ -76,4 +89,17 @@ export default defineSchema({
     .index("by_parent", ["parentId"])
     .index("by_clientKey", ["clientKey"])
     .searchIndex("search", { searchField: "searchText" }),
+
+  /**
+   * Point-in-time snapshots of a page's content, captured server-side by
+   * `updateContent` at most once per SNAPSHOT_INTERVAL_MS. Deliberately a
+   * separate table: the offline replica mirrors `pages` only, so history
+   * never touches the sync index, reconcile, or the outbox.
+   */
+  pageVersions: defineTable({
+    pageId: v.id("pages"),
+    title: v.string(),
+    content: v.optional(v.any()),
+    savedAt: v.number(),
+  }).index("by_page", ["pageId", "savedAt"]),
 });

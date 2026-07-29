@@ -1,15 +1,19 @@
 import { useCallback, useMemo } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction, useConvex } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { DataApi, Mutations } from "./api";
+import { DataApi, Mutations, VersionHistoryApi } from "./api";
 import {
   BacklinkMeta,
+  LinkPreview,
   PageDoc,
   PageId,
   PageMeta,
   SearchHit,
   TrashedMeta,
+  VersionDoc,
+  VersionMeta,
 } from "../lib/types";
+import { Id } from "../../convex/_generated/dataModel";
 
 const realApi: DataApi = {
   usePagesList() {
@@ -48,6 +52,7 @@ const realApi: DataApi = {
     const setIcon = useMutation(api.pages.setIcon);
     const setCover = useMutation(api.pages.setCover);
     const toggleFavorite = useMutation(api.pages.toggleFavorite);
+    const setTemplate = useMutation(api.pages.setTemplate);
     const setPageOptions = useMutation(api.pages.setPageOptions);
     const move = useMutation(api.pages.move);
     const duplicate = useMutation(api.pages.duplicate);
@@ -68,6 +73,7 @@ const realApi: DataApi = {
         setIcon: (args) => setIcon(args) as unknown as Promise<void>,
         setCover: (args) => setCover(args) as unknown as Promise<void>,
         toggleFavorite: (args) => toggleFavorite(args) as unknown as Promise<void>,
+        setTemplate: (args) => setTemplate(args) as unknown as Promise<void>,
         setPageOptions: (args) => setPageOptions(args) as unknown as Promise<void>,
         move: (args) => move(args) as unknown as Promise<void>,
         duplicate: (args) => duplicate(args) as Promise<PageId | null>,
@@ -82,9 +88,34 @@ const realApi: DataApi = {
       }),
       [
         create, rename, updateContent, setIcon, setCover, toggleFavorite,
-        setPageOptions, move, duplicate, trash, restore, deleteForever,
-        emptyTrash, updateDbProps, setRowProp, setView, bootstrap,
+        setTemplate, setPageOptions, move, duplicate, trash, restore,
+        deleteForever, emptyTrash, updateDbProps, setRowProp, setView,
+        bootstrap,
       ],
+    );
+  },
+
+  useVersionHistory(): VersionHistoryApi {
+    const client = useConvex();
+    return useMemo<VersionHistoryApi>(
+      () => ({
+        available: true,
+        list: (pageId) =>
+          client.query(api.versions.list, { pageId }) as Promise<VersionMeta[]>,
+        get: (id) =>
+          client.query(api.versions.get, {
+            id: id as Id<"pageVersions">,
+          }) as Promise<VersionDoc | null>,
+      }),
+      [client],
+    );
+  },
+
+  useLinkPreview() {
+    const fetchMeta = useAction(api.linkPreview.fetchMeta);
+    return useCallback(
+      (url: string) => fetchMeta({ url }) as Promise<LinkPreview | null>,
+      [fetchMeta],
     );
   },
 

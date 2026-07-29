@@ -12,10 +12,13 @@ import {
   Database,
   Search,
   Check,
+  LayoutTemplate,
+  History,
 } from "lucide-react";
 import Popover from "./ui/Popover";
 import { PageId, PageMeta, PagesIndex, childrenKey } from "../lib/types";
-import { useMutations, usePage } from "../data";
+import { useMutations, usePage, useVersionHistory } from "../data";
+import HistoryModal from "./HistoryModal";
 import { useNav } from "../state";
 import {
   copyPageMarkdown,
@@ -37,8 +40,10 @@ export default function PageMenu({ anchor, onClose, page, index }: PageMenuProps
   const mutations = useMutations();
   const { navigate } = useNav();
   const fullPage = usePage(page._id);
+  const history = useVersionHistory();
   const [view, setView] = useState<"main" | "move">("main");
   const [copied, setCopied] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
 
   const isDatabase = page.type === "database";
@@ -59,6 +64,21 @@ export default function PageMenu({ anchor, onClose, page, index }: PageMenuProps
       locked: boolean;
     }>,
   ) => void mutations.setPageOptions({ id: page._id, ...patch });
+
+  // Rendered in place of the popover: the menu must stay mounted (the parent
+  // unmounts it on `onClose`), so the popover only really goes away once the
+  // modal does.
+  if (historyOpen) {
+    return (
+      <HistoryModal
+        page={page}
+        onClose={() => {
+          setHistoryOpen(false);
+          onClose();
+        }}
+      />
+    );
+  }
 
   if (view === "move") {
     return (
@@ -166,6 +186,31 @@ export default function PageMenu({ anchor, onClose, page, index }: PageMenuProps
         checked={fullPage?.locked ?? false}
         onChange={(v) => setOpt({ locked: v })}
       />
+      <ToggleRow
+        label="Template"
+        icon={<LayoutTemplate size={15} />}
+        checked={fullPage?.isTemplate ?? false}
+        onChange={(v) =>
+          void mutations.setTemplate({ id: page._id, value: v })
+        }
+      />
+      {!isDatabase && (
+        <button
+          className="menu-item"
+          disabled={!history.available}
+          title={
+            history.available
+              ? undefined
+              : "Page history needs a connection — reconnect to browse versions."
+          }
+          onClick={() => setHistoryOpen(true)}
+        >
+          <span className="menu-icon">
+            <History size={15} />
+          </span>
+          <span>Page history</span>
+        </button>
+      )}
 
       <div className="menu-divider" />
       {!isDatabase && (

@@ -1,8 +1,12 @@
 import { query, mutation, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
-import { dbProp } from "./schema";
+import { activeView, dbProp } from "./schema";
 import { extractPageLinks } from "./lib/pageLinks";
+import {
+  MAX_VERSIONS_PER_PAGE,
+  shouldSnapshot,
+} from "./lib/versions";
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -23,6 +27,15 @@ async function nextRank(ctx: MutationCtx, parentId: Id<"pages"> | undefined) {
   let max = 0;
   for (const s of siblings) if (s.rank > max) max = s.rank;
   return max + 1024;
+}
+
+/** Delete every history snapshot belonging to a page. */
+async function deleteVersionsOf(ctx: MutationCtx, pageId: Id<"pages">) {
+  const versions = await ctx.db
+    .query("pageVersions")
+    .withIndex("by_page", (q) => q.eq("pageId", pageId))
+    .collect();
+  for (const v of versions) await ctx.db.delete("pageVersions", v._id);
 }
 
 async function forSubtree(
@@ -62,7 +75,9 @@ export const list = query({
         parentId: p.parentId ?? null,
         rank: p.rank,
         icon: p.icon ?? null,
+        cover: p.cover ?? null,
         isFavorite: p.isFavorite ?? false,
+        isTemplate: p.isTemplate ?? false,
         props: p.props ?? null,
         updatedAt: p.updatedAt,
         _creationTime: p._creationTime,
@@ -226,6 +241,7 @@ export const createWithDoc = mutation({
     searchText: v.optional(v.string()),
     props: v.optional(v.record(v.string(), v.any())),
     isFavorite: v.optional(v.boolean()),
+    isTemplate: v.optional(v.boolean()),
     font: v.optional(
       v.union(v.literal("default"), v.literal("serif"), v.literal("mono")),
     ),
@@ -236,9 +252,7 @@ export const createWithDoc = mutation({
     trashRoot: v.optional(v.boolean()),
     trashedAt: v.optional(v.number()),
     dbProps: v.optional(v.array(dbProp)),
-    activeView: v.optional(
-      v.union(v.literal("table"), v.literal("board"), v.literal("calendar")),
-    ),
+    activeView: v.optional(activeView),
     boardGroupBy: v.optional(v.string()),
     calendarBy: v.optional(v.string()),
     updatedAt: v.number(),
@@ -305,6 +319,36 @@ export const updateContent = mutation({
       return;
     }
     const now = args.clientUpdatedAt ?? Date.now();
+
+    // Snapshot the *previous* content before overwriting it, at most once
+    // per SNAPSHOT_INTERVAL_MS — so a typing session leaves one restorable
+    // version, not thousands.
+    if (page.content !== undefined) {
+      const latest = await ctx.db
+        .query("pageVersions")
+        .withIndex("by_page", (q) => q.eq("pageId", args.id))
+        .order("desc")
+        .first();
+      if (shouldSnapshot(latest?.savedAt, now)) {
+        await ctx.db.insert("pageVersions", {
+          pageId: args.id,
+          title: page.title,
+          content: page.content,
+          savedAt: now,
+        });
+        const all = await ctx.db
+          .query("pageVersions")
+          .withIndex("by_page", (q) => q.eq("pageId", args.id))
+          .collect();
+        if (all.length > MAX_VERSIONS_PER_PAGE) {
+          // `by_page` is ordered [pageId, savedAt] ascending → oldest first.
+          for (const stale of all.slice(0, all.length - MAX_VERSIONS_PER_PAGE)) {
+            await ctx.db.delete("pageVersions", stale._id);
+          }
+        }
+      }
+    }
+
     await ctx.db.patch("pages", args.id, {
       content: args.content,
       contentText: args.text,
@@ -379,6 +423,22 @@ export const toggleFavorite = mutation({
   },
 });
 
+export const setTemplate = mutation({
+  args: {
+    id: v.id("pages"),
+    // Absolute, like toggleFavorite's `value` — replays must be idempotent.
+    value: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const page = await ctx.db.get("pages", args.id);
+    if (!page) return;
+    await ctx.db.patch("pages", args.id, {
+      isTemplate: args.value,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 /* ------------------------------------------------------------------ */
 /* Move / duplicate                                                    */
 /* ------------------------------------------------------------------ */
@@ -410,16 +470,37 @@ export const move = mutation({
 });
 
 export const duplicate = mutation({
-  args: { id: v.id("pages") },
+  args: {
+    id: v.id("pages"),
+    /** Destination parent. Omitted → alongside the source. */
+    parentId: v.optional(v.id("pages")),
+    /** Title suffix for the root copy. Defaults to " (copy)". */
+    suffix: v.optional(v.string()),
+    /**
+     * Spawning a page *from* a template: the root copy is a normal page
+     * (isTemplate cleared) rather than another template.
+     */
+    asInstance: v.optional(v.boolean()),
+    /** Explicit destination for the copy. Only used with `parentId`. */
+    toRoot: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const src = await ctx.db.get("pages", args.id);
     if (!src) return null;
+
+    const reparent = args.parentId !== undefined || args.toRoot === true;
+    const destParent = args.parentId;
+    const destRank = reparent
+      ? await nextRank(ctx, destParent)
+      : src.rank + 1;
+    const suffix = args.suffix ?? " (copy)";
 
     async function clone(
       page: Doc<"pages">,
       parentId: Id<"pages"> | undefined,
       rank: number,
       titleSuffix: string,
+      isRoot: boolean,
     ): Promise<Id<"pages">> {
       // clientKey must stay unique per created page — never copy it.
       const { _id, _creationTime, clientKey, ...rest } = page;
@@ -429,17 +510,24 @@ export const duplicate = mutation({
         rank,
         title: page.title + titleSuffix,
         isFavorite: false,
+        ...(isRoot && args.asInstance ? { isTemplate: undefined } : {}),
         updatedAt: Date.now(),
       });
       const kids = await childrenOf(ctx, page._id);
       kids.sort((a, b) => a.rank - b.rank);
       for (const kid of kids) {
-        await clone(kid, newId, kid.rank, "");
+        await clone(kid, newId, kid.rank, "", false);
       }
       return newId;
     }
 
-    return await clone(src, src.parentId, src.rank + 1, " (copy)");
+    return await clone(
+      src,
+      reparent ? destParent : src.parentId,
+      destRank,
+      suffix,
+      true,
+    );
   },
 });
 
@@ -493,7 +581,10 @@ export const deleteForever = mutation({
     await forSubtree(ctx, args.id, async (p) => {
       ids.push(p._id);
     });
-    for (const id of ids) await ctx.db.delete("pages", id);
+    for (const id of ids) {
+      await deleteVersionsOf(ctx, id);
+      await ctx.db.delete("pages", id);
+    }
   },
 });
 
@@ -502,7 +593,10 @@ export const emptyTrash = mutation({
   handler: async (ctx) => {
     const pages = await ctx.db.query("pages").collect();
     for (const p of pages) {
-      if (p.inTrash) await ctx.db.delete("pages", p._id);
+      if (p.inTrash) {
+        await deleteVersionsOf(ctx, p._id);
+        await ctx.db.delete("pages", p._id);
+      }
     }
   },
 });
@@ -538,9 +632,7 @@ export const setRowProp = mutation({
 export const setView = mutation({
   args: {
     id: v.id("pages"),
-    activeView: v.optional(
-      v.union(v.literal("table"), v.literal("board"), v.literal("calendar")),
-    ),
+    activeView: v.optional(activeView),
     boardGroupBy: v.optional(v.string()),
     calendarBy: v.optional(v.string()),
   },

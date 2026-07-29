@@ -14,8 +14,13 @@ export function sortValue(
   if (key === "__title") return row.title.toLowerCase();
   const prop = dbProps.find((p) => p.id === key);
   const raw = row.props?.[key];
-  if (raw === undefined || raw === null)
-    return prop?.type === "number" ? -Infinity : "";
+  if (raw === undefined || raw === null) {
+    if (prop?.type === "number") return -Infinity;
+    // Relation sorts numerically (by link count) — an empty cell must stay a
+    // number or the comparator falls back to string compare.
+    if (prop?.type === "relation") return 0;
+    return "";
+  }
   switch (prop?.type) {
     case "number":
       return typeof raw === "number" ? raw : Number(raw) || 0;
@@ -32,6 +37,9 @@ export function sortValue(
         .join(",")
         .toLowerCase();
     }
+    case "relation":
+      // Sorting by opaque page ids is meaningless; link count is not.
+      return Array.isArray(raw) ? raw.length : 0;
     default:
       return String(raw).toLowerCase();
   }

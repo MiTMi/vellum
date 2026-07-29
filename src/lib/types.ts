@@ -10,7 +10,9 @@ export interface PageMeta {
   parentId: PageId | null;
   rank: number;
   icon: string | null;
+  cover: string | null;
   isFavorite: boolean;
+  isTemplate: boolean;
   props: Record<string, unknown> | null;
   updatedAt: number;
   _creationTime: number;
@@ -23,7 +25,10 @@ export type PropType =
   | "multiSelect"
   | "date"
   | "checkbox"
-  | "url";
+  | "url"
+  | "relation";
+
+export type ViewKind = "table" | "board" | "calendar" | "gallery";
 
 export interface SelectOption {
   id: string;
@@ -37,6 +42,8 @@ export interface DbProp {
   type: PropType;
   width?: number;
   options?: SelectOption[];
+  /** relation props: the database page whose rows this links to */
+  targetId?: string;
 }
 
 export interface PagesIndex {
@@ -45,6 +52,7 @@ export interface PagesIndex {
   byId: Map<string, PageMeta>;
   children: Map<string, PageMeta[]>; // key: parentId or "root"
   favorites: PageMeta[];
+  templates: PageMeta[];
 }
 
 export function childrenKey(parentId: PageId | null): string {
@@ -66,6 +74,7 @@ export interface PageDoc {
   searchText?: string;
   props?: Record<string, unknown>;
   isFavorite?: boolean;
+  isTemplate?: boolean;
   font?: "default" | "serif" | "mono";
   smallText?: boolean;
   fullWidth?: boolean;
@@ -74,10 +83,30 @@ export interface PageDoc {
   trashRoot?: boolean;
   trashedAt?: number;
   dbProps?: DbProp[];
-  activeView?: "table" | "board" | "calendar";
+  activeView?: ViewKind;
   boardGroupBy?: string;
   calendarBy?: string;
   updatedAt: number;
+}
+
+/** One entry in a page's history (metadata only — content fetched on demand). */
+export interface VersionMeta {
+  _id: string;
+  title: string;
+  savedAt: number;
+}
+
+export interface VersionDoc extends VersionMeta {
+  pageId: PageId;
+  content?: unknown;
+}
+
+/** Open Graph metadata for a bookmark block. */
+export interface LinkPreview {
+  url: string;
+  title: string;
+  description: string;
+  image: string;
 }
 
 export interface TrashedMeta {

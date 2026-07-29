@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, ArrowUpRight } from "lucide-react";
 import { DbProp, PageDoc, PageMeta, PageId } from "../../lib/types";
 import { useMutations } from "../../data";
 import { useNav } from "../../state";
-import { formatDateLong } from "../../lib/dbviews";
+import CardProps from "./CardProps";
 
 interface BoardViewProps {
   page: PageDoc;
@@ -106,7 +106,7 @@ export default function BoardView({ page, rows, locked }: BoardViewProps) {
                   <span>{row.title || "Untitled"}</span>
                   <ArrowUpRight size={13} className="board-open" />
                 </div>
-                <BoardCardProps row={row} props={otherProps} />
+                <CardProps row={row} props={otherProps} />
               </div>
             ))}
           </div>
@@ -128,52 +128,5 @@ export default function BoardView({ page, rows, locked }: BoardViewProps) {
         </div>
       ))}
     </div>
-  );
-}
-
-function BoardCardProps({ row, props }: { row: PageMeta; props: DbProp[] }) {
-  const chips: React.ReactNode[] = [];
-  const lines: React.ReactNode[] = [];
-  for (const p of props) {
-    const v = row.props?.[p.id];
-    if (v === undefined || v === null || v === "") continue;
-    if (p.type === "select" && typeof v === "string") {
-      const o = p.options?.find((x) => x.id === v);
-      if (o)
-        chips.push(
-          <span key={p.id} className={`chip chip-${o.color}`}>
-            {o.name}
-          </span>,
-        );
-    } else if (p.type === "multiSelect" && Array.isArray(v)) {
-      for (const id of (v as string[]).slice(0, 3)) {
-        const o = p.options?.find((x) => x.id === id);
-        if (o)
-          chips.push(
-            <span key={p.id + id} className={`chip chip-${o.color}`}>
-              {o.name}
-            </span>,
-          );
-      }
-    } else if (p.type === "date" && typeof v === "string") {
-      lines.push(
-        <div key={p.id} className="board-date">
-          {formatDateLong(v)}
-        </div>,
-      );
-    } else {
-      lines.push(
-        <div key={p.id} className="board-plain">
-          {String(v)}
-        </div>,
-      );
-    }
-  }
-  if (!chips.length && !lines.length) return null;
-  return (
-    <>
-      {chips.length > 0 && <div className="board-card-props">{chips}</div>}
-      {lines}
-    </>
   );
 }

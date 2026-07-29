@@ -445,6 +445,8 @@ function rawMutationCall(
       return [api.pages.setCover, { id: op.id, cover: op.cover }];
     case "setFavorite":
       return [api.pages.toggleFavorite, { id: op.id, value: op.value }];
+    case "setTemplate":
+      return [api.pages.setTemplate, { id: op.id, value: op.value }];
     case "setPageOptions":
       return [
         api.pages.setPageOptions,

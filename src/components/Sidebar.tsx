@@ -8,6 +8,7 @@ import {
   Database,
   ChevronsLeft,
   History,
+  LayoutTemplate,
 } from "lucide-react";
 import { PageId, PagesIndex } from "../lib/types";
 import { IS_DIRECT, IS_MOCK, useMutations } from "../data";
@@ -178,6 +179,48 @@ export default function Sidebar({
                 </span>
                 <span className="tree-title">{p.title || "Untitled"}</span>
               </button>
+            ))}
+          </>
+        )}
+
+        {index.templates.length > 0 && (
+          <>
+            <div className="sidebar-heading">
+              <LayoutTemplate size={11} /> Templates
+            </div>
+            {index.templates.map((p) => (
+              <div key={p._id} className="sidebar-item fav-item template-item">
+                <button
+                  className="template-open"
+                  onClick={() => navigate(p._id)}
+                >
+                  <span className="tree-icon">
+                    {p.icon ? (
+                      p.icon
+                    ) : p.type === "database" ? (
+                      <Database size={15} />
+                    ) : (
+                      <FileText size={15} />
+                    )}
+                  </span>
+                  <span className="tree-title">{p.title || "Untitled"}</span>
+                </button>
+                <button
+                  className="icon-btn small template-use"
+                  title="New page from this template"
+                  onClick={async () => {
+                    const id = await mutations.duplicate({
+                      id: p._id,
+                      toRoot: true,
+                      suffix: "",
+                      asInstance: true,
+                    });
+                    if (id) navigate(id);
+                  }}
+                >
+                  <Plus size={13} />
+                </button>
+              </div>
             ))}
           </>
         )}

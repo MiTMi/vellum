@@ -375,3 +375,90 @@ test("bootstrap waits for first sync, then seeds an empty workspace once", async
   expect(await dev2.mutations.bootstrap()).toBeNull();
   expect(await backend.query(api.pages.list, {})).toHaveLength(1);
 });
+
+test("offline-created relations resolve to real ids on both sides", async () => {
+  const backend = convexTest(schema, modules);
+  const dev = await makeDevice(backend);
+  dev.setConnected(true);
+  await dev.settle();
+
+  // Build two databases, a row in each, and a relation between them — all
+  // while offline, so every id involved is a temp id.
+  dev.setConnected(false);
+  const projects = await dev.mutations.create({
+    type: "database",
+    title: "Projects",
+  });
+  const tasks = await dev.mutations.create({ type: "database", title: "Tasks" });
+  const projectRow = await dev.mutations.create({
+    type: "doc",
+    title: "Apollo",
+    parentId: projects,
+  });
+  const taskRow = await dev.mutations.create({
+    type: "doc",
+    title: "Ship it",
+    parentId: tasks,
+  });
+  await dev.mutations.updateDbProps({
+    id: tasks,
+    dbProps: [
+      { id: "proj", name: "Project", type: "relation", targetId: projects },
+    ],
+  });
+  await dev.mutations.setRowProp({
+    id: taskRow,
+    propId: "proj",
+    value: [projectRow],
+  });
+  expect(isLocalId(projects)).toBe(true);
+  expect(isLocalId(projectRow)).toBe(true);
+
+  dev.setConnected(true);
+  await dev.settle();
+  await dev.settle();
+
+  // Server side: no temp ids survived.
+  const serverPages = await backend.query(api.pages.list, {});
+  const serverTasks = serverPages.find((p) => p.title === "Tasks")!;
+  const serverProjects = serverPages.find((p) => p.title === "Projects")!;
+  const serverProjectRow = serverPages.find((p) => p.title === "Apollo")!;
+  const serverTaskRow = serverPages.find((p) => p.title === "Ship it")!;
+  const tasksDoc = await backend.query(api.pages.get, { id: serverTasks._id });
+  expect(tasksDoc?.dbProps?.[0].targetId).toBe(serverProjects._id);
+  expect(serverTaskRow.props?.proj).toEqual([serverProjectRow._id]);
+
+  // Replica side: remapId rewrote the relation value and targetId too, so
+  // the local chips point at the real rows rather than dead temp ids.
+  const localTasks = dev.store.get(serverTasks._id)!;
+  expect(localTasks.dbProps?.[0].targetId).toBe(serverProjects._id);
+  const localTaskRow = dev.store.get(serverTaskRow._id)!;
+  expect(localTaskRow.props?.proj).toEqual([serverProjectRow._id]);
+  expect(dev.store.all().some((p) => isLocalId(p._id))).toBe(false);
+});
+
+test("offline template flag and instantiation replay to the server", async () => {
+  const backend = convexTest(schema, modules);
+  const dev = await makeDevice(backend);
+  dev.setConnected(true);
+  await dev.settle();
+
+  dev.setConnected(false);
+  const tpl = await dev.mutations.create({ type: "doc", title: "Weekly" });
+  await dev.mutations.setTemplate({ id: tpl, value: true });
+  const instance = (await dev.mutations.duplicate({
+    id: tpl,
+    toRoot: true,
+    suffix: "",
+    asInstance: true,
+  }))!;
+  expect(dev.store.get(instance)?.isTemplate).toBeUndefined();
+
+  dev.setConnected(true);
+  await dev.settle();
+  await dev.settle();
+
+  const pages = await backend.query(api.pages.list, {});
+  expect(pages.filter((p) => p.title === "Weekly")).toHaveLength(2);
+  expect(pages.filter((p) => p.isTemplate)).toHaveLength(1);
+});

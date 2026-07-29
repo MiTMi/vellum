@@ -9,6 +9,7 @@ import {
   Sun,
   Trash2,
   Zap,
+  LayoutTemplate,
 } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useMutations, useSearch } from "../data";
@@ -81,8 +82,24 @@ export default function QuickSwitcher({
         keywords: "trash deleted bin restore",
         run: () => onOpenTrash(),
       },
+      ...index.templates.map<Row>((t) => ({
+        kind: "action" as const,
+        title: `New from template: ${t.title || "Untitled"}`,
+        icon: null,
+        actionIcon: <LayoutTemplate size={16} />,
+        keywords: `template new from ${t.title.toLowerCase()}`,
+        run: async () => {
+          const id = await mutations.duplicate({
+            id: t._id,
+            toRoot: true,
+            suffix: "",
+            asInstance: true,
+          });
+          if (id) navigate(id);
+        },
+      })),
     ],
-    [mutations, navigate, theme, toggleTheme, onOpenTrash],
+    [mutations, navigate, theme, toggleTheme, onOpenTrash, index.templates],
   );
 
   const rows = useMemo<Row[]>(() => {

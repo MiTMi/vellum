@@ -1,8 +1,19 @@
-import { useCallback } from "react";
-import { DataApi, Mutations } from "./api";
-import { PageDoc, PageId } from "../lib/types";
+import { useCallback, useMemo } from "react";
+import { DataApi, Mutations, VersionHistoryApi } from "./api";
+import {
+  LinkPreview,
+  PageDoc,
+  PageId,
+  VersionDoc,
+  VersionMeta,
+} from "../lib/types";
 import { createPageStore } from "../offline/store";
 import { createStoreReadHooks } from "../offline/storeHooks";
+import {
+  MAX_VERSIONS_PER_PAGE,
+  shouldSnapshot,
+} from "../../convex/lib/versions";
+import { hostLabel, normalizeUrl } from "../../convex/lib/linkMeta";
 
 /**
  * In-memory implementation of the data layer (demo mode & tests).
@@ -32,6 +43,64 @@ store.subscribe(() => {
   }
 });
 
+/**
+ * Page-history sidecar. History is a read-only projection that never feeds
+ * back into page state, so mirroring it here (rather than in the shared
+ * reducer) keeps mock/offline page behavior identical — the one sanctioned
+ * exception to the "edit the reducer, not the wrappers" rule.
+ *
+ * The snapshot interval is 0 in mock mode so a single edit is immediately
+ * restorable; the real backend throttles to SNAPSHOT_INTERVAL_MS.
+ */
+const MOCK_SNAPSHOT_INTERVAL_MS = 0;
+const versions = new Map<string, VersionDoc[]>();
+
+function loadVersions() {
+  try {
+    const raw = localStorage.getItem("vellum:mockversions");
+    if (raw) {
+      for (const [k, v] of Object.entries(
+        JSON.parse(raw) as Record<string, VersionDoc[]>,
+      )) {
+        versions.set(k, v);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveVersions() {
+  try {
+    localStorage.setItem(
+      "vellum:mockversions",
+      JSON.stringify(Object.fromEntries(versions)),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Snapshot a page's current content before it gets overwritten. */
+function captureVersion(id: PageId, now: number) {
+  const page = store.get(id);
+  if (!page || page.content === undefined) return;
+  const list = versions.get(id) ?? [];
+  const latest = list[0];
+  if (!shouldSnapshot(latest?.savedAt, now, MOCK_SNAPSHOT_INTERVAL_MS)) return;
+  list.unshift({
+    _id: `mockver_${now.toString(36)}_${(seq++).toString(36)}`,
+    pageId: id,
+    title: page.title,
+    content: structuredClone(page.content),
+    savedAt: now,
+  });
+  versions.set(id, list.slice(0, MAX_VERSIONS_PER_PAGE));
+  saveVersions();
+}
+
+loadVersions();
+
 const mutations: Mutations = {
   async create(args) {
     return store.create(args, newId(), Date.now())._id;
@@ -40,7 +109,9 @@ const mutations: Mutations = {
     store.rename(id, title, Date.now());
   },
   async updateContent({ id, content, text }) {
-    store.updateContent(id, content, text, Date.now());
+    const now = Date.now();
+    captureVersion(id, now);
+    store.updateContent(id, content, text, now);
   },
   async setIcon({ id, icon }) {
     store.setIcon(id, icon, Date.now());
@@ -51,14 +122,17 @@ const mutations: Mutations = {
   async toggleFavorite({ id }) {
     store.toggleFavorite(id, Date.now());
   },
+  async setTemplate({ id, value }) {
+    store.setTemplate(id, value, Date.now());
+  },
   async setPageOptions(args) {
     store.setPageOptions(args, Date.now());
   },
   async move({ id, parentId, rank }) {
     store.move(id, parentId, rank, Date.now());
   },
-  async duplicate({ id }) {
-    return store.duplicate(id, newId, Date.now())?.rootId ?? null;
+  async duplicate({ id, ...opts }) {
+    return store.duplicate(id, newId, Date.now(), opts)?.rootId ?? null;
   },
   async trash({ id }) {
     store.trash(id, Date.now());
@@ -67,10 +141,12 @@ const mutations: Mutations = {
     store.restore(id, Date.now());
   },
   async deleteForever({ id }) {
-    store.deleteForever(id);
+    for (const removed of store.deleteForever(id)) versions.delete(removed);
+    saveVersions();
   },
   async emptyTrash() {
-    store.emptyTrash();
+    for (const removed of store.emptyTrash()) versions.delete(removed);
+    saveVersions();
   },
   async updateDbProps({ id, dbProps }) {
     store.updateDbProps(id, dbProps, Date.now());
@@ -91,6 +167,44 @@ const mockApi: DataApi = {
 
   useMutations() {
     return mutations;
+  },
+
+  useVersionHistory(): VersionHistoryApi {
+    return useMemo(
+      () => ({
+        available: true,
+        async list(pageId: PageId): Promise<VersionMeta[]> {
+          return (versions.get(pageId) ?? []).map((v) => ({
+            _id: v._id,
+            title: v.title,
+            savedAt: v.savedAt,
+          }));
+        },
+        async get(id: string): Promise<VersionDoc | null> {
+          for (const list of versions.values()) {
+            const hit = list.find((v) => v._id === id);
+            if (hit) return structuredClone(hit);
+          }
+          return null;
+        },
+      }),
+      [],
+    );
+  },
+
+  useLinkPreview() {
+    // Deterministic stub so the bookmark e2e doesn't need the network.
+    return useCallback(async (input: string): Promise<LinkPreview | null> => {
+      const url = normalizeUrl(input);
+      if (!url) return null;
+      const host = hostLabel(url);
+      return {
+        url,
+        title: `${host} — preview`,
+        description: `A mock bookmark preview for ${host}.`,
+        image: "",
+      };
+    }, []);
   },
 
   useFileUpload() {

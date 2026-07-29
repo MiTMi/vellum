@@ -1,7 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
-import { ExternalLink } from "lucide-react";
-import { DbProp, PageId, SelectOption } from "../../lib/types";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ExternalLink, Search } from "lucide-react";
+import { DbProp, PageId, PageMeta, SelectOption, childrenKey } from "../../lib/types";
 import { useMutations } from "../../data";
+import { usePagesIndex } from "../../hooks/usePagesIndex";
+import { useNav } from "../../state";
 import SelectPopover from "./SelectPopover";
 import Popover from "../ui/Popover";
 
@@ -118,6 +120,29 @@ export default function Cell({ rowId, prop, value, onAddOption, bare }: CellProp
       );
     }
 
+    case "relation": {
+      const ids = Array.isArray(value) ? (value as string[]) : [];
+      return (
+        <>
+          <div className={cls} onClick={(e) => setAnchor(e.currentTarget)}>
+            <RelationChips ids={ids} />
+          </div>
+          {anchor && (
+            <RelationPopover
+              anchor={anchor}
+              onClose={() => setAnchor(null)}
+              prop={prop}
+              selected={ids}
+              onToggle={(id, on) => {
+                const next = on ? [...ids, id] : ids.filter((i) => i !== id);
+                set(next.length ? next : null);
+              }}
+            />
+          )}
+        </>
+      );
+    }
+
     case "date":
       return (
         <>
@@ -210,6 +235,104 @@ export default function Cell({ rowId, prop, value, onAddOption, bare }: CellProp
         </div>
       );
   }
+}
+
+/**
+ * Linked rows as clickable chips. Ids missing from the index (target row
+ * deleted, or a replayed op racing a delete) are simply dropped — a relation
+ * degrades to fewer chips rather than to a broken one.
+ */
+function RelationChips({ ids }: { ids: string[] }) {
+  const index = usePagesIndex();
+  const { navigate } = useNav();
+  const linked = ids
+    .map((id) => index.byId.get(id))
+    .filter((p): p is PageMeta => Boolean(p));
+
+  if (!linked.length) return <span className="cell-placeholder">—</span>;
+  return (
+    <>
+      {linked.map((p) => (
+        <span
+          key={p._id}
+          className="relation-chip"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(p._id);
+          }}
+        >
+          <span className="relation-chip-icon">{p.icon ?? "📄"}</span>
+          {p.title || "Untitled"}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function RelationPopover({
+  anchor,
+  onClose,
+  prop,
+  selected,
+  onToggle,
+}: {
+  anchor: HTMLElement;
+  onClose: () => void;
+  prop: DbProp;
+  selected: string[];
+  onToggle: (id: string, on: boolean) => void;
+}) {
+  const index = usePagesIndex();
+  const [term, setTerm] = useState("");
+
+  const candidates = useMemo(() => {
+    if (!prop.targetId) return [];
+    const rows = index.children.get(childrenKey(prop.targetId as PageId)) ?? [];
+    const t = term.trim().toLowerCase();
+    return (t ? rows.filter((r) => r.title.toLowerCase().includes(t)) : rows).slice(
+      0,
+      50,
+    );
+  }, [index, prop.targetId, term]);
+
+  return (
+    <Popover anchor={anchor} onClose={onClose} width={260} className="menu">
+      {!prop.targetId ? (
+        <div className="select-empty">
+          Pick a related database in this property&rsquo;s menu first.
+        </div>
+      ) : (
+        <>
+          <div className="qs-input-row small">
+            <Search size={14} />
+            <input
+              autoFocus
+              placeholder="Link a row…"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+          </div>
+          {candidates.map((row) => {
+            const on = selected.includes(row._id);
+            return (
+              <button
+                key={row._id}
+                className="menu-item"
+                onClick={() => onToggle(row._id, !on)}
+              >
+                <input type="checkbox" readOnly checked={on} />
+                <span className="relation-chip-icon">{row.icon ?? "📄"}</span>
+                <span className="move-title">{row.title || "Untitled"}</span>
+              </button>
+            );
+          })}
+          {candidates.length === 0 && (
+            <div className="select-empty">No rows to link.</div>
+          )}
+        </>
+      )}
+    </Popover>
+  );
 }
 
 function DateEditor({

@@ -135,3 +135,77 @@ test("commit hook reports changed and removed ids", () => {
     { changed: [], removed: ["a"] },
   ]);
 });
+
+test("setTemplate is absolute, not a toggle", () => {
+  const store = createPageStore();
+  store.create({ type: "doc", title: "T" }, pid("t"), 1);
+  expect(store.get(pid("t"))?.isTemplate).toBeUndefined();
+  store.setTemplate(pid("t"), true, 2);
+  expect(store.get(pid("t"))?.isTemplate).toBe(true);
+  expect(store.get(pid("t"))?.updatedAt).toBe(2);
+  // Replaying the same value must not flip it.
+  store.setTemplate(pid("t"), true, 3);
+  expect(store.get(pid("t"))?.isTemplate).toBe(true);
+  store.setTemplate(pid("t"), false, 4);
+  expect(store.get(pid("t"))?.isTemplate).toBe(false);
+  expect(store.setTemplate(pid("missing"), true, 5)).toBeUndefined();
+});
+
+test("duplicate asInstance clears the template flag, drops suffix, reparents", () => {
+  const store = createPageStore();
+  store.create({ type: "doc", title: "Weekly" }, pid("tpl"), 1);
+  store.create({ type: "doc", title: "Agenda", parentId: pid("tpl") }, pid("kid"), 2);
+  store.setTemplate(pid("tpl"), true, 3);
+  store.create({ type: "doc", title: "Home" }, pid("home"), 4);
+
+  let n = 0;
+  const result = store.duplicate(pid("tpl"), () => pid(`new${n++}`), 10, {
+    parentId: pid("home"),
+    suffix: "",
+    asInstance: true,
+  })!;
+  const root = store.get(result.rootId)!;
+  expect(root.title).toBe("Weekly");
+  expect(root.isTemplate).toBeUndefined();
+  expect(root.parentId).toBe("home");
+  // Rank comes from the destination parent, not the source's neighbours.
+  expect(root.rank).toBe(1024);
+  expect(result.created).toHaveLength(2);
+  // The nested copy keeps its template-less status and hangs off the copy.
+  expect(result.created[1].parentId).toBe(result.rootId);
+  // The source template is untouched.
+  expect(store.get(pid("tpl"))?.isTemplate).toBe(true);
+});
+
+test("duplicate without options still copies alongside with ' (copy)'", () => {
+  const store = createPageStore();
+  store.create({ type: "doc", title: "Notes" }, pid("n"), 1);
+  let n = 0;
+  const result = store.duplicate(pid("n"), () => pid(`c${n++}`), 5)!;
+  const copy = store.get(result.rootId)!;
+  expect(copy.title).toBe("Notes (copy)");
+  expect(copy.parentId).toBeUndefined();
+});
+
+test("remapId rewrites relation prop values and dbProps.targetId", () => {
+  const store = createPageStore();
+  // A database whose relation column targets a page created offline.
+  store.create({ type: "database", title: "Tasks" }, pid("db"), 1);
+  store.updateDbProps(
+    pid("db"),
+    [{ id: "proj", name: "Project", type: "relation", targetId: "local_projects" }],
+    2,
+  );
+  // A row linking to two offline-created rows (one of them being remapped).
+  store.create({ type: "doc", title: "Row", parentId: pid("db") }, pid("row"), 3);
+  store.setRowProp(pid("row"), "proj", ["local_projects", "other"], 4);
+  // The page being remapped itself.
+  store.create({ type: "doc", title: "Projects" }, pid("local_projects"), 5);
+
+  store.remapId(pid("local_projects"), pid("real_projects"));
+
+  expect(store.get(pid("local_projects"))).toBeUndefined();
+  expect(store.get(pid("real_projects"))?.title).toBe("Projects");
+  expect(store.get(pid("db"))?.dbProps?.[0].targetId).toBe("real_projects");
+  expect(store.get(pid("row"))?.props?.proj).toEqual(["real_projects", "other"]);
+});

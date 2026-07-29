@@ -1,6 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { api } from "../../convex/_generated/api";
-import { DataApi } from "./api";
+import { Id } from "../../convex/_generated/dataModel";
+import { DataApi, VersionHistoryApi } from "./api";
+import { LinkPreview, VersionDoc, VersionMeta } from "../lib/types";
 import { createOfflineMutations } from "../offline/mutations";
 import {
   convexClient,
@@ -32,6 +34,40 @@ const offlineApi: DataApi = {
 
   useMutations() {
     return mutations;
+  },
+
+  useVersionHistory(): VersionHistoryApi {
+    // History lives server-side only (a new table the replica never mirrors),
+    // so it reads straight through the Convex client and is unavailable
+    // offline. Subscribe to sync status so the UI re-renders on reconnect.
+    const connected = useSyncExternalStore(
+      (cb) => offlineEngine().subscribeStatus(cb),
+      () => offlineEngine().getStatus().connected,
+      () => false,
+    );
+    return useMemo<VersionHistoryApi>(
+      () => ({
+        available: connected,
+        list: (pageId) =>
+          convexClient().query(api.versions.list, { pageId }) as Promise<
+            VersionMeta[]
+          >,
+        get: (id) =>
+          convexClient().query(api.versions.get, {
+            id: id as Id<"pageVersions">,
+          }) as Promise<VersionDoc | null>,
+      }),
+      [connected],
+    );
+  },
+
+  useLinkPreview() {
+    return useCallback(async (url: string): Promise<LinkPreview | null> => {
+      if (!offlineEngine().isConnected()) return null;
+      return (await convexClient().action(api.linkPreview.fetchMeta, {
+        url,
+      })) as LinkPreview | null;
+    }, []);
   },
 
   useFileUpload() {

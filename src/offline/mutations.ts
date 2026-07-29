@@ -67,6 +67,12 @@ export function createOfflineMutations(deps: OfflineMutationDeps): Mutations {
       }
     },
 
+    async setTemplate({ id, value }) {
+      if (store.setTemplate(id, value, Date.now())) {
+        enqueue({ kind: "setTemplate", id, value });
+      }
+    },
+
     async setPageOptions(args) {
       if (store.setPageOptions(args, Date.now())) {
         enqueue({ kind: "setPageOptions", ...args });
@@ -79,8 +85,8 @@ export function createOfflineMutations(deps: OfflineMutationDeps): Mutations {
       }
     },
 
-    async duplicate({ id }) {
-      const result = store.duplicate(id, newLocalId, Date.now());
+    async duplicate({ id, ...opts }) {
+      const result = store.duplicate(id, newLocalId, Date.now(), opts);
       if (!result) return null;
       // Parent-before-child order matters: each create's temp parentId is
       // remapped before the child's op drains.
