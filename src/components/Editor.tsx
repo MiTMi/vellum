@@ -105,10 +105,15 @@ export default function PageEditor({ page }: EditorProps) {
   useEffect(() => {
     // Flush pending edits when switching pages, closing the window, or
     // unmounting — nothing typed should ever be lost to the debounce.
+    // The sync engine also fires vellum:flush-edits right before remapping
+    // an offline-created page's id, so debounced edits land under the old
+    // id and get remapped with everything else.
     window.addEventListener("beforeunload", flush);
+    window.addEventListener("vellum:flush-edits", flush);
     setActiveEditor(editor as never);
     return () => {
       window.removeEventListener("beforeunload", flush);
+      window.removeEventListener("vellum:flush-edits", flush);
       setActiveEditor(null);
       flush();
     };

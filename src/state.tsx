@@ -204,6 +204,30 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
     const onNav = (e: Event) => {
       navigate((e as CustomEvent<string>).detail as PageId);
     };
+    // A page created offline was assigned its real Convex id by the sync
+    // engine — swap the temp id everywhere navigation state holds one.
+    const onRemap = (e: Event) => {
+      const { from, to } = (e as CustomEvent<{ from: string; to: string }>)
+        .detail;
+      const toId = to as PageId;
+      setTabState((prev) =>
+        prev.tabs.some((t) => t.pageId === from)
+          ? {
+              ...prev,
+              tabs: prev.tabs.map((t) =>
+                t.pageId === from ? { ...t, pageId: toId } : t,
+              ),
+            }
+          : prev,
+      );
+      for (const h of Object.values(histories.current)) {
+        h.back = h.back.map((p) => (p === from ? toId : p));
+        h.fwd = h.fwd.map((p) => (p === from ? toId : p));
+      }
+      if (localStorage.getItem("vellum:lastPage") === from) {
+        localStorage.setItem("vellum:lastPage", to);
+      }
+    };
     const onNewTab = () => newTab();
     const onCloseTab = () => {
       setTabState((prev) => {
@@ -218,10 +242,12 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
       closeTabActiveRef.current();
     };
     window.addEventListener("vellum:navigate", onNav);
+    window.addEventListener("vellum:id-remapped", onRemap);
     window.addEventListener("vellum:new-tab", onNewTab);
     window.addEventListener("vellum:close-tab", onCloseTab);
     return () => {
       window.removeEventListener("vellum:navigate", onNav);
+      window.removeEventListener("vellum:id-remapped", onRemap);
       window.removeEventListener("vellum:new-tab", onNewTab);
       window.removeEventListener("vellum:close-tab", onCloseTab);
     };

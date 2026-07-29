@@ -8,8 +8,11 @@ import {
 } from "../lib/types";
 
 /**
- * The data layer contract. Two implementations exist:
- *  - real.ts — Convex (the default; requires VITE_CONVEX_URL)
+ * The data layer contract. Three implementations exist:
+ *  - offline.ts — local replica + outbox synced to Convex (the default;
+ *    requires VITE_CONVEX_URL; works fully offline)
+ *  - real.ts — direct Convex queries/mutations, no offline support
+ *    (escape hatch; VITE_DIRECT_CONVEX=1)
  *  - mock.ts — in-memory + localStorage (demo mode / tests; VITE_MOCK_CONVEX=1)
  */
 export interface DataApi {
@@ -59,3 +62,4 @@ export interface Mutations {
 }
 
 export const IS_MOCK = import.meta.env.VITE_MOCK_CONVEX === "1";
+export const IS_DIRECT = import.meta.env.VITE_DIRECT_CONVEX === "1";

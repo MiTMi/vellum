@@ -66,7 +66,14 @@ export default defineSchema({
     boardGroupBy: v.optional(v.string()),
     calendarBy: v.optional(v.string()),
     updatedAt: v.number(),
+    // Bumped only by content/title edits — the LWW conflict timestamp for
+    // offline sync (a favorite-toggle must not beat a real edit).
+    contentUpdatedAt: v.optional(v.number()),
+    // Client-generated id of pages created offline; makes replayed
+    // createWithDoc calls idempotent across crash/retry.
+    clientKey: v.optional(v.string()),
   })
     .index("by_parent", ["parentId"])
+    .index("by_clientKey", ["clientKey"])
     .searchIndex("search", { searchField: "searchText" }),
 });

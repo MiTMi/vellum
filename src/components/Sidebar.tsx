@@ -10,7 +10,8 @@ import {
   History,
 } from "lucide-react";
 import { PageId, PagesIndex } from "../lib/types";
-import { useMutations } from "../data";
+import { IS_DIRECT, IS_MOCK, useMutations } from "../data";
+import { useSyncStatus } from "../offline/runtime";
 import { useNav } from "../state";
 import PageTreeItem from "./PageTreeItem";
 import Menu from "./ui/Menu";
@@ -57,6 +58,24 @@ export default function Sidebar({
       localStorage.setItem("vellum:expanded", JSON.stringify([...next]));
       return next;
     });
+  }, []);
+
+  // Keep expanded state when an offline-created page gets its real id.
+  useEffect(() => {
+    const onRemap = (e: Event) => {
+      const { from, to } = (e as CustomEvent<{ from: string; to: string }>)
+        .detail;
+      setExpanded((prev) => {
+        if (!prev.has(from)) return prev;
+        const next = new Set(prev);
+        next.delete(from);
+        next.add(to);
+        localStorage.setItem("vellum:expanded", JSON.stringify([...next]));
+        return next;
+      });
+    };
+    window.addEventListener("vellum:id-remapped", onRemap);
+    return () => window.removeEventListener("vellum:id-remapped", onRemap);
   }, []);
 
   useEffect(() => {
@@ -203,6 +222,8 @@ export default function Sidebar({
         </div>
       </div>
 
+      <SyncStatusChip />
+
       <div className="sidebar-footer">
         <button
           className="sidebar-item new-page"
@@ -254,5 +275,28 @@ export default function Sidebar({
         }}
       />
     </aside>
+  );
+}
+
+/** Offline/sync indicator. Hidden when connected with nothing pending. */
+function SyncStatusChip() {
+  const status = useSyncStatus();
+  if (IS_MOCK || IS_DIRECT) return null;
+  const clean =
+    status.connected && !status.syncing && status.pending === 0;
+  if (clean && status.failed === 0) return null;
+  const label = !status.connected
+    ? status.pending > 0
+      ? `Offline — ${status.pending} change${status.pending === 1 ? "" : "s"} pending`
+      : "Offline — changes saved locally"
+    : clean
+      ? `${status.failed} change${status.failed === 1 ? "" : "s"} failed to sync`
+      : "Syncing…";
+  const kind = !status.connected ? "offline" : clean ? "failed" : "syncing";
+  return (
+    <div className={`sync-chip ${kind}`}>
+      <span className="sync-dot" />
+      {label}
+    </div>
   );
 }

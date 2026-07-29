@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import App from "./App";
-import { IS_MOCK } from "./data/api";
+import { IS_DIRECT, IS_MOCK } from "./data/api";
+import { initOfflineRuntime } from "./offline/runtime";
 
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
@@ -25,6 +26,51 @@ function MissingConvex() {
   );
 }
 
+/** Holds rendering until the local replica has hydrated from IndexedDB. */
+function Boot({
+  ready,
+  children,
+}: {
+  ready: Promise<void>;
+  children: React.ReactNode;
+}) {
+  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    ready.then(
+      () => alive && setState("ready"),
+      (err) => {
+        if (!alive) return;
+        setError(String(err));
+        setState("failed");
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [ready]);
+
+  if (state === "failed") {
+    return (
+      <div className="boot-error">
+        <div>
+          <h1>Vellum couldn’t start</h1>
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
+  if (state === "loading") {
+    return (
+      <div className="empty-state" style={{ height: "100vh" }}>
+        <div className="spinner" />
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
 const root = ReactDOM.createRoot(document.getElementById("root")!);
 
 if (IS_MOCK) {
@@ -37,10 +83,13 @@ if (IS_MOCK) {
   root.render(<MissingConvex />);
 } else {
   const convex = new ConvexReactClient(url, { unsavedChangesWarning: false });
+  const ready = IS_DIRECT ? Promise.resolve() : initOfflineRuntime(convex);
   root.render(
     <React.StrictMode>
       <ConvexProvider client={convex}>
-        <App />
+        <Boot ready={ready}>
+          <App />
+        </Boot>
       </ConvexProvider>
     </React.StrictMode>,
   );

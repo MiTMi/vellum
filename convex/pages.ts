@@ -94,6 +94,32 @@ export const trashed = query({
   },
 });
 
+/**
+ * Sync index for offline clients: every page (trashed included) with its
+ * updatedAt. Clients diff this against their local replica; absence here
+ * means the page was permanently deleted.
+ */
+export const syncIndex = query({
+  args: {},
+  handler: async (ctx) => {
+    const pages = await ctx.db.query("pages").collect();
+    return pages.map((p) => ({ _id: p._id, updatedAt: p.updatedAt }));
+  },
+});
+
+/** Batched full-doc fetch for the sync engine's pull path. */
+export const getMany = query({
+  args: { ids: v.array(v.id("pages")) },
+  handler: async (ctx, args) => {
+    const docs: Doc<"pages">[] = [];
+    for (const id of args.ids) {
+      const doc = await ctx.db.get("pages", id);
+      if (doc) docs.push(doc);
+    }
+    return docs;
+  },
+});
+
 export const search = query({
   args: { term: v.string() },
   handler: async (ctx, args) => {
@@ -158,30 +184,110 @@ export const create = mutation({
   },
 });
 
+/**
+ * Replay of an offline-created page, full doc included. Idempotent via
+ * `clientKey` (the creating client's temp id): a crash between send and
+ * ack just returns the already-inserted page on retry.
+ */
+export const createWithDoc = mutation({
+  args: {
+    clientKey: v.string(),
+    title: v.string(),
+    type: v.union(v.literal("doc"), v.literal("database")),
+    parentId: v.optional(v.id("pages")),
+    rank: v.number(),
+    icon: v.optional(v.string()),
+    cover: v.optional(v.string()),
+    content: v.optional(v.any()),
+    contentText: v.optional(v.string()),
+    searchText: v.optional(v.string()),
+    props: v.optional(v.record(v.string(), v.any())),
+    isFavorite: v.optional(v.boolean()),
+    font: v.optional(
+      v.union(v.literal("default"), v.literal("serif"), v.literal("mono")),
+    ),
+    smallText: v.optional(v.boolean()),
+    fullWidth: v.optional(v.boolean()),
+    locked: v.optional(v.boolean()),
+    inTrash: v.optional(v.boolean()),
+    trashRoot: v.optional(v.boolean()),
+    trashedAt: v.optional(v.number()),
+    dbProps: v.optional(v.array(dbProp)),
+    activeView: v.optional(
+      v.union(v.literal("table"), v.literal("board"), v.literal("calendar")),
+    ),
+    boardGroupBy: v.optional(v.string()),
+    calendarBy: v.optional(v.string()),
+    updatedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("pages")
+      .withIndex("by_clientKey", (q) => q.eq("clientKey", args.clientKey))
+      .unique();
+    if (existing) return existing._id;
+    const { clientKey, ...doc } = args;
+    return await ctx.db.insert("pages", {
+      ...doc,
+      clientKey,
+      contentUpdatedAt: args.updatedAt,
+    });
+  },
+});
+
 export const rename = mutation({
-  args: { id: v.id("pages"), title: v.string() },
+  args: {
+    id: v.id("pages"),
+    title: v.string(),
+    // Wall-clock time of the local edit, sent by offline clients for
+    // last-writer-wins: an older replayed edit must not clobber a newer one.
+    clientUpdatedAt: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
+    if (
+      args.clientUpdatedAt !== undefined &&
+      page.contentUpdatedAt !== undefined &&
+      args.clientUpdatedAt < page.contentUpdatedAt
+    ) {
+      return;
+    }
+    const now = args.clientUpdatedAt ?? Date.now();
     await ctx.db.patch("pages", args.id, {
       title: args.title,
       searchText: args.title + " " + (page.contentText ?? ""),
-      updatedAt: Date.now(),
+      updatedAt: now,
+      contentUpdatedAt: now,
     });
   },
 });
 
 /** Persist editor content. `text` is the plain-text extraction for search. */
 export const updateContent = mutation({
-  args: { id: v.id("pages"), content: v.any(), text: v.string() },
+  args: {
+    id: v.id("pages"),
+    content: v.any(),
+    text: v.string(),
+    clientUpdatedAt: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
+    if (
+      args.clientUpdatedAt !== undefined &&
+      page.contentUpdatedAt !== undefined &&
+      args.clientUpdatedAt < page.contentUpdatedAt
+    ) {
+      return;
+    }
+    const now = args.clientUpdatedAt ?? Date.now();
     await ctx.db.patch("pages", args.id, {
       content: args.content,
       contentText: args.text,
       searchText: page.title + " " + args.text,
-      updatedAt: Date.now(),
+      updatedAt: now,
+      contentUpdatedAt: now,
     });
   },
 });
@@ -189,6 +295,8 @@ export const updateContent = mutation({
 export const setIcon = mutation({
   args: { id: v.id("pages"), icon: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
+    const page = await ctx.db.get("pages", args.id);
+    if (!page) return;
     await ctx.db.patch("pages", args.id, {
       icon: args.icon === null ? undefined : args.icon,
       updatedAt: Date.now(),
@@ -199,6 +307,8 @@ export const setIcon = mutation({
 export const setCover = mutation({
   args: { id: v.id("pages"), cover: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
+    const page = await ctx.db.get("pages", args.id);
+    if (!page) return;
     await ctx.db.patch("pages", args.id, {
       cover: args.cover === null ? undefined : args.cover,
       updatedAt: Date.now(),
@@ -218,7 +328,9 @@ export const setPageOptions = mutation({
     locked: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const patch: Record<string, unknown> = {};
+    const page = await ctx.db.get("pages", args.id);
+    if (!page) return;
+    const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.font !== undefined) patch.font = args.font;
     if (args.smallText !== undefined) patch.smallText = args.smallText;
     if (args.fullWidth !== undefined) patch.fullWidth = args.fullWidth;
@@ -228,11 +340,19 @@ export const setPageOptions = mutation({
 });
 
 export const toggleFavorite = mutation({
-  args: { id: v.id("pages") },
+  args: {
+    id: v.id("pages"),
+    // Absolute value sent by offline replays — a replayed toggle must not
+    // flip state that already matches.
+    value: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
-    await ctx.db.patch("pages", args.id, { isFavorite: !page.isFavorite });
+    await ctx.db.patch("pages", args.id, {
+      isFavorite: args.value ?? !page.isFavorite,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -256,9 +376,12 @@ export const move = mutation({
         cursor = p?.parentId;
       }
     }
+    const page = await ctx.db.get("pages", args.id);
+    if (!page) return;
     await ctx.db.patch("pages", args.id, {
       parentId: args.parentId,
       rank: args.rank,
+      updatedAt: Date.now(),
     });
   },
 });
@@ -275,7 +398,8 @@ export const duplicate = mutation({
       rank: number,
       titleSuffix: string,
     ): Promise<Id<"pages">> {
-      const { _id, _creationTime, ...rest } = page;
+      // clientKey must stay unique per created page — never copy it.
+      const { _id, _creationTime, clientKey, ...rest } = page;
       const newId = await ctx.db.insert("pages", {
         ...rest,
         parentId,
@@ -310,6 +434,7 @@ export const trash = mutation({
         trashRoot: page._id === args.id,
         trashedAt: now,
         isFavorite: false,
+        updatedAt: now,
       });
     });
   },
@@ -331,6 +456,7 @@ export const restore = mutation({
         inTrash: undefined,
         trashRoot: undefined,
         trashedAt: undefined,
+        updatedAt: Date.now(),
       });
     });
     await ctx.db.patch("pages", args.id, { parentId });
@@ -365,6 +491,8 @@ export const emptyTrash = mutation({
 export const updateDbProps = mutation({
   args: { id: v.id("pages"), dbProps: v.array(dbProp) },
   handler: async (ctx, args) => {
+    const page = await ctx.db.get("pages", args.id);
+    if (!page) return;
     await ctx.db.patch("pages", args.id, {
       dbProps: args.dbProps,
       updatedAt: Date.now(),
@@ -394,7 +522,9 @@ export const setView = mutation({
     calendarBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const patch: Record<string, unknown> = {};
+    const page = await ctx.db.get("pages", args.id);
+    if (!page) return;
+    const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.activeView !== undefined) patch.activeView = args.activeView;
     if (args.boardGroupBy !== undefined) patch.boardGroupBy = args.boardGroupBy;
     if (args.calendarBy !== undefined) patch.calendarBy = args.calendarBy;

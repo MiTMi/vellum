@@ -73,13 +73,37 @@ function PageBody({
     }
   }, [title]);
 
+  // Debounced rename, flushed on unmount / flush-edits — a pending title
+  // must survive page switches and the sync engine's id remaps.
+  const pendingTitle = useRef<string | null>(null);
+  const flushTitle = () => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    if (pendingTitle.current === null) return;
+    const value = pendingTitle.current;
+    pendingTitle.current = null;
+    void mutations.rename({ id: page._id, title: value.trim() });
+  };
+
   const commitTitle = (value: string) => {
     setTitle(value);
+    pendingTitle.current = value;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      void mutations.rename({ id: page._id, title: value.trim() });
-    }, 300);
+    saveTimer.current = setTimeout(flushTitle, 300);
   };
+
+  useEffect(() => {
+    window.addEventListener("beforeunload", flushTitle);
+    window.addEventListener("vellum:flush-edits", flushTitle);
+    return () => {
+      window.removeEventListener("beforeunload", flushTitle);
+      window.removeEventListener("vellum:flush-edits", flushTitle);
+      flushTitle();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page._id]);
 
   const isDatabase = page.type === "database";
   const locked = page.locked ?? false;
