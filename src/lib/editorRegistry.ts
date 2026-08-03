@@ -8,6 +8,7 @@ export interface ActiveEditor {
   blocksToMarkdownLossy: () => Promise<string>;
   blocksToHTMLLossy: () => Promise<string>;
   tryParseMarkdownToBlocks: (md: string) => Promise<unknown[]>;
+  tryParseHTMLToBlocks: (html: string) => Promise<unknown[]>;
   insertBlocks: (blocks: unknown[], ref: unknown, placement: "after" | "before") => void;
   replaceBlocks: (toRemove: unknown[], toInsert: unknown[]) => void;
   document: { id: string }[];

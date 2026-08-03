@@ -56,7 +56,10 @@ export function requestPeek(id: string) {
   window.dispatchEvent(new CustomEvent("vellum:peek", { detail: id }));
 }
 
-function initialTheme(): Theme {
+/** Saved preference, else the OS setting. Exported so main.tsx can stamp
+ * `data-theme` at boot — the login screen renders before NavProvider mounts,
+ * and without the early stamp it always came up light. */
+export function initialTheme(): Theme {
   const saved = localStorage.getItem("vellum:theme");
   if (saved === "light" || saved === "dark") return saved;
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches

@@ -9,6 +9,7 @@ import {
   Upload,
   Table,
   FileText,
+  FileDown,
   Database,
   Search,
   Check,
@@ -25,7 +26,8 @@ import {
   exportDatabaseCSV,
   exportPageHTML,
   exportPageMarkdown,
-  importMarkdownIntoPage,
+  exportPagePDF,
+  importFileIntoPage,
 } from "../lib/exporters";
 import { extractText } from "../lib/blocks";
 
@@ -44,6 +46,7 @@ export default function PageMenu({ anchor, onClose, page, index }: PageMenuProps
   const [view, setView] = useState<"main" | "move">("main");
   const [copied, setCopied] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
 
   const isDatabase = page.type === "database";
@@ -223,17 +226,17 @@ export default function PageMenu({ anchor, onClose, page, index }: PageMenuProps
             <span className="menu-icon">
               <Download size={15} />
             </span>
-            <span>Import Markdown…</span>
+            <span>Import Markdown or HTML…</span>
           </button>
           <input
             ref={importRef}
             type="file"
-            accept=".md,.markdown,.txt"
+            accept=".md,.markdown,.txt,.html,.htm"
             hidden
             onChange={async (e) => {
               const file = e.target.files?.[0];
               if (file) {
-                await importMarkdownIntoPage(file);
+                await importFileIntoPage(file);
                 onClose();
               }
             }}
@@ -261,6 +264,23 @@ export default function PageMenu({ anchor, onClose, page, index }: PageMenuProps
               <FileText size={15} />
             </span>
             <span>Export as HTML</span>
+          </button>
+          <button
+            className="menu-item"
+            disabled={pdfBusy}
+            onClick={async () => {
+              setPdfBusy(true);
+              const res = await exportPagePDF(page.title);
+              setPdfBusy(false);
+              // "printed" hands off to the browser's print dialog, which the
+              // user drives — closing the menu underneath it is fine.
+              if (res !== "failed") onClose();
+            }}
+          >
+            <span className="menu-icon">
+              <FileDown size={15} />
+            </span>
+            <span>{pdfBusy ? "Preparing PDF…" : "Export as PDF"}</span>
           </button>
         </>
       )}

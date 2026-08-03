@@ -110,6 +110,17 @@ BlockNote with custom block specs registered on one shared `schema`:
 - `callout` (`CalloutBlock.tsx`) — tinted box with an emoji + color popover.
 - `toc` (`TocBlock.tsx`) — auto-updating table of contents; reads heading
   blocks via `editor.onChange` and scrolls to `[data-id]` targets.
+- `embed` (`EmbedBlock.tsx`) — live iframe player for YouTube, Vimeo, Loom,
+  Spotify, Figma, CodePen, Google Drive/Maps, or any framable URL. The
+  URL→iframe-src resolution is a pure helper (`src/lib/embeds.ts`, tested in
+  `tests/embeds.test.ts`) — add providers there, not in the component.
+  BlockNote's built-in `video` block renders a raw `<video>` element and
+  therefore *cannot* play provider URLs; that's why this block exists. The
+  iframe is sandboxed and the original URL always stays reachable in the
+  footer, because sites that refuse framing render blank with no detectable
+  error. Note the slash menu ranks title matches above alias-only ones
+  (`getSlashItems`) — without that, BlockNote's "File" item (whose aliases
+  include "embed") wins the Enter key on `/embed`.
 - `bookmark` (`BookmarkBlock.tsx`) — Notion-style web bookmark card. All
   state lives in block props, so it persists through the normal
   `updateContent` path (no schema change, no outbox op). Metadata comes from
@@ -229,6 +240,20 @@ comments, link previews) are plain callbacks through `convexClient()` —
 never `useQuery`. See `useVersionHistory` / `useComments` / `useLinkPreview`
 in `src/data/`. They're not reactive, so callers refetch after each write.
 
+### Export / import
+
+`src/lib/exporters.ts`, driven from `PageMenu`. Markdown/HTML/CSV export,
+Markdown+HTML import, and PDF. They act on the *mounted editor* through
+`editorRegistry`, so they only work for the page on screen.
+
+`printableHtml` is the one document template shared by HTML export and PDF —
+BlockNote's `blocksToHTMLLossy` emits unstyled semantic HTML, so that
+stylesheet is the entire appearance of an exported file. PDF has two paths:
+Electron renders it in the main process (`vellum:export-pdf` → hidden window
+with `javascript: false` → `printToPDF` → native save dialog), while the
+browser build can only hand the same HTML to the print dialog — hence the
+distinct `"saved"` vs `"printed"` results.
+
 ### Search
 
 `pages.search` and the replica's `useSearch` both build contextual snippets
@@ -253,10 +278,19 @@ plain rows with a `run()` callback.
   convex-test can't resolve them.
 - `npm run build` — typecheck + vite build.
 - `node scripts/e2e*.mjs` — Playwright UI suites against a mock-mode vite
-  server on port 5199 (`VITE_MOCK_CONVEX=1 npx vite --port 5199`).
+  server on port 5199 (`VITE_MOCK_CONVEX=1 npx vite --port 5199`), e.g.
+  `e2e-embeds.mjs` (embed block + export menu).
   The scripts default to `/opt/pw-browsers/chromium`; set `CHROMIUM_PATH` if
   your Playwright browsers live elsewhere (e.g.
   `~/Library/Caches/ms-playwright/chromium-*/chrome-mac-arm64/…`).
+- `node scripts/electron-pdf-smoke.mjs` — launches the real desktop app,
+  stubs the save dialog and invokes the `vellum:export-pdf` handler. Needs
+  `npm run build` first.
+- **Anything that launches Electron must drop `ELECTRON_RUN_AS_NODE`**: IDE
+  terminals (VS Code/Cursor) export it, and it silently makes the Electron
+  binary start as plain Node — `require("electron")` returns a path string,
+  so every API is `undefined`, and Playwright just says "Process failed to
+  launch!". `electron-pdf-smoke.mjs` strips it.
 - `node scripts/e2e-offline.mjs` — offline-sync e2e against the REAL dev
   deployment (vite on port 5201, no mock flag; push functions first with
   `npx convex dev --once`). Sign-in is required: pass the owner's password

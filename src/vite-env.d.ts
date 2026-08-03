@@ -10,5 +10,18 @@ interface ImportMeta {
 }
 
 interface Window {
-  vellum?: { platform: string; isElectron: boolean };
+  vellum?: {
+    platform: string;
+    isElectron: boolean;
+    touchId?: {
+      status(): Promise<{ available: boolean; enrolled: boolean }>;
+      save(email: string, password: string): Promise<boolean>;
+      signIn(): Promise<{ email: string; password: string } | null>;
+      clear(): Promise<boolean>;
+    };
+    exportPdf?(
+      html: string,
+      suggestedName: string,
+    ): Promise<{ ok: boolean; canceled?: boolean; error?: string; path?: string }>;
+  };
 }

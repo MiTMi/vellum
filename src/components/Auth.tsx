@@ -7,7 +7,7 @@ import React, {
 import { ConvexReactClient, useConvexAuth } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { ConvexError } from "convex/values";
-import { LogOut } from "lucide-react";
+import { Fingerprint, LogOut } from "lucide-react";
 import { setSyncAuthorized } from "../offline/runtime";
 
 /**
@@ -89,6 +89,22 @@ function LoginScreen() {
   const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Touch ID (Electron on a Mac with biometrics only; undefined elsewhere).
+  const [touch, setTouch] = useState<{
+    available: boolean;
+    enrolled: boolean;
+  } | null>(null);
+  const [enableTouchId, setEnableTouchId] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    void window.vellum?.touchId?.status().then((s) => {
+      if (alive) setTouch(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -97,12 +113,44 @@ function LoginScreen() {
     setError(null);
     const data = new FormData(e.currentTarget);
     data.set("flow", flow);
+    const email = String(data.get("email") ?? "");
+    const password = String(data.get("password") ?? "");
     try {
       await signIn("password", data);
       rememberSession(true);
+      // Only store credentials that just worked — and only with consent.
+      if (touch?.available) {
+        if (enableTouchId) void window.vellum?.touchId?.save(email, password);
+        else void window.vellum?.touchId?.clear();
+      }
       // Stay busy — AuthGate swaps to the app once the identity settles.
     } catch (err) {
       setError(authErrorMessage(err, flow));
+      setBusy(false);
+    }
+  }
+
+  async function onTouchId() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    const creds = await window.vellum?.touchId?.signIn();
+    if (!creds) {
+      // Cancelled or the prompt failed — quietly fall back to the form.
+      setBusy(false);
+      return;
+    }
+    try {
+      await signIn("password", { ...creds, flow: "signIn" });
+      rememberSession(true);
+    } catch {
+      // Stored password went stale (e.g. it changed) — forget it so the
+      // button doesn't keep failing, and ask for a fresh password sign-in.
+      void window.vellum?.touchId?.clear();
+      setTouch((t) => (t ? { ...t, enrolled: false } : t));
+      setError(
+        "The saved Touch ID credentials no longer work — sign in with your password to refresh them.",
+      );
       setBusy(false);
     }
   }
@@ -117,6 +165,20 @@ function LoginScreen() {
             ? "Sign in to your workspace"
             : "Create the owner account"}
         </p>
+        {touch?.enrolled && flow === "signIn" && (
+          <>
+            <button
+              type="button"
+              className="login-touchid"
+              onClick={() => void onTouchId()}
+              disabled={busy}
+            >
+              <Fingerprint size={16} />
+              Sign in with Touch ID
+            </button>
+            <div className="login-divider">or use your password</div>
+          </>
+        )}
         <input
           className="login-input"
           name="email"
@@ -135,6 +197,16 @@ function LoginScreen() {
           minLength={8}
           required
         />
+        {touch?.available && (
+          <label className="login-remember">
+            <input
+              type="checkbox"
+              checked={enableTouchId}
+              onChange={(e) => setEnableTouchId(e.target.checked)}
+            />
+            Enable Touch ID sign-in on this Mac
+          </label>
+        )}
         {error && <div className="login-error">{error}</div>}
         <button className="login-submit" type="submit" disabled={busy}>
           {busy ? "Signing in…" : flow === "signIn" ? "Sign in" : "Create account"}

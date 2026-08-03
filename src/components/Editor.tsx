@@ -25,6 +25,7 @@ import {
   List,
   Bookmark,
   Sigma,
+  Play,
 } from "lucide-react";
 import { PageDoc } from "../lib/types";
 import { extractText } from "../lib/blocks";
@@ -36,6 +37,7 @@ import { PageLinkSpec } from "./PageLinkBlock";
 import { CalloutSpec } from "./CalloutBlock";
 import { TocSpec } from "./TocBlock";
 import { BookmarkSpec } from "./BookmarkBlock";
+import { EmbedSpec } from "./EmbedBlock";
 import { EquationSpec } from "./EquationBlock";
 import { PageMentionSpec } from "./PageMentionInline";
 import BlockAnchorOverlay from "./BlockAnchorOverlay";
@@ -49,6 +51,7 @@ export const schema = BlockNoteSchema.create({
     callout: CalloutSpec(),
     toc: TocSpec(),
     bookmark: BookmarkSpec(),
+    embed: EmbedSpec(),
     equation: EquationSpec(),
   },
   inlineContentSpecs: {
@@ -273,13 +276,38 @@ export default function PageEditor({ page }: EditorProps) {
       {
         title: "Web bookmark",
         subtext: "Save a link as a visual card",
-        aliases: ["bookmark", "link", "url", "embed", "preview", "web"],
+        // "embed" deliberately belongs to the embed block, not here.
+        aliases: ["bookmark", "link", "url", "preview", "web"],
         group: "Vellum",
         icon: <Bookmark size={18} />,
         onItemClick: () => {
           insertOrUpdateBlockForSlashMenu(
             editor as unknown as BlockNoteEditor,
             { type: "bookmark" } as never,
+          );
+        },
+      },
+      {
+        title: "Embed",
+        subtext: "YouTube, Vimeo, Loom, Figma, Maps, Spotify…",
+        aliases: [
+          "embed",
+          "youtube",
+          "video",
+          "vimeo",
+          "loom",
+          "figma",
+          "map",
+          "maps",
+          "spotify",
+          "iframe",
+        ],
+        group: "Vellum",
+        icon: <Play size={18} />,
+        onItemClick: () => {
+          insertOrUpdateBlockForSlashMenu(
+            editor as unknown as BlockNoteEditor,
+            { type: "embed" } as never,
           );
         },
       },
@@ -350,7 +378,22 @@ export default function PageEditor({ page }: EditorProps) {
         },
       },
     ];
-    return filterSuggestionItems([...defaults, ...custom], query);
+    // filterSuggestionItems keeps input order and matches titles and aliases
+    // alike, so an unrelated block that merely lists the query as an alias
+    // can outrank an exact title hit ("/embed" used to select "File", whose
+    // aliases include "embed"). Rank title matches first; the sort is stable,
+    // so items that tie keep their original order.
+    const q = query.trim().toLowerCase();
+    const rank = (title: string) => {
+      const t = title.toLowerCase();
+      if (t === q) return 0;
+      if (t.startsWith(q)) return 1;
+      if (t.includes(q)) return 2;
+      return 3; // matched only through an alias
+    };
+    return filterSuggestionItems([...defaults, ...custom], query).sort(
+      (a, b) => rank(a.title) - rank(b.title),
+    );
   };
 
   return (
