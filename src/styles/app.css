@@ -12,6 +12,9 @@
   --bg-active: rgba(55, 53, 47, 0.1);
   --text: #37352f;
   --text-secondary: #787774;
+  /* Light mode already reads well; the sidebar tier exists so the dark theme
+     can brighten it without touching every secondary label. */
+  --sidebar-text: #5f5e5b;
   --text-faint: #9b9a97;
   --border: rgba(55, 53, 47, 0.12);
   --border-strong: rgba(55, 53, 47, 0.2);
@@ -40,8 +43,14 @@
   --bg-hover: rgba(255, 255, 255, 0.055);
   --bg-active: rgba(255, 255, 255, 0.1);
   --text: rgba(255, 255, 255, 0.87);
-  --text-secondary: rgba(255, 255, 255, 0.55);
-  --text-faint: rgba(255, 255, 255, 0.38);
+  /* Dark-mode text was noticeably dimmer than Notion's: sidebar rows landed
+     at #9b9b9b (5.9:1) against ~#d0d0d0 (11:1) there, and the faint tier sat
+     below the 4.5:1 contrast minimum. */
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --text-faint: rgba(255, 255, 255, 0.46);
+  /* The sidebar is primary navigation, not secondary chrome, so it gets its
+     own near-white tier rather than borrowing --text-secondary. */
+  --sidebar-text: rgba(255, 255, 255, 0.81);
   --border: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.2);
   --accent: #529cca;
@@ -226,7 +235,7 @@ body.resizing {
   width: 100%;
   padding: 5px 8px;
   border-radius: 6px;
-  color: var(--text-secondary);
+  color: var(--sidebar-text);
   font-weight: 500;
   text-align: left;
 }
@@ -544,7 +553,7 @@ body.resizing {
   gap: 4px;
   padding: 4px 8px 4px;
   border-radius: 6px;
-  color: var(--text-secondary);
+  color: var(--sidebar-text);
   font-weight: 500;
   cursor: pointer;
   position: relative;
