@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { DbProp, PageDoc, PageMeta } from "../../lib/types";
 import { useMutations } from "../../data";
 import { requestPeek, useNav } from "../../state";
-import { toDateKey } from "../../lib/dbviews";
+import { parseDateValue, toDateKey } from "../../lib/dbviews";
 
 interface CalendarViewProps {
   page: PageDoc;
@@ -30,12 +30,27 @@ export default function CalendarView({ page, rows, locked }: CalendarViewProps) 
   const byDay = useMemo(() => {
     const map = new Map<string, PageMeta[]>();
     if (!dateProp) return map;
-    for (const row of rows) {
-      const v = row.props?.[dateProp.id];
-      if (typeof v !== "string" || !v) continue;
-      const list = map.get(v);
+    const push = (day: string, row: PageMeta) => {
+      const list = map.get(day);
       if (list) list.push(row);
-      else map.set(v, [row]);
+      else map.set(day, [row]);
+    };
+    for (const row of rows) {
+      const v = parseDateValue(row.props?.[dateProp.id]);
+      if (!v) continue;
+      // A ranged row appears on every day it covers, as it does in Notion.
+      if (!v.end) {
+        push(v.start, row);
+        continue;
+      }
+      const cursor = new Date(`${v.start}T00:00:00`);
+      const last = new Date(`${v.end}T00:00:00`);
+      // Guard the loop on a sane span so a stray far-future end date can't
+      // spin here — a calendar can only show so much anyway.
+      for (let i = 0; cursor <= last && i < 366; i++) {
+        push(toDateKey(cursor), row);
+        cursor.setDate(cursor.getDate() + 1);
+      }
     }
     return map;
   }, [rows, dateProp]);

@@ -26,6 +26,8 @@ export const propType = v.union(
   v.literal("lastEditedTime"),
   // Computed: aggregates a property of related rows through a relation.
   v.literal("rollup"),
+  // Computed: an expression over this row's other properties.
+  v.literal("formula"),
 );
 
 export const dbProp = v.object({
@@ -51,6 +53,9 @@ export const dbProp = v.object({
   relationPropId: v.optional(v.string()), // which relation column to follow
   rollupPropId: v.optional(v.string()), // which property of the target rows
   rollupCalc: v.optional(v.string()), // count | sum | avg | min | max | …
+  // Formula properties: the expression source (see src/lib/formula.ts).
+  // Evaluated client-side at render; never stored as a value.
+  formula: v.optional(v.string()),
 });
 
 export const activeView = v.union(
@@ -58,6 +63,7 @@ export const activeView = v.union(
   v.literal("board"),
   v.literal("calendar"),
   v.literal("gallery"),
+  v.literal("timeline"),
 );
 
 export default defineSchema({
@@ -101,9 +107,15 @@ export default defineSchema({
     // Client-generated id of pages created offline; makes replayed
     // createWithDoc calls idempotent across crash/retry.
     clientKey: v.optional(v.string()),
+    // "Publish to web": an unguessable slug serving this page publicly at
+    // /p/<slug>. Absent means private — the slug IS the access control, so
+    // unpublishing must clear it rather than flag it.
+    publicSlug: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
   })
     .index("by_parent", ["parentId"])
     .index("by_clientKey", ["clientKey"])
+    .index("by_publicSlug", ["publicSlug"])
     .searchIndex("search", { searchField: "searchText" }),
 
   /**

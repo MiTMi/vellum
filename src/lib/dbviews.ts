@@ -1,4 +1,5 @@
 import { DbProp, PageMeta, RollupCalc } from "./types";
+import { evalFormula, FormulaResult, FormulaValue } from "./formula";
 
 /* ------------------------------------------------------------------ */
 /* Computed properties (createdTime / lastEditedTime / rollup)         */
@@ -111,6 +112,85 @@ export function computeRollup(
 }
 
 /* ------------------------------------------------------------------ */
+/* Formula properties                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Evaluate a formula property for one row.
+ *
+ * `prop("Name")` resolves against this row's *other* properties, each
+ * flattened to a scalar the expression language can work with (a select
+ * becomes its option name, a relation its link count, a date its start).
+ * Formulas may reference other formulas; `seen` breaks the cycle that
+ * would otherwise recurse forever when two reference each other.
+ */
+export function computeFormula(
+  row: PageMeta,
+  prop: DbProp,
+  dbProps: DbProp[],
+  byId?: RowIndex,
+  seen: ReadonlySet<string> = new Set(),
+): FormulaResult {
+  if (seen.has(prop.id)) {
+    return { value: null, error: "Formula references itself" };
+  }
+  const nowSeen = new Set(seen).add(prop.id);
+
+  const resolve = (name: string): FormulaValue => {
+    const target =
+      dbProps.find((p) => p.name === name) ??
+      dbProps.find((p) => p.name.toLowerCase() === name.toLowerCase());
+
+    if (!target) {
+      // The title column isn't in dbProps; Notion calls it "Name".
+      const lower = name.toLowerCase();
+      if (lower === "name" || lower === "title") return row.title ?? "";
+      return null;
+    }
+
+    switch (target.type) {
+      case "createdTime":
+        return toDateKey(new Date(row._creationTime));
+      case "lastEditedTime":
+        return toDateKey(new Date(row.updatedAt));
+      case "rollup":
+        return computeRollup(row, target, dbProps, byId).sortVal;
+      case "formula":
+        return computeFormula(row, target, dbProps, byId, nowSeen).value;
+      default:
+        break;
+    }
+
+    const raw = row.props?.[target.id];
+    if (raw === undefined || raw === null) return null;
+    switch (target.type) {
+      case "number":
+        return typeof raw === "number" ? raw : Number(raw) || 0;
+      case "checkbox":
+        return raw === true;
+      case "select":
+        return target.options?.find((o) => o.id === raw)?.name ?? null;
+      case "multiSelect": {
+        const ids = Array.isArray(raw) ? (raw as string[]) : [];
+        return ids
+          .map((id) => target.options?.find((o) => o.id === id)?.name ?? "")
+          .filter(Boolean)
+          .join(", ");
+      }
+      case "date":
+        return parseDateValue(raw)?.start ?? null;
+      case "relation":
+        // A list can't be a scalar; the count is the useful number.
+        return Array.isArray(raw) ? raw.length : 0;
+      default:
+        return typeof raw === "string" ? raw : String(raw);
+    }
+  };
+
+  return evalFormula(prop.formula, { prop: resolve });
+}
+
+/* ------------------------------------------------------------------ */
 /* Sorting                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -130,7 +210,15 @@ export function sortValue(
   if (prop?.type === "rollup") {
     return computeRollup(row, prop, dbProps, byId).sortVal;
   }
+  if (prop?.type === "formula") {
+    const { value } = computeFormula(row, prop, dbProps, byId);
+    if (typeof value === "number") return value;
+    if (typeof value === "boolean") return value ? 1 : 0;
+    return (value ?? "").toString().toLowerCase();
+  }
   const raw = row.props?.[key];
+  // Dates sort by their start, whether stored as a bare string or a range.
+  if (prop?.type === "date") return parseDateValue(raw)?.start ?? "";
   if (raw === undefined || raw === null) {
     if (prop?.type === "number") return -Infinity;
     // Relation sorts numerically (by link count) — an empty cell must stay a
@@ -338,6 +426,61 @@ export function saveViewState(dbId: string, state: LocalViewState) {
 /* ------------------------------------------------------------------ */
 /* Dates                                                               */
 /* ------------------------------------------------------------------ */
+
+/**
+ * A date property holds either a bare `"YYYY-MM-DD"` (every value written
+ * before ranges existed) or `{ start, end }`. Everything reads dates through
+ * `parseDateValue`, so the two shapes stay interchangeable and no migration
+ * is needed — a stored string is simply a range with no end.
+ */
+export interface DateValue {
+  start: string;
+  end?: string;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function parseDateValue(raw: unknown): DateValue | null {
+  if (typeof raw === "string") {
+    return ISO_DATE.test(raw) ? { start: raw } : null;
+  }
+  if (raw && typeof raw === "object") {
+    const start = (raw as Record<string, unknown>).start;
+    const end = (raw as Record<string, unknown>).end;
+    if (typeof start !== "string" || !ISO_DATE.test(start)) return null;
+    return typeof end === "string" && ISO_DATE.test(end) && end > start
+      ? { start, end }
+      : { start };
+  }
+  return null;
+}
+
+/** Store the narrowest shape that fits, so single dates stay plain strings. */
+export function makeDateValue(start: string, end?: string): string | DateValue | null {
+  if (!ISO_DATE.test(start)) return null;
+  return end && ISO_DATE.test(end) && end > start ? { start, end } : start;
+}
+
+/** Inclusive day count of a range (a single date spans one day). */
+export function dateSpanDays(v: DateValue): number {
+  if (!v.end) return 1;
+  const ms = Date.parse(`${v.end}T00:00:00`) - Date.parse(`${v.start}T00:00:00`);
+  return Math.max(1, Math.round(ms / 86_400_000) + 1);
+}
+
+export function formatDateValue(raw: unknown): string {
+  const v = parseDateValue(raw);
+  if (!v) return "";
+  const short = (s: string) => {
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+  return v.end ? `${short(v.start)} → ${short(v.end)}` : short(v.start);
+}
 
 export function formatDateLong(value: string): string {
   const [y, m, d] = value.split("-").map(Number);

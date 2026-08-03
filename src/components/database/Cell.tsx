@@ -3,7 +3,15 @@ import { ExternalLink, Search } from "lucide-react";
 import { DbProp, PageId, PageMeta, SelectOption, childrenKey } from "../../lib/types";
 import { useMutations } from "../../data";
 import { usePagesIndex } from "../../hooks/usePagesIndex";
-import { computeRollup, formatTimestamp } from "../../lib/dbviews";
+import {
+  computeFormula,
+  computeRollup,
+  formatDateValue,
+  formatTimestamp,
+  makeDateValue,
+  parseDateValue,
+} from "../../lib/dbviews";
+import { formatFormulaValue } from "../../lib/formula";
 import { useNav } from "../../state";
 import SelectPopover from "./SelectPopover";
 import Popover from "../ui/Popover";
@@ -29,16 +37,6 @@ interface CellProps {
   /** persist new options created inline */
   onAddOption: (propId: string, option: SelectOption) => void;
   bare?: boolean; // borderless style for row-page property panel
-}
-
-function formatDate(value: string): string {
-  const [y, m, d] = value.split("-").map(Number);
-  if (!y || !m || !d) return value;
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 export default function Cell({
@@ -102,6 +100,9 @@ export default function Cell({
 
     case "rollup":
       return <RollupCell row={row} prop={prop} dbProps={dbProps} cls={cls} />;
+
+    case "formula":
+      return <FormulaCell row={row} prop={prop} dbProps={dbProps} cls={cls} />;
 
     case "checkbox":
       return (
@@ -189,8 +190,8 @@ export default function Cell({
       return (
         <>
           <div className={cls} onClick={(e) => setAnchor(e.currentTarget)}>
-            {typeof value === "string" && value ? (
-              formatDate(value)
+            {parseDateValue(value) ? (
+              formatDateValue(value)
             ) : (
               <span className="cell-placeholder">—</span>
             )}
@@ -198,9 +199,9 @@ export default function Cell({
           {anchor && (
             <DateEditor
               anchor={anchor}
-              value={typeof value === "string" ? value : ""}
+              value={value}
               onClose={() => setAnchor(null)}
-              onChange={(v) => set(v || null)}
+              onChange={(v) => set(v)}
             />
           )}
         </>
@@ -283,6 +284,46 @@ export default function Cell({
  * A rollup aggregates *other* rows, so it needs the page index. Split into
  * its own component to keep the hook out of Cell's switch.
  */
+/** Read-only, like the other computed types: the value is never stored. */
+function FormulaCell({
+  row,
+  prop,
+  dbProps,
+  cls,
+}: {
+  row: CellRow;
+  prop: DbProp;
+  dbProps: DbProp[];
+  cls: string;
+}) {
+  const index = usePagesIndex();
+  const meta = index.byId.get(row._id);
+  if (!meta) {
+    // Mid-remap (offline row whose create hasn't replayed): show empty
+    // rather than throw, matching RollupCell.
+    return <div className={`${cls} computed`} />;
+  }
+  const { value, error } = computeFormula(meta, prop, dbProps, index.byId);
+  if (error) {
+    return (
+      <div className={`${cls} computed`} title={error}>
+        <span className="cell-formula-error">Error</span>
+      </div>
+    );
+  }
+  const display = formatFormulaValue(value);
+  return (
+    <div
+      className={`${cls} computed`}
+      title={prop.formula ? undefined : "Add an expression in the property menu"}
+    >
+      <span className={display === "" ? "cell-placeholder" : "cell-value"}>
+        {display === "" ? "—" : display}
+      </span>
+    </div>
+  );
+}
+
 function RollupCell({
   row,
   prop,
@@ -410,6 +451,11 @@ function RelationPopover({
   );
 }
 
+/**
+ * Start date, plus an optional end date behind a toggle — Notion's date
+ * range. Clearing the start clears the whole value, since a range with no
+ * start is meaningless.
+ */
 function DateEditor({
   anchor,
   value,
@@ -417,23 +463,63 @@ function DateEditor({
   onChange,
 }: {
   anchor: HTMLElement;
-  value: string;
+  value: unknown;
   onClose: () => void;
-  onChange: (v: string) => void;
+  onChange: (v: string | { start: string; end?: string } | null) => void;
 }) {
+  const parsed = parseDateValue(value);
+  const [start, setStart] = useState(parsed?.start ?? "");
+  const [end, setEnd] = useState(parsed?.end ?? "");
+  const [ranged, setRanged] = useState(Boolean(parsed?.end));
+
+  const commit = (nextStart: string, nextEnd: string, useRange: boolean) => {
+    if (!nextStart) {
+      onChange(null);
+      return;
+    }
+    onChange(makeDateValue(nextStart, useRange ? nextEnd : undefined));
+  };
+
   return (
     <Popover anchor={anchor} onClose={onClose} width={230} className="date-popover">
       <input
         type="date"
         className="date-input"
         autoFocus
-        defaultValue={value}
-        onChange={(e) => onChange(e.target.value)}
+        value={start}
+        onChange={(e) => {
+          setStart(e.target.value);
+          commit(e.target.value, end, ranged);
+        }}
       />
+      {ranged && (
+        <input
+          type="date"
+          className="date-input"
+          value={end}
+          // An end before the start is not a range; the input enforces it.
+          min={start || undefined}
+          onChange={(e) => {
+            setEnd(e.target.value);
+            commit(start, e.target.value, true);
+          }}
+        />
+      )}
+      <label className="date-range-toggle">
+        <input
+          type="checkbox"
+          checked={ranged}
+          onChange={(e) => {
+            setRanged(e.target.checked);
+            commit(start, end, e.target.checked);
+          }}
+        />
+        End date
+      </label>
       <button
         className="btn subtle"
         onClick={() => {
-          onChange("");
+          onChange(null);
           onClose();
         }}
       >

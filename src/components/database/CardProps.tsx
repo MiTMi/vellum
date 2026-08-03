@@ -2,8 +2,9 @@ import React from "react";
 import { DbProp, PageMeta } from "../../lib/types";
 import {
   computeRollup,
-  formatDateLong,
+  formatDateValue,
   formatTimestamp,
+  parseDateValue,
   RowIndex,
 } from "../../lib/dbviews";
 
@@ -79,10 +80,10 @@ export default function CardProps({
             {ids.length} linked
           </span>,
         );
-    } else if (p.type === "date" && typeof v === "string") {
+    } else if (p.type === "date" && parseDateValue(v)) {
       lines.push(
         <div key={p.id} className="board-date">
-          {formatDateLong(v)}
+          {formatDateValue(v)}
         </div>,
       );
     } else {

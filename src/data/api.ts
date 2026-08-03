@@ -39,6 +39,17 @@ export interface DataApi {
   useLinkPreview(): (url: string) => Promise<LinkPreview | null>;
   /** Page comments — same server-only shape as version history. */
   useComments(): CommentsApi;
+  /** Publish to web — server-only, like history and comments. */
+  usePublish(): PublishApi;
+}
+
+export interface PublishApi {
+  /** False while offline: publishing is a server-authoritative action. */
+  available: boolean;
+  /** Returns the new slug, or null when unpublishing. */
+  set(pageId: PageId, value: boolean): Promise<string | null>;
+  /** Public URL for a slug, or null if the deployment URL is unknown. */
+  urlFor(slug: string): string | null;
 }
 
 export interface VersionHistoryApi {
@@ -102,6 +113,16 @@ export interface Mutations {
     calendarBy?: string;
   }): Promise<void>;
   bootstrap(): Promise<PageId | null>;
+}
+
+/**
+ * Published pages are served by Convex HTTP actions, which live on the
+ * `.site` domain rather than the `.cloud` one the client talks to.
+ */
+export function publicUrlFor(slug: string): string | null {
+  const site = import.meta.env.VITE_CONVEX_SITE_URL;
+  if (!site) return null;
+  return `${site.replace(/\/$/, "")}/p/${slug}`;
 }
 
 export const IS_MOCK = import.meta.env.VITE_MOCK_CONVEX === "1";

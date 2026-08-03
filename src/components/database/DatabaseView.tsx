@@ -4,6 +4,7 @@ import {
   Kanban,
   Calendar as CalendarIcon,
   LayoutGrid,
+  GanttChart,
   ChevronDown,
   ListFilter,
   ArrowUpDown,
@@ -38,6 +39,7 @@ import TableView from "./TableView";
 import BoardView from "./BoardView";
 import CalendarView from "./CalendarView";
 import GalleryView from "./GalleryView";
+import TimelineView from "./TimelineView";
 import Menu from "../ui/Menu";
 import Popover from "../ui/Popover";
 import { PROP_TYPE_META } from "./PropertyMenu";
@@ -148,6 +150,12 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
           >
             <LayoutGrid size={15} /> Gallery
           </button>
+          <button
+            className={`db-tab ${view === "timeline" ? "active" : ""}`}
+            onClick={() => setView("timeline")}
+          >
+            <GanttChart size={15} /> Timeline
+          </button>
         </div>
         <div className="db-toolbar-right">
           {view === "board" && selectProps.length > 1 && (
@@ -165,6 +173,13 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
               {state.groupBy
                 ? `Group: ${dbProps.find((p) => p.id === state.groupBy)?.name ?? "—"}`
                 : "Group"}
+              <ChevronDown size={13} />
+            </button>
+          )}
+          {view === "timeline" && dateProps.length > 1 && (
+            <button className="btn subtle" onClick={(e) => setGroupAnchor(e.currentTarget)}>
+              {dbProps.find((p) => p.id === page.calendarBy && p.type === "date")?.name ??
+                dateProps[0]?.name}
               <ChevronDown size={13} />
             </button>
           )}
@@ -290,6 +305,7 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
       {view === "board" && <BoardView page={page} rows={rows} locked={locked} />}
       {view === "calendar" && <CalendarView page={page} rows={rows} locked={locked} />}
       {view === "gallery" && <GalleryView page={page} rows={rows} locked={locked} />}
+      {view === "timeline" && <TimelineView page={page} rows={rows} locked={locked} />}
 
       {groupAnchor && view === "board" && (
         <Menu
@@ -298,6 +314,16 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
           items={selectProps.map((p) => ({
             label: p.name,
             onClick: () => void mutations.setView({ id: page._id, boardGroupBy: p.id }),
+          }))}
+        />
+      )}
+      {groupAnchor && view === "timeline" && (
+        <Menu
+          anchor={groupAnchor}
+          onClose={() => setGroupAnchor(null)}
+          items={dateProps.map((p) => ({
+            label: p.name,
+            onClick: () => void mutations.setView({ id: page._id, calendarBy: p.id }),
           }))}
         />
       )}

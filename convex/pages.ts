@@ -1,4 +1,9 @@
-import { query, mutation, MutationCtx } from "./_generated/server";
+import {
+  query,
+  mutation,
+  internalQuery,
+  MutationCtx,
+} from "./_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
 import { activeView, dbProp } from "./schema";
@@ -272,6 +277,12 @@ export const createWithDoc = mutation({
     boardGroupBy: v.optional(v.string()),
     calendarBy: v.optional(v.string()),
     updatedAt: v.number(),
+    // Accepted so a stray value can't make the validator reject the whole
+    // replay forever (see the createWithDoc invariant in CLAUDE.md), but
+    // dropped below: publishing is server-authoritative and a page created
+    // offline is never already public.
+    publicSlug: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireUser(ctx);
@@ -280,7 +291,7 @@ export const createWithDoc = mutation({
       .withIndex("by_clientKey", (q) => q.eq("clientKey", args.clientKey))
       .unique();
     if (existing) return existing._id;
-    const { clientKey, ...doc } = args;
+    const { clientKey, publicSlug, publishedAt, ...doc } = args;
     return await ctx.db.insert("pages", {
       ...doc,
       clientKey,
@@ -683,6 +694,88 @@ export const setView = mutation({
 /* ------------------------------------------------------------------ */
 /* Bootstrap — seed a welcoming workspace on first launch              */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* Publish to web                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The slug is the whole access control for a published page, so it has to be
+ * unguessable. 20 base-36 chars ≈ 103 bits.
+ */
+function newPublicSlug(): string {
+  let out = "";
+  while (out.length < 20) {
+    out += Math.random().toString(36).slice(2);
+  }
+  return out.slice(0, 20);
+}
+
+/** Publish or unpublish. Unpublishing clears the slug, killing the old URL. */
+export const setPublished = mutation({
+  args: { id: v.id("pages"), value: v.boolean() },
+  handler: async (ctx, args) => {
+    await requireUser(ctx);
+    const page = await ctx.db.get("pages", args.id);
+    if (!page) return null;
+
+    if (!args.value) {
+      await ctx.db.patch("pages", args.id, {
+        publicSlug: undefined,
+        publishedAt: undefined,
+        updatedAt: Date.now(),
+      });
+      return null;
+    }
+
+    // Publishing an already-published page is a no-op rather than a re-roll,
+    // so a double-click can't invalidate a link that's already been shared.
+    // (Unpublishing *does* drop the slug, so publish-after-unpublish mints a
+    // new one and the revoked URL stays dead — that's the intended contract.)
+    const slug = page.publicSlug ?? newPublicSlug();
+    await ctx.db.patch("pages", args.id, {
+      publicSlug: slug,
+      publishedAt: page.publishedAt ?? Date.now(),
+      updatedAt: Date.now(),
+    });
+    return slug;
+  },
+});
+
+/**
+ * Read a page by its public slug. Internal on purpose: it deliberately skips
+ * `requireUser`, so it must be reachable only from the HTTP action that
+ * serves published pages — never from a client.
+ */
+export const bySlug = internalQuery({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    if (!args.slug) return null;
+    const page = await ctx.db
+      .query("pages")
+      .withIndex("by_publicSlug", (q) => q.eq("publicSlug", args.slug))
+      .unique();
+    // A trashed page stops being public even though the slug survives, so
+    // that restoring it doesn't silently re-expose it under a stale link.
+    if (!page || page.inTrash) return null;
+
+    // Titles for sub-page links/mentions — the renderer prints titles only,
+    // never ids or URLs, so this leaks nothing beyond what the author wrote.
+    const titles: Record<string, string> = {};
+    for (const id of extractPageLinks(page.content)) {
+      const linked = await ctx.db.get("pages", id as Id<"pages">);
+      if (linked) titles[id] = linked.title;
+    }
+
+    return {
+      title: page.title,
+      icon: page.icon ?? null,
+      content: page.content ?? [],
+      updatedAt: page.updatedAt,
+      titles,
+    };
+  },
+});
 
 export const bootstrap = mutation({
   args: {},

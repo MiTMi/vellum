@@ -17,12 +17,14 @@ import {
   Clock,
   History,
   Sigma,
+  FunctionSquare,
 } from "lucide-react";
 import Popover from "../ui/Popover";
 import { DbProp, PropType, RollupCalc, SelectOption } from "../../lib/types";
 import { SELECT_COLORS, randomColor } from "../../lib/colors";
 import { uid } from "../../lib/ranks";
 import { usePage, usePagesList } from "../../data";
+import { checkFormula } from "../../lib/formula";
 
 export const PROP_TYPE_META: Record<
   PropType,
@@ -39,6 +41,7 @@ export const PROP_TYPE_META: Record<
   createdTime: { label: "Created time", icon: <Clock size={15} /> },
   lastEditedTime: { label: "Last edited time", icon: <History size={15} /> },
   rollup: { label: "Rollup", icon: <Sigma size={15} /> },
+  formula: { label: "Formula", icon: <FunctionSquare size={15} /> },
 };
 
 const ROLLUP_CALCS: { id: RollupCalc; label: string }[] = [
@@ -157,6 +160,10 @@ export default function PropertyMenu({
         <RollupConfig prop={prop} dbProps={dbProps} update={update} />
       )}
 
+      {prop.type === "formula" && (
+        <FormulaConfig prop={prop} dbProps={dbProps} update={update} />
+      )}
+
       {isSelect && (
         <>
           <div className="prop-menu-label">Options</div>
@@ -235,6 +242,71 @@ export default function PropertyMenu({
  * reads it through the ordinary `usePage` hook — which works identically in
  * all three data modes.
  */
+/**
+ * Formula editor. Validation is live but non-blocking: the text is saved as
+ * typed (so a half-written expression survives closing the menu) and an
+ * invalid one simply shows the parser's message and renders as "Error" in
+ * the column.
+ */
+function FormulaConfig({
+  prop,
+  dbProps,
+  update,
+}: {
+  prop: DbProp;
+  dbProps: DbProp[];
+  update: (next: DbProp) => void;
+}) {
+  const [text, setText] = useState(prop.formula ?? "");
+  const error = checkFormula(text);
+  // Every property except this one is referenceable, plus the title.
+  const names = ["Name", ...dbProps.filter((p) => p.id !== prop.id).map((p) => p.name)];
+
+  return (
+    <>
+      <div className="prop-menu-label">Formula</div>
+      <textarea
+        className="formula-input"
+        rows={3}
+        spellCheck={false}
+        placeholder={'prop("Price") * prop("Qty")'}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          update({ ...prop, formula: e.target.value });
+        }}
+      />
+      {error ? (
+        <div className="formula-error">{error}</div>
+      ) : (
+        <div className="formula-hint">
+          if · concat · round · dateDiff · dateAdd · today · min · max · sum
+        </div>
+      )}
+      {names.length > 0 && (
+        <>
+          <div className="prop-menu-label">Insert property</div>
+          <div className="formula-chips">
+            {names.map((name, i) => (
+              <button
+                key={`${name}-${i}`}
+                className="formula-chip"
+                onClick={() => {
+                  const next = `${text}${text && !/[\s(,]$/.test(text) ? " " : ""}prop("${name}")`;
+                  setText(next);
+                  update({ ...prop, formula: next });
+                }}
+              >
+                {name || "Untitled"}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 function RollupConfig({
   prop,
   dbProps,

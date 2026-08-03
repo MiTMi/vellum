@@ -1,5 +1,11 @@
 import { useCallback, useMemo } from "react";
-import { CommentsApi, DataApi, Mutations, VersionHistoryApi } from "./api";
+import {
+  CommentsApi,
+  DataApi,
+  Mutations,
+  PublishApi,
+  VersionHistoryApi,
+} from "./api";
 import {
   CommentMeta,
   LinkPreview,
@@ -272,6 +278,21 @@ const mockApi: DataApi = {
             }
           }
         },
+      }),
+      [],
+    );
+  },
+
+  usePublish(): PublishApi {
+    return useMemo<PublishApi>(
+      () => ({
+        available: true,
+        // No backend in mock mode: mint a stable fake slug so the UI can be
+        // driven end-to-end without publishing anything for real.
+        async set(pageId: PageId, value: boolean) {
+          return value ? `mock${String(pageId).slice(-8)}` : null;
+        },
+        urlFor: (slug) => `https://example.invalid/p/${slug}`,
       }),
       [],
     );

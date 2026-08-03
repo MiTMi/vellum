@@ -14,10 +14,13 @@ import {
   FileCode,
   Table,
   Share as ShareIcon,
+  Globe,
+  Check,
+  ExternalLink,
 } from "lucide-react";
 import { PagesIndex, PageMeta, childrenKey } from "../lib/types";
 import { pathTo } from "../hooks/usePagesIndex";
-import { useMutations, usePage } from "../data";
+import { useMutations, usePage, usePublish } from "../data";
 import { useNav } from "../state";
 import Popover from "./ui/Popover";
 import PageMenu from "./PageMenu";
@@ -25,6 +28,7 @@ import {
   exportDatabaseCSV,
   exportPageHTML,
   exportPageMarkdown,
+  exportPagePDF,
 } from "../lib/exporters";
 
 interface TopBarProps {
@@ -176,7 +180,9 @@ function SharePopover({
   };
 
   return (
-    <Popover anchor={anchor} onClose={onClose} align="right" className="menu" width={240}>
+    <Popover anchor={anchor} onClose={onClose} align="right" className="menu" width={280}>
+      <PublishSection page={page} />
+      <div className="menu-divider" />
       <div className="prop-menu-label">Export</div>
       {isDatabase ? (
         <button
@@ -218,9 +224,102 @@ function SharePopover({
             </span>
             <span>Export as HTML</span>
           </button>
+          <button
+            className="menu-item"
+            disabled={busy}
+            onClick={() => void run(() => exportPagePDF(page.title))}
+          >
+            <span className="menu-icon">
+              <FileDown size={15} />
+            </span>
+            <span>Export as PDF</span>
+          </button>
         </>
       )}
       <div className="share-note">Files download to your Downloads folder.</div>
     </Popover>
+  );
+}
+
+/**
+ * Publish to web. The slug returned by the server is the only thing that
+ * makes the page reachable, so "unpublish" genuinely revokes the old link
+ * rather than hiding it — worth saying plainly in the UI.
+ */
+function PublishSection({ page }: { page: PageMeta }) {
+  const publish = usePublish();
+  const fullPage = usePage(page._id);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const slug = fullPage?.publicSlug ?? null;
+  const url = slug ? publish.urlFor(slug) : null;
+
+  const toggle = async (value: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await publish.set(page._id, value);
+    } catch {
+      setError("Couldn't reach the server — try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="prop-menu-label">Share to web</div>
+      {!publish.available ? (
+        <div className="share-note">
+          Publishing needs a connection — reconnect to share this page.
+        </div>
+      ) : (
+        <>
+          <button
+            className="menu-item toggle-row"
+            disabled={busy}
+            onClick={() => void toggle(!slug)}
+          >
+            <span className="menu-icon">
+              <Globe size={15} />
+            </span>
+            <span>{slug ? "Published" : "Publish to web"}</span>
+            <span className={`switch ${slug ? "on" : ""}`} role="switch" aria-checked={!!slug}>
+              <span className="switch-knob" />
+            </span>
+          </button>
+
+          {slug && url && (
+            <div className="publish-box">
+              <input className="publish-link" readOnly value={url} onFocus={(e) => e.target.select()} />
+              <div className="publish-actions">
+                <button
+                  className="btn subtle"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(url);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1200);
+                  }}
+                >
+                  {copied ? <Check size={13} /> : <Copy size={13} />}
+                  {copied ? "Copied" : "Copy link"}
+                </button>
+                <a className="btn subtle" href={url} target="_blank" rel="noreferrer">
+                  <ExternalLink size={13} /> Open
+                </a>
+              </div>
+              <div className="share-note">
+                Anyone with this link can read the page. Unpublishing breaks it
+                permanently.
+              </div>
+            </div>
+          )}
+          {error && <div className="share-note error">{error}</div>}
+        </>
+      )}
+    </>
   );
 }

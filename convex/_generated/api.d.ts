@@ -15,6 +15,7 @@ import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_linkMeta from "../lib/linkMeta.js";
 import type * as lib_pageLinks from "../lib/pageLinks.js";
+import type * as lib_publicHtml from "../lib/publicHtml.js";
 import type * as lib_snippet from "../lib/snippet.js";
 import type * as lib_versions from "../lib/versions.js";
 import type * as linkPreview from "../linkPreview.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/linkMeta": typeof lib_linkMeta;
   "lib/pageLinks": typeof lib_pageLinks;
+  "lib/publicHtml": typeof lib_publicHtml;
   "lib/snippet": typeof lib_snippet;
   "lib/versions": typeof lib_versions;
   linkPreview: typeof linkPreview;

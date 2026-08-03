@@ -187,6 +187,26 @@ ids (deleted row, unsynced temp id) drop out rather than erroring. Adding a
 type to `PropType` forces updates in `PROP_TYPE_META`, `Cell`, `CardProps`
 and `sortValue` — let the typechecker find them.
 
+Date properties hold **either** a bare `"YYYY-MM-DD"` string (everything
+written before ranges existed) **or** `{ start, end }`. Nothing reads the raw
+value — go through `parseDateValue` / `makeDateValue` / `formatDateValue` in
+`lib/dbviews.ts`, which keeps both shapes interchangeable and means no
+migration was needed. `makeDateValue` deliberately stores the narrower
+string when there is no end date.
+
+The **timeline** view (`TimelineView.tsx`) is a Gantt chart over that
+property; it shares `page.calendarBy` with the calendar rather than adding a
+second "which date column" field. Undated rows are listed under the chart
+instead of being dropped.
+
+**Formula** properties (`formula` on `dbProp`) are computed at render like
+rollups — never stored. The language lives in `src/lib/formula.ts`: a
+hand-written tokenizer + precedence-climbing parser, deliberately **not**
+`eval`/`Function`, because the expression is user input evaluated on every
+render. `computeFormula` (`lib/dbviews.ts`) bridges it to a row, flattening
+each referenced property to a scalar and passing a `seen` set so two
+formulas referencing each other terminate instead of recursing forever.
+
 ### Row peek (`PeekModal.tsx`)
 
 Database rows open in a centered overlay rather than navigating. It reuses
@@ -254,6 +274,32 @@ with `javascript: false` → `printToPDF` → native save dialog), while the
 browser build can only hand the same HTML to the print dialog — hence the
 distinct `"saved"` vs `"printed"` results.
 
+### Publish to web
+
+`pages.setPublished` mints an unguessable `publicSlug`; the HTTP action at
+`/p/<slug>` (`convex/http.ts`) serves that page to anyone, with no auth. It
+is the **only** unauthenticated route in the backend, so treat its
+invariants as security-critical:
+
+- **The slug is the access control.** Unpublishing clears it (rather than
+  setting a flag), which permanently kills the old URL. Publishing an
+  already-published page keeps the slug so a double-click can't invalidate a
+  link that's been shared.
+- `pages.bySlug` is an `internalQuery` precisely because it skips
+  `requireUser` — it must stay unreachable from any client.
+- A trashed page stops being served even while it holds a slug.
+- HTML comes from `convex/lib/publicHtml.ts` (BlockNote can't run
+  server-side). Everything is escaped, `href`/`src` are restricted to
+  http(s), and **links to other pages render as plain titles, never URLs or
+  ids** — a published page must not leak the existence of private ones.
+  `tests/publicHtml.test.ts` covers each of those.
+- `publicSlug`/`publishedAt` are stripped in `toCreatePayload` *and* accepted
+  (then dropped) by `createWithDoc`, so a slug can never ride along on an
+  offline create and permanently break that page's replay.
+
+Publishing is server-only, like history and comments: `usePublish()` goes
+through `convexClient()` and reports `available: false` while offline.
+
 ### Search
 
 `pages.search` and the replica's `useSearch` both build contextual snippets
@@ -279,7 +325,8 @@ plain rows with a `run()` callback.
 - `npm run build` — typecheck + vite build.
 - `node scripts/e2e*.mjs` — Playwright UI suites against a mock-mode vite
   server on port 5199 (`VITE_MOCK_CONVEX=1 npx vite --port 5199`), e.g.
-  `e2e-embeds.mjs` (embed block + export menu).
+  `e2e-embeds.mjs` (embed block + export menu) and `e2e-dbfeatures.mjs`
+  (date ranges, timeline, formulas).
   The scripts default to `/opt/pw-browsers/chromium`; set `CHROMIUM_PATH` if
   your Playwright browsers live elsewhere (e.g.
   `~/Library/Caches/ms-playwright/chromium-*/chrome-mac-arm64/…`).

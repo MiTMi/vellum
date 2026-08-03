@@ -29,7 +29,8 @@ export type PropType =
   | "relation"
   | "createdTime"
   | "lastEditedTime"
-  | "rollup";
+  | "rollup"
+  | "formula";
 
 /** Aggregations a rollup property can apply to the related rows. */
 export type RollupCalc =
@@ -47,9 +48,15 @@ export const COMPUTED_PROP_TYPES: PropType[] = [
   "createdTime",
   "lastEditedTime",
   "rollup",
+  "formula",
 ];
 
-export type ViewKind = "table" | "board" | "calendar" | "gallery";
+export type ViewKind =
+  | "table"
+  | "board"
+  | "calendar"
+  | "gallery"
+  | "timeline";
 
 export interface SelectOption {
   id: string;
@@ -71,6 +78,8 @@ export interface DbProp {
   rollupPropId?: string;
   /** rollup props: how to aggregate the collected values */
   rollupCalc?: RollupCalc | string;
+  /** formula props: expression source, evaluated at render */
+  formula?: string;
 }
 
 export interface PagesIndex {
@@ -114,6 +123,9 @@ export interface PageDoc {
   boardGroupBy?: string;
   calendarBy?: string;
   updatedAt: number;
+  /** Set while the page is published to the web (see pages.setPublished). */
+  publicSlug?: string;
+  publishedAt?: number;
 }
 
 /** One entry in a page's history (metadata only — content fetched on demand). */

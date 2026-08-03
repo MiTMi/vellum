@@ -1,7 +1,13 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { CommentsApi, DataApi, VersionHistoryApi } from "./api";
+import {
+  CommentsApi,
+  DataApi,
+  PublishApi,
+  publicUrlFor,
+  VersionHistoryApi,
+} from "./api";
 import {
   CommentMeta,
   LinkPreview,
@@ -108,6 +114,29 @@ const offlineApi: DataApi = {
             id: id as Id<"comments">,
           });
         },
+      }),
+      [connected],
+    );
+  },
+
+  usePublish(): PublishApi {
+    const connected = useSyncExternalStore(
+      (cb) => offlineEngine().subscribeStatus(cb),
+      () => offlineEngine().getStatus().connected,
+      () => false,
+    );
+    return useMemo<PublishApi>(
+      () => ({
+        available: connected,
+        set: async (pageId, value) => {
+          // A page created offline has no server id to publish yet.
+          if (isLocalId(pageId)) return null;
+          return (await convexClient().mutation(api.pages.setPublished, {
+            id: pageId as Id<"pages">,
+            value,
+          })) as string | null;
+        },
+        urlFor: publicUrlFor,
       }),
       [connected],
     );

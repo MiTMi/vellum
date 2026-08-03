@@ -5,6 +5,7 @@ import {
   Mutations,
   VersionHistoryApi,
   CommentsApi,
+  PublishApi,
 } from "./api";
 import realApi from "./real";
 import mockApi from "./mock";
@@ -54,6 +55,9 @@ export function useLinkPreview(): (url: string) => Promise<LinkPreview | null> {
 export function useComments(): CommentsApi {
   return impl.useComments();
 }
+export function usePublish(): PublishApi {
+  return impl.usePublish();
+}
 
 export { IS_MOCK, IS_DIRECT };
-export type { Mutations, VersionHistoryApi, CommentsApi };
+export type { Mutations, VersionHistoryApi, CommentsApi, PublishApi };

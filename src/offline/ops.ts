@@ -31,6 +31,10 @@ export function toCreatePayload(doc: PageDoc): CreateDocPayload {
   // doesn't know about; createWithDoc's validator rejects them.
   delete (rest as Record<string, unknown>).contentUpdatedAt;
   delete (rest as Record<string, unknown>).clientKey;
+  // Publishing is server-authoritative — the slug is minted by the server
+  // and grants public access, so it must never ride along on a create.
+  delete (rest as Record<string, unknown>).publicSlug;
+  delete (rest as Record<string, unknown>).publishedAt;
   return rest;
 }
 

@@ -1,7 +1,14 @@
 import { useCallback, useMemo } from "react";
 import { useQuery, useMutation, useAction, useConvex } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { CommentsApi, DataApi, Mutations, VersionHistoryApi } from "./api";
+import {
+  CommentsApi,
+  DataApi,
+  Mutations,
+  PublishApi,
+  publicUrlFor,
+  VersionHistoryApi,
+} from "./api";
 import {
   BacklinkMeta,
   CommentMeta,
@@ -141,6 +148,19 @@ const realApi: DataApi = {
         },
       }),
       [client, add, setResolved, remove],
+    );
+  },
+
+  usePublish(): PublishApi {
+    const setPublished = useMutation(api.pages.setPublished);
+    return useMemo<PublishApi>(
+      () => ({
+        available: true,
+        set: async (pageId, value) =>
+          (await setPublished({ id: pageId, value })) as string | null,
+        urlFor: publicUrlFor,
+      }),
+      [setPublished],
     );
   },
 
