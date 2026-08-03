@@ -17,9 +17,11 @@
     "convex:deploy": "convex deploy"
   },
   "dependencies": {
+    "@auth/core": "^0.41.1",
     "@blocknote/core": "0.52.1",
     "@blocknote/mantine": "0.52.1",
     "@blocknote/react": "0.52.1",
+    "@convex-dev/auth": "^0.0.94",
     "@floating-ui/react": "^0.27.18",
     "@mantine/core": "^9.4.2",
     "@mantine/hooks": "^9.4.2",

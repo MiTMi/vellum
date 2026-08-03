@@ -8,8 +8,11 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
 import type * as comments from "../comments.js";
 import type * as files from "../files.js";
+import type * as http from "../http.js";
+import type * as lib_auth from "../lib/auth.js";
 import type * as lib_linkMeta from "../lib/linkMeta.js";
 import type * as lib_pageLinks from "../lib/pageLinks.js";
 import type * as lib_snippet from "../lib/snippet.js";
@@ -25,8 +28,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
   comments: typeof comments;
   files: typeof files;
+  http: typeof http;
+  "lib/auth": typeof lib_auth;
   "lib/linkMeta": typeof lib_linkMeta;
   "lib/pageLinks": typeof lib_pageLinks;
   "lib/snippet": typeof lib_snippet;

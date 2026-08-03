@@ -2,6 +2,7 @@ import { query, mutation, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
 import { activeView, dbProp } from "./schema";
+import { requireUser } from "./lib/auth";
 import { extractPageLinks } from "./lib/pageLinks";
 import { makeSnippet } from "./lib/snippet";
 import {
@@ -71,6 +72,7 @@ async function forSubtree(
 export const list = query({
   args: {},
   handler: async (ctx) => {
+    await requireUser(ctx);
     const pages = await ctx.db.query("pages").collect();
     return pages
       .filter((p) => !p.inTrash)
@@ -95,6 +97,7 @@ export const list = query({
 export const get = query({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     return await ctx.db.get("pages", args.id);
   },
 });
@@ -102,6 +105,7 @@ export const get = query({
 export const trashed = query({
   args: {},
   handler: async (ctx) => {
+    await requireUser(ctx);
     const pages = await ctx.db.query("pages").collect();
     return pages
       .filter((p) => p.inTrash && p.trashRoot)
@@ -124,6 +128,7 @@ export const trashed = query({
 export const syncIndex = query({
   args: {},
   handler: async (ctx) => {
+    await requireUser(ctx);
     const pages = await ctx.db.query("pages").collect();
     return pages.map((p) => ({ _id: p._id, updatedAt: p.updatedAt }));
   },
@@ -133,6 +138,7 @@ export const syncIndex = query({
 export const getMany = query({
   args: { ids: v.array(v.id("pages")) },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const docs: Doc<"pages">[] = [];
     for (const id of args.ids) {
       const doc = await ctx.db.get("pages", id);
@@ -146,6 +152,7 @@ export const getMany = query({
 export const backlinks = query({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const pages = await ctx.db.query("pages").collect();
     return pages
       .filter(
@@ -167,6 +174,7 @@ export const backlinks = query({
 export const search = query({
   args: { term: v.string() },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     if (!args.term.trim()) return [];
     const results = await ctx.db
       .query("pages")
@@ -198,6 +206,7 @@ export const create = mutation({
     props: v.optional(v.record(v.string(), v.any())),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const rank = await nextRank(ctx, args.parentId);
     const now = Date.now();
     const id = await ctx.db.insert("pages", {
@@ -265,6 +274,7 @@ export const createWithDoc = mutation({
     updatedAt: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const existing = await ctx.db
       .query("pages")
       .withIndex("by_clientKey", (q) => q.eq("clientKey", args.clientKey))
@@ -288,6 +298,7 @@ export const rename = mutation({
     clientUpdatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
     if (
@@ -316,6 +327,7 @@ export const updateContent = mutation({
     clientUpdatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
     if (
@@ -369,6 +381,7 @@ export const updateContent = mutation({
 export const setIcon = mutation({
   args: { id: v.id("pages"), icon: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
     await ctx.db.patch("pages", args.id, {
@@ -381,6 +394,7 @@ export const setIcon = mutation({
 export const setCover = mutation({
   args: { id: v.id("pages"), cover: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
     await ctx.db.patch("pages", args.id, {
@@ -402,6 +416,7 @@ export const setPageOptions = mutation({
     locked: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
@@ -421,6 +436,7 @@ export const toggleFavorite = mutation({
     value: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
     await ctx.db.patch("pages", args.id, {
@@ -437,6 +453,7 @@ export const setTemplate = mutation({
     value: v.boolean(),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
     await ctx.db.patch("pages", args.id, {
@@ -457,6 +474,7 @@ export const move = mutation({
     rank: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     if (args.parentId) {
       // Prevent moving a page inside its own subtree.
       let cursor: Id<"pages"> | undefined = args.parentId;
@@ -492,6 +510,7 @@ export const duplicate = mutation({
     toRoot: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const src = await ctx.db.get("pages", args.id);
     if (!src) return null;
 
@@ -545,6 +564,7 @@ export const duplicate = mutation({
 export const trash = mutation({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const now = Date.now();
     await forSubtree(ctx, args.id, async (page) => {
       await ctx.db.patch("pages", page._id, {
@@ -561,6 +581,7 @@ export const trash = mutation({
 export const restore = mutation({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
     // If the original parent is gone or still in the trash, restore to root.
@@ -584,6 +605,7 @@ export const restore = mutation({
 export const deleteForever = mutation({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ids: Id<"pages">[] = [];
     await forSubtree(ctx, args.id, async (p) => {
       ids.push(p._id);
@@ -598,6 +620,7 @@ export const deleteForever = mutation({
 export const emptyTrash = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireUser(ctx);
     const pages = await ctx.db.query("pages").collect();
     for (const p of pages) {
       if (p.inTrash) {
@@ -615,6 +638,7 @@ export const emptyTrash = mutation({
 export const updateDbProps = mutation({
   args: { id: v.id("pages"), dbProps: v.array(dbProp) },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
     await ctx.db.patch("pages", args.id, {
@@ -627,6 +651,7 @@ export const updateDbProps = mutation({
 export const setRowProp = mutation({
   args: { id: v.id("pages"), propId: v.string(), value: v.any() },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
     const props = { ...(page.props ?? {}) };
@@ -644,6 +669,7 @@ export const setView = mutation({
     calendarBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
@@ -661,6 +687,7 @@ export const setView = mutation({
 export const bootstrap = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireUser(ctx);
     const existing = await ctx.db.query("pages").first();
     if (existing) return null;
     const now = Date.now();

@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireUser } from "./lib/auth";
 
 /**
  * Page comments.
@@ -14,6 +15,7 @@ const MAX_COMMENTS = 200;
 export const list = query({
   args: { pageId: v.id("pages") },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     return await ctx.db
       .query("comments")
       .withIndex("by_page", (q) => q.eq("pageId", args.pageId))
@@ -24,6 +26,7 @@ export const list = query({
 export const add = mutation({
   args: { pageId: v.id("pages"), text: v.string() },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const text = args.text.trim();
     if (!text) return null;
     // Replayed/raced writes must not resurrect a comment on a deleted page.
@@ -42,6 +45,7 @@ export const setResolved = mutation({
   // here follows, so a double-send can't flip it back.
   args: { id: v.id("comments"), value: v.boolean() },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const comment = await ctx.db.get("comments", args.id);
     if (!comment) return;
     await ctx.db.patch("comments", args.id, { resolved: args.value });
@@ -51,6 +55,7 @@ export const setResolved = mutation({
 export const remove = mutation({
   args: { id: v.id("comments") },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const comment = await ctx.db.get("comments", args.id);
     if (!comment) return;
     await ctx.db.delete("comments", args.id);

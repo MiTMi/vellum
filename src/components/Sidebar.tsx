@@ -14,6 +14,7 @@ import { PageId, PagesIndex } from "../lib/types";
 import { IS_DIRECT, IS_MOCK, useMutations } from "../data";
 import { useSyncStatus } from "../offline/runtime";
 import { useNav } from "../state";
+import { SignOutButton } from "./Auth";
 import PageTreeItem from "./PageTreeItem";
 import Menu from "./ui/Menu";
 
@@ -289,6 +290,7 @@ export default function Sidebar({
         <button className="icon-btn" title="Trash" onClick={onOpenTrash}>
           <Trash2 size={15} />
         </button>
+        {!IS_MOCK && <SignOutButton />}
       </div>
 
       {newMenuAnchor && (

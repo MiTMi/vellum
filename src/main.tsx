@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexReactClient } from "convex/react";
+import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import App from "./App";
+import { AuthGate } from "./components/Auth";
 import { IS_DIRECT, IS_MOCK } from "./data/api";
 import { initOfflineRuntime } from "./offline/runtime";
 
@@ -86,11 +88,13 @@ if (IS_MOCK) {
   const ready = IS_DIRECT ? Promise.resolve() : initOfflineRuntime(convex);
   root.render(
     <React.StrictMode>
-      <ConvexProvider client={convex}>
-        <Boot ready={ready}>
-          <App />
-        </Boot>
-      </ConvexProvider>
+      <ConvexAuthProvider client={convex}>
+        <AuthGate client={convex}>
+          <Boot ready={ready}>
+            <App />
+          </Boot>
+        </AuthGate>
+      </ConvexAuthProvider>
     </React.StrictMode>,
   );
 }

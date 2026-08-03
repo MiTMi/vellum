@@ -1,18 +1,22 @@
 /**
  * E2E offline-sync drive for Vellum (REAL Convex mode).
  * Requires: a dev deployment (.env.local) with current functions pushed,
- * and a vite server running WITHOUT VITE_MOCK_CONVEX.
+ * a vite server running WITHOUT VITE_MOCK_CONVEX, and — since the backend
+ * requires sign-in — the owner's password in VELLUM_E2E_PASSWORD (the email
+ * defaults to the deployment's OWNER_EMAIL env var).
  *
- * Flow: edit online → go offline → keep editing + create a page →
+ * Server-side checks/cleanup shell out to `npx convex run --identity …`,
+ * which authenticates with the CLI's admin key — no password needed there.
+ *
+ * Flow: sign in → edit online → go offline → keep editing + create a page →
  * "restart" the app while still offline (replica must serve from IndexedDB)
  * → reconnect → assert everything converged on the server. Cleans up after
  * itself.
  *
- * Usage: E2E_URL=http://localhost:5201 node scripts/e2e-offline.mjs
+ * Usage: VELLUM_E2E_PASSWORD=… E2E_URL=http://localhost:5201 node scripts/e2e-offline.mjs
  */
 import { chromium } from "playwright";
-import { ConvexHttpClient } from "convex/browser";
-import { api } from "../convex/_generated/api.js";
+import { execFileSync } from "node:child_process";
 import fs from "fs";
 
 const BASE = process.env.E2E_URL ?? "http://localhost:5201";
@@ -21,10 +25,37 @@ const SHOTS = process.argv.includes("--shots-dir")
   : "/tmp/shots";
 fs.mkdirSync(SHOTS, { recursive: true });
 
-const envLocal = fs.readFileSync(new URL("../.env.local", import.meta.url), "utf8");
-const convexUrl = envLocal.match(/VITE_CONVEX_URL=(\S+)/)?.[1];
-if (!convexUrl) throw new Error("VITE_CONVEX_URL not found in .env.local");
-const server = new ConvexHttpClient(convexUrl);
+const ROOT = new URL("..", import.meta.url).pathname;
+
+function convexCli(...args) {
+  return execFileSync("npx", ["convex", ...args], {
+    cwd: ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+/** Authenticated server call: the CLI's admin key + an impersonated identity. */
+function serverCall(fn, args = {}) {
+  const out = convexCli(
+    "run",
+    fn,
+    JSON.stringify(args),
+    "--identity",
+    JSON.stringify({ subject: "owner|e2e" }),
+  );
+  return out.trim() ? JSON.parse(out) : null;
+}
+
+const EMAIL =
+  process.env.VELLUM_E2E_EMAIL ?? convexCli("env", "get", "OWNER_EMAIL").trim();
+const PASSWORD = process.env.VELLUM_E2E_PASSWORD;
+if (!PASSWORD) {
+  console.error(
+    "The app requires sign-in: set VELLUM_E2E_PASSWORD to the owner's password.",
+  );
+  process.exit(1);
+}
 
 let failures = 0;
 const results = [];
@@ -54,11 +85,16 @@ const chipHidden = () =>
   });
 
 try {
-  // ---------- boot online ----------
+  // ---------- sign in (fresh browser profile → always the login screen) ----------
   await page.goto(BASE);
-  await page.waitForSelector(".sidebar", { timeout: 15000 });
+  await page.waitForSelector(".login-card", { timeout: 15000 });
+  await page.fill('input[name="email"]', EMAIL);
+  await page.fill('input[name="password"]', PASSWORD);
+  await page.click(".login-submit");
+  await page.waitForSelector(".sidebar", { timeout: 20000 });
+  check("signs in and boots online", true);
   await chipHidden();
-  check("boots online with no sync chip", true);
+  check("no sync chip once signed in", true);
 
   // ---------- create + edit a page online ----------
   await page.click(".sidebar-footer .new-page");
@@ -68,7 +104,7 @@ try {
   await page.keyboard.type("written online");
   await page.waitForTimeout(1200); // debounce + drain
   await chipHidden();
-  let pages = await server.query(api.pages.list, {});
+  let pages = await serverCall("pages:list");
   const onlinePage = pages.find((p) => p.title === PAGE_TITLE);
   check("online edit reaches the server", !!onlinePage);
 
@@ -99,7 +135,9 @@ try {
 
   // ---------- 'restart' while still offline ----------
   // A second tab with Convex blocked (assets still load): the replica must
-  // hydrate from IndexedDB with every offline change intact.
+  // hydrate from IndexedDB with every offline change intact. Auth-wise this
+  // exercises the prior-session path: the tab can't reach the server, so
+  // AuthGate must open the local replica on the vellum:hasSession flag.
   const page2 = await context.newPage();
   await context.setOffline(false);
   await page2.route(/convex\.cloud/, (route) => route.abort());
@@ -132,7 +170,7 @@ try {
   await chipHidden();
   check("reconnect: sync chip clears", true);
 
-  pages = await server.query(api.pages.list, {});
+  pages = await serverCall("pages:list");
   const edited = pages.find((p) => p.title === PAGE_TITLE);
   const born = pages.find((p) => p.title === BORN_TITLE);
   check("reconnect: offline-created page reached the server", !!born);
@@ -142,14 +180,14 @@ try {
     born?._id,
   );
   const editedDoc = edited
-    ? await server.query(api.pages.get, { id: edited._id })
+    ? await serverCall("pages:get", { id: edited._id })
     : null;
   check(
     "reconnect: offline edit merged into server doc",
     !!editedDoc?.contentText?.includes("plus offline words"),
     editedDoc?.contentText ?? "(missing)",
   );
-  const bornDoc = born ? await server.query(api.pages.get, { id: born._id }) : null;
+  const bornDoc = born ? await serverCall("pages:get", { id: born._id }) : null;
   check(
     "reconnect: offline-born content on server",
     !!bornDoc?.contentText?.includes("offline-born content"),
@@ -168,11 +206,11 @@ try {
 } finally {
   // ---------- cleanup test pages from the dev deployment ----------
   try {
-    const pages = await server.query(api.pages.list, {});
+    const pages = await serverCall("pages:list");
     for (const p of pages) {
       if (p.title === PAGE_TITLE || p.title === BORN_TITLE) {
-        await server.mutation(api.pages.trash, { id: p._id });
-        await server.mutation(api.pages.deleteForever, { id: p._id });
+        await serverCall("pages:trash", { id: p._id });
+        await serverCall("pages:deleteForever", { id: p._id });
       }
     }
   } catch {

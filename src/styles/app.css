@@ -3208,3 +3208,83 @@ tbody.db-group + tbody.db-group .group-row td {
   animation: block-flash 1.6s ease;
   border-radius: 4px;
 }
+
+/* ---------------------------- Login screen ---------------------------- */
+
+.login-screen {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.login-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 300px;
+  padding: 36px 32px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  background: var(--bg);
+  text-align: center;
+}
+.login-logo {
+  font-size: 34px;
+}
+.login-card h1 {
+  font-size: 20px;
+  margin: 0;
+  color: var(--text);
+}
+.login-sub {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.login-input {
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  outline: none;
+}
+.login-input:focus {
+  border-color: var(--accent);
+}
+.login-error {
+  font-size: 12.5px;
+  color: var(--danger);
+}
+.login-submit {
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.login-submit:hover {
+  background: var(--accent-hover);
+}
+.login-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.login-flip {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.login-flip:hover {
+  color: var(--text);
+}

@@ -25,7 +25,12 @@ const modules = import.meta.glob([
   "../../convex/_generated/*.js",
 ]);
 
-type Backend = ReturnType<typeof convexTest>;
+// Functions require a signed-in user; bind the owner identity up front.
+function makeBackend() {
+  return convexTest(schema, modules).withIdentity({ subject: "owner|test" });
+}
+
+type Backend = ReturnType<typeof makeBackend>;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -87,7 +92,7 @@ async function makeDevice(backend: Backend) {
 }
 
 test("connect pulls existing server state into the replica", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const id = await backend.mutation(api.pages.create, {
     type: "doc",
     title: "Server note",
@@ -100,7 +105,7 @@ test("connect pulls existing server state into the replica", async () => {
 });
 
 test("offline edits replay on reconnect and reach the server", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const id = await backend.mutation(api.pages.create, {
     type: "doc",
     title: "Draft",
@@ -129,7 +134,7 @@ test("offline edits replay on reconnect and reach the server", async () => {
 });
 
 test("offline-created tree syncs with id remapping (parent, child, pageLink)", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const dev = await makeDevice(backend);
   dev.setConnected(true);
   await dev.settle(); // first sync so we're a known-empty workspace
@@ -169,7 +174,7 @@ test("offline-created tree syncs with id remapping (parent, child, pageLink)", a
 });
 
 test("two devices converge via LWW — newest content edit wins", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const id = await backend.mutation(api.pages.create, {
     type: "doc",
     title: "Shared",
@@ -210,7 +215,7 @@ test("two devices converge via LWW — newest content edit wins", async () => {
 });
 
 test("replaying a create after a crash does not duplicate the page", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const dev1 = await makeDevice(backend);
   await dev1.mutations.create({ type: "doc", title: "Crashy" });
   const rawOp = structuredClone(dev1.outbox.peek()!.op);
@@ -231,7 +236,7 @@ test("replaying a create after a crash does not duplicate the page", async () =>
 });
 
 test("server-side deletions propagate to the replica", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const id = await backend.mutation(api.pages.create, {
     type: "doc",
     title: "Doomed",
@@ -249,7 +254,7 @@ test("server-side deletions propagate to the replica", async () => {
 });
 
 test("a page created and deleted offline never reaches the server", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const dev = await makeDevice(backend);
   const temp = await dev.mutations.create({ type: "doc", title: "Ephemeral" });
   await dev.mutations.updateContent({
@@ -267,7 +272,7 @@ test("a page created and deleted offline never reaches the server", async () => 
 });
 
 test("offline edit to a page deleted elsewhere is dropped cleanly", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const id = await backend.mutation(api.pages.create, {
     type: "doc",
     title: "Racing",
@@ -289,7 +294,7 @@ test("offline edit to a page deleted elsewhere is dropped cleanly", async () => 
 });
 
 test("duplicating a server-pulled page syncs cleanly", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const id = await backend.mutation(api.pages.create, {
     type: "doc",
     title: "Original",
@@ -319,7 +324,7 @@ test("duplicating a server-pulled page syncs cleanly", async () => {
 });
 
 test("boot sweep clears a ghost temp page left by a crash after create-ack", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const dev1 = await makeDevice(backend);
   const temp = await dev1.mutations.create({ type: "doc", title: "Crashish" });
   dev1.setConnected(true);
@@ -356,7 +361,7 @@ test("boot sweep clears a ghost temp page left by a crash after create-ack", asy
 });
 
 test("bootstrap waits for first sync, then seeds an empty workspace once", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const dev = await makeDevice(backend);
   dev.setConnected(true);
   await dev.settle();
@@ -377,7 +382,7 @@ test("bootstrap waits for first sync, then seeds an empty workspace once", async
 });
 
 test("offline-created relations resolve to real ids on both sides", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const dev = await makeDevice(backend);
   dev.setConnected(true);
   await dev.settle();
@@ -438,7 +443,7 @@ test("offline-created relations resolve to real ids on both sides", async () => 
 });
 
 test("offline template flag and instantiation replay to the server", async () => {
-  const backend = convexTest(schema, modules);
+  const backend = makeBackend();
   const dev = await makeDevice(backend);
   dev.setConnected(true);
   await dev.settle();

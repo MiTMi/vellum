@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireUser } from "./lib/auth";
 import { MAX_VERSIONS_PER_PAGE } from "./lib/versions";
 
 /**
@@ -12,6 +13,7 @@ import { MAX_VERSIONS_PER_PAGE } from "./lib/versions";
 export const list = query({
   args: { pageId: v.id("pages") },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const rows = await ctx.db
       .query("pageVersions")
       .withIndex("by_page", (q) => q.eq("pageId", args.pageId))
@@ -29,6 +31,7 @@ export const list = query({
 export const get = query({
   args: { id: v.id("pageVersions") },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     return await ctx.db.get("pageVersions", args.id);
   },
 });

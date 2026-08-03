@@ -68,6 +68,32 @@ Invariants to preserve when touching `convex/pages.ts`:
   temp id after the create syncs (the server side is already covered by
   `mapIdsDeep`).
 
+### Auth
+
+Convex Auth with a single Password provider (`convex/auth.ts`), restricted
+to the deployment's `OWNER_EMAIL` env var — a single-user lock, not
+multi-user auth. Key material and `SITE_URL` live as deployment env vars
+(set by `npx @convex-dev/auth`).
+
+- **Every public function in `convex/` must start with
+  `await requireUser(ctx)`** (`convex/lib/auth.ts`). The convex-test suites
+  bind an identity with `.withIdentity({ subject: "owner|test" })`;
+  `tests/pages.test.ts` has a regression test asserting anonymous calls are
+  rejected.
+- Client wiring is `ConvexAuthProvider` + `AuthGate` (`main.tsx`,
+  `src/components/Auth.tsx`). Offline rule: a machine with a prior session
+  (localStorage `vellum:hasSession`) may open its local replica while
+  unauthenticated, but the sync engine's transport stays gated —
+  `setSyncAuthorized` in `src/offline/runtime.ts` — because `drainOutbox`
+  treats server rejections as deterministic and would otherwise DROP queued
+  edits while logged out. Mock mode bypasses auth entirely.
+- Ad-hoc/scripted calls need an impersonated identity (any subject works;
+  the CLI already holds the admin key):
+  `npx convex run pages:list '{}' --identity '{"subject": "owner|cli"}'`.
+  `scripts/e2e-offline.mjs` uses exactly this for its server-side checks
+  and cleanup, and signs into the real UI with `VELLUM_E2E_PASSWORD`
+  (email defaults to the deployment's `OWNER_EMAIL`).
+
 ### Editor (`src/components/Editor.tsx`)
 
 BlockNote with custom block specs registered on one shared `schema`:
@@ -233,7 +259,8 @@ plain rows with a `run()` callback.
   `~/Library/Caches/ms-playwright/chromium-*/chrome-mac-arm64/…`).
 - `node scripts/e2e-offline.mjs` — offline-sync e2e against the REAL dev
   deployment (vite on port 5201, no mock flag; push functions first with
-  `npx convex dev --once`).
+  `npx convex dev --once`). Sign-in is required: pass the owner's password
+  as `VELLUM_E2E_PASSWORD` (the owner account must already exist).
 
 **The dev deployment in `.env.local` contains real user data.** Anything
 that writes to it (e2e-offline, ad-hoc scripts) must create uniquely-named

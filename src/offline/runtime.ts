@@ -8,6 +8,7 @@ import {
   createSyncEngine,
   SyncEngine,
   SyncStatus,
+  SyncTransport,
 } from "./sync";
 
 /**
@@ -40,6 +41,63 @@ export function convexClient(): ConvexReactClient {
   return client;
 }
 
+/**
+ * Auth gate over the transport. The engine must never talk to the server
+ * before Convex Auth has confirmed an identity: drainOutbox treats any
+ * rejected mutation as a deterministic server error and DROPS the op, so
+ * draining while "Not authenticated" would silently discard queued edits.
+ * Until the gate opens the transport simply reports "disconnected" — the
+ * same state the engine already handles for a network outage.
+ */
+let syncAuthorized = false;
+let gateChanged: (() => void) | null = null;
+
+export function setSyncAuthorized(ok: boolean): void {
+  if (ok === syncAuthorized) return;
+  syncAuthorized = ok;
+  gateChanged?.();
+}
+
+function gateTransport(inner: SyncTransport): SyncTransport {
+  const connListeners = new Set<(up: boolean) => void>();
+  const pendingWatches = new Set<() => void>();
+  const up = () => syncAuthorized && inner.isConnected();
+  gateChanged = () => {
+    for (const attach of [...pendingWatches]) attach();
+    for (const cb of connListeners) cb(up());
+  };
+  return {
+    ...inner,
+    isConnected: up,
+    subscribeConnection(cb) {
+      connListeners.add(cb);
+      const unsub = inner.subscribeConnection(() => cb(up()));
+      return () => {
+        connListeners.delete(cb);
+        unsub();
+      };
+    },
+    // The server-side watch is deferred too — a pre-auth subscription just
+    // streams "Not authenticated" errors at the console.
+    subscribeSyncIndex(cb) {
+      let unsub: (() => void) | null = null;
+      const attach = () => {
+        if (!unsub && syncAuthorized) {
+          pendingWatches.delete(attach);
+          unsub = inner.subscribeSyncIndex(cb);
+        }
+      };
+      if (syncAuthorized) attach();
+      else pendingWatches.add(attach);
+      return () => {
+        pendingWatches.delete(attach);
+        if (unsub) unsub();
+        unsub = null;
+      };
+    },
+  };
+}
+
 export async function initOfflineRuntime(
   convex: ConvexReactClient,
 ): Promise<void> {
@@ -59,7 +117,7 @@ export async function initOfflineRuntime(
     db,
     store,
     outbox,
-    transport: createConvexTransport(convex),
+    transport: gateTransport(createConvexTransport(convex)),
   });
   await engine.start();
 }

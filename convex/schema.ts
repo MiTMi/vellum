@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { authTables } from "@convex-dev/auth/server";
 
 /**
  * Vellum data model.
@@ -60,6 +61,11 @@ export const activeView = v.union(
 );
 
 export default defineSchema({
+  // Convex Auth's account/session/user tables. The whole workspace is
+  // single-tenant: functions gate on "is the owner signed in" (see
+  // lib/auth.ts) rather than per-document ownership.
+  ...authTables,
+
   pages: defineTable({
     title: v.string(),
     type: v.union(v.literal("doc"), v.literal("database")),

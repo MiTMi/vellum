@@ -15,9 +15,22 @@ const modules = import.meta.glob([
   "../convex/_generated/*.js",
 ]);
 
+// Every function requires a signed-in user (see convex/lib/auth.ts), so the
+// default accessor carries the owner's identity. `subject` mimics Convex
+// Auth's "<userId>|<sessionId>" shape.
 function t() {
-  return convexTest(schema, modules);
+  return convexTest(schema, modules).withIdentity({ subject: "owner|test" });
 }
+
+test("unauthenticated calls are rejected", async () => {
+  const anon = convexTest(schema, modules);
+  await expect(anon.query(api.pages.list, {})).rejects.toThrow(
+    /Not authenticated/,
+  );
+  await expect(
+    anon.mutation(api.pages.create, { type: "doc", title: "nope" }),
+  ).rejects.toThrow(/Not authenticated/);
+});
 
 test("bootstrap seeds a welcome page exactly once", async () => {
   const ctx = t();

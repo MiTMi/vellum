@@ -1,5 +1,6 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
+import { requireUser } from "./lib/auth";
 import { extractLinkMeta, normalizeUrl } from "./lib/linkMeta";
 
 /**
@@ -13,7 +14,8 @@ const MAX_BYTES = 512 * 1024;
 
 export const fetchMeta = action({
   args: { url: v.string() },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    await requireUser(ctx);
     const url = normalizeUrl(args.url);
     if (!url) return null;
 
