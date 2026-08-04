@@ -47,10 +47,21 @@ Consequences to remember:
 
 Two Convex deployments, both in EU West, in the same `vellum` project:
 
+- **prod `gregarious-schnauzer-219`** — **the system of record.** Serves the
+  hosted app at `vellum-gilt.vercel.app` and any packaged Mac app. Ad-hoc CLI
+  calls against the real workspace need `--prod`:
+  `npx convex run pages:list '{}' --identity '{"subject":"owner|cli"}' --prod`.
 - **dev `friendly-jellyfish-107`** — `.env.local` (gitignored), used by
-  `npm run dev` / `npm run dev:web`. **Contains real user data.**
-- **prod `gregarious-schnauzer-219`** — the default production deployment,
-  serving the hosted app and the packaged Mac app.
+  `npm run dev` / `npm run dev:web`. Since the migration this holds a **frozen
+  pre-migration copy**, not live data: safe to experiment in, and edits here
+  never reach the real workspace. It is also the rollback target — point
+  `.env.production` back at it and rebuild.
+
+A deployment's **region can never be changed**. Production was first
+provisioned in US East by `npx convex deploy`; fixing it meant deleting that
+deployment and running `npx convex deployment create production --type prod
+--region eu --default`. Never pass `--select` to that command — it rewrites
+`.env.local`.
 
 `.env.production` is **checked in** (deployment URLs are public, not secrets).
 Vite loads `.env` → `.env.local` → `.env.[mode]`, so in build mode
@@ -453,9 +464,13 @@ that writes to it (e2e-offline, ad-hoc scripts) must create uniquely-named
 pages and delete them afterwards; `e2e-offline.mjs` does this in its
 `finally` block.
 
-Until the data migration runs, **dev is the system of record and prod is
-empty**. Two rules follow: never point `.env.local` at prod (in particular,
-`npx convex deployment create` must not be given `--select`, which rewrites
-it), and remember that `npm run dist` now produces a **prod-pointing** Mac
-app — keep the daily-driver install on a dev-pointing build until the
-migration is done.
+**That is no longer true since the migration** — dev now holds a frozen
+pre-migration copy, and prod is the system of record. The warning is kept
+because the habit still matters: treat both deployments as holding real data,
+and never point `.env.local` at prod.
+
+Two verifications proved worthless during this work, both for the same reason:
+`vite preview` and a local `vite build` don't reproduce production. Vercel's
+`cleanUrls` broke the service worker's offline shell, and `convex deploy`
+overrode a `VITE_*` variable — each passed locally and failed once deployed.
+**Verify hosted behaviour against the hosted site**, not a local build.

@@ -1,8 +1,14 @@
 # Vellum
 
-A personal Notion-style workspace for macOS — pages, rich-text blocks, databases with table & board views, instant sync to your own [Convex](https://convex.dev) database.
+A personal Notion-style workspace — pages, rich-text blocks, databases with table & board views, offline-first sync to your own [Convex](https://convex.dev) database. Runs in the browser and as a native macOS app, against the same workspace.
 
 ![stack](https://img.shields.io/badge/Electron%20%2B%20React%20%2B%20TypeScript%20%2B%20Convex%20%2B%20BlockNote-2b2b2b)
+
+## Use it
+
+**[vellum-gilt.vercel.app](https://vellum-gilt.vercel.app)** — landing page at `/`, workspace at `/app`. Installable as a PWA; the app shell boots offline and opens your local replica.
+
+For a native Mac app, build one with `npm run dist` (see below) — it talks to the same backend, so the two stay in sync.
 
 ## Quick start (one time)
 
@@ -27,7 +33,9 @@ This starts the Convex function watcher, the Vite dev server, and opens the desk
 npm run dist      # produces Vellum.app + .dmg in release/
 ```
 
-The packaged app talks straight to Convex Cloud — no local processes needed. (It bakes in the `VITE_CONVEX_URL` from `.env.local` at build time, so run `setup.sh` first. Functions must be deployed once with `npx convex dev --once` after any backend change — `npm run dev` does this continuously.)
+The packaged app talks straight to Convex Cloud — no local processes needed.
+
+It bakes in the URLs from the checked-in `.env.production`, which outranks `.env.local` in build mode — so **every `vite build` targets the production deployment**, the same one the hosted app uses. `npm run dev` still uses `.env.local` and the development deployment.
 
 ## What's inside
 
