@@ -60,10 +60,17 @@ Vercel the build command passes `--cmd-url-env-var-name VITE_CONVEX_URL`, and
 a real `VITE_*` process env var overrides the file, so there the deploy key is
 the source of truth for which backend the frontend talks to.
 
-`VITE_CONVEX_SITE_URL` is deliberately the **Vercel origin**, not the
-`.convex.site` one: `publicUrlFor()` mints `/p/<slug>` links from it and
+Published links are minted from **`VITE_PUBLIC_SITE_URL`** (the Vercel origin;
 `vercel.json` proxies `/p/*` through to Convex, so shared links live on the
-app's own domain. It must be Vercel's stable alias, never a per-deployment URL.
+app's own domain), falling back to `VITE_CONVEX_SITE_URL`.
+
+That extra variable is not redundant — **do not collapse it back**.
+`npx convex deploy --cmd` injects *both* `VITE_CONVEX_URL` and
+`VITE_CONVEX_SITE_URL` into the build environment, derived from the deployment.
+A real process env var outranks `.env.production` in Vite, so anything written
+there under the Convex name works in every local build and is silently reverted
+on every Vercel build. `tests/publicUrl.test.ts` guards this. Whichever
+variable is used, it must be Vercel's stable alias, never a per-deployment URL.
 
 ### Data layer (three modes)
 

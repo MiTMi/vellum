@@ -116,11 +116,23 @@ export interface Mutations {
 }
 
 /**
- * Published pages are served by Convex HTTP actions, which live on the
- * `.site` domain rather than the `.cloud` one the client talks to.
+ * Origin that published `/p/<slug>` links are minted from.
+ *
+ * Published pages are served by Convex HTTP actions, which live on the `.site`
+ * domain rather than the `.cloud` one the client talks to — so
+ * `VITE_CONVEX_SITE_URL` is the natural default and stays correct for a plain
+ * Convex-hosted setup.
+ *
+ * `VITE_PUBLIC_SITE_URL` overrides it so links can be minted on the app's own
+ * domain instead, with the host proxying `/p/*` through to Convex (see the
+ * rewrite in vercel.json). It is a **separate variable on purpose**:
+ * `npx convex deploy --cmd` injects `VITE_CONVEX_SITE_URL` into the build
+ * environment, and a real process env var outranks `.env.production` in Vite,
+ * so overriding that name would work locally and be silently reverted in CI.
  */
 export function publicUrlFor(slug: string): string | null {
-  const site = import.meta.env.VITE_CONVEX_SITE_URL;
+  const site =
+    import.meta.env.VITE_PUBLIC_SITE_URL ?? import.meta.env.VITE_CONVEX_SITE_URL;
   if (!site) return null;
   return `${site.replace(/\/$/, "")}/p/${slug}`;
 }
