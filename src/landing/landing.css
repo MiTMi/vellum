@@ -1,0 +1,535 @@
+/**
+ * Landing page styles. Deliberately standalone — the workspace's stylesheet
+ * (src/styles/app.css) never loads here, so "/" stays a small, fast page.
+ * Light theme only: this is marketing, not the product surface.
+ */
+
+:root {
+  --bg: #ffffff;
+  --bg-alt: #f7f7f5;
+  --text: #191919;
+  --text-2: #787774;
+  --border: #e9e9e7;
+  --accent: #2383e2;
+  --accent-hover: #1a74cc;
+  --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --wrap: 1120px;
+  --nav-h: 60px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  /* Anchor targets must clear the sticky nav. */
+  scroll-padding-top: calc(var(--nav-h) + 16px);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+    Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+p {
+  margin: 0;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: inherit;
+}
+
+kbd {
+  font-family: inherit;
+  font-size: 0.86em;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--bg-alt);
+  white-space: nowrap;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--bg-alt);
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 10px 16px;
+  background: var(--text);
+  color: #fff;
+  border-radius: 0 0 8px 0;
+}
+.skip-link:focus {
+  left: 0;
+}
+
+/* ------------------------------------------------------------------ nav */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease;
+}
+/* The rule only earns its border once the page has moved. */
+.nav.is-stuck {
+  border-bottom-color: var(--border);
+}
+
+.nav-inner {
+  height: var(--nav-h);
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.wordmark img {
+  border-radius: 6px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 24px;
+  margin-left: auto;
+  font-size: 15px;
+}
+.nav-links a {
+  color: var(--text-2);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.nav-links a:hover {
+  color: var(--text);
+}
+
+.nav-links + .btn {
+  margin-left: 0;
+}
+/* With the links hidden the CTA has to claim the free space itself. */
+.nav-inner > .btn {
+  margin-left: auto;
+}
+.nav-links ~ .btn {
+  margin-left: 0;
+}
+
+/* --------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.btn-sm {
+  height: 34px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+.btn-secondary {
+  background: #fff;
+  color: var(--text);
+  border-color: var(--border);
+}
+.btn-secondary:hover {
+  background: var(--bg-alt);
+}
+
+/* ------------------------------------------------------------------ hero */
+
+.hero {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 92px 24px 0;
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: clamp(40px, 6vw, 58px);
+  font-weight: 700;
+  max-width: 15ch;
+  margin: 0 auto;
+}
+
+.hero-sub {
+  max-width: 58ch;
+  margin: 22px auto 0;
+  color: var(--text-2);
+  font-size: 19px;
+}
+
+.hero-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 32px;
+  flex-wrap: wrap;
+}
+
+/* -------------------------------------------------------- screenshots */
+
+.shot {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  background: #fff;
+}
+
+/* The hero shot deliberately hangs over the band below it. */
+.shot-hero {
+  margin-top: 64px;
+  margin-bottom: -140px;
+}
+
+/* -------------------------------------------------------------- sections */
+
+.band {
+  background: var(--bg-alt);
+}
+
+.features {
+  padding: 200px 0 96px; /* top padding clears the overlapping hero shot */
+}
+
+.section-title {
+  font-size: clamp(28px, 3.4vw, 38px);
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.feature {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 26px 24px 28px;
+}
+.feature h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 16px 0 8px;
+}
+.feature p {
+  color: var(--text-2);
+  font-size: 15.5px;
+}
+
+.feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: rgba(35, 131, 226, 0.1);
+  color: var(--accent);
+}
+.feature-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ------------------------------------------------------------ deep dives */
+
+.deep {
+  padding: 96px 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  align-items: center;
+  gap: 64px;
+}
+/* Alternating sides: the copy moves to column 2 without reordering the DOM.
+   The column widths swap with it, so the screenshot stays the wider half. */
+.row-reverse {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+}
+.row-reverse .row-copy {
+  order: 2;
+}
+
+.row-copy p + p {
+  margin-top: 14px;
+}
+.row-copy p:not(.eyebrow) {
+  color: var(--text-2);
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.row-copy h2 {
+  font-size: clamp(26px, 3.2vw, 34px);
+  font-weight: 700;
+  margin-bottom: 18px;
+}
+
+/* ------------------------------------------------------------- diagram */
+
+.diagram {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 44px 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--shadow-card);
+}
+
+.diagram .node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  width: 96px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+.diagram .node svg {
+  width: 30px;
+  height: 30px;
+  padding: 13px;
+  box-sizing: content-box;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--bg-alt);
+}
+.diagram .node-cloud svg {
+  border-color: rgba(35, 131, 226, 0.35);
+  background: rgba(35, 131, 226, 0.08);
+  color: var(--accent);
+}
+
+.diagram .wire {
+  position: relative;
+  flex: 1 1 auto;
+  height: 2px;
+  min-width: 36px;
+  margin-bottom: 23px; /* centre on the icons, not the labels */
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.diagram .pulse {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 34%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: wire-pulse 2.6s ease-in-out infinite;
+}
+.diagram .pulse-late {
+  animation-delay: 1.3s;
+}
+
+@keyframes wire-pulse {
+  0% {
+    transform: translateX(-120%);
+  }
+  55%,
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .diagram .pulse {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+/* ------------------------------------------------------------- CTA band */
+
+.cta-band {
+  padding: 96px 0;
+  text-align: center;
+}
+.cta-band h2 {
+  font-size: clamp(28px, 3.4vw, 38px);
+  font-weight: 700;
+}
+.cta-band p {
+  color: var(--text-2);
+  margin: 14px 0 30px;
+}
+
+/* --------------------------------------------------------------- footer */
+
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 32px 0;
+}
+.footer-inner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.footer-note {
+  color: var(--text-2);
+  font-size: 14px;
+}
+.footer-links {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.footer-links a {
+  text-decoration: none;
+}
+.footer-links a:hover {
+  color: var(--text);
+}
+
+/* ----------------------------------------------------------- responsive */
+
+@media (max-width: 980px) {
+  .row,
+  .row-reverse {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 36px;
+  }
+  /* Stacked, the copy always leads. */
+  .row-reverse .row-copy {
+    order: 0;
+  }
+  .feature-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 860px) {
+  .nav-links {
+    display: none;
+  }
+  .hero {
+    padding-top: 64px;
+  }
+  .shot-hero {
+    margin-top: 48px;
+    margin-bottom: -80px;
+  }
+  .features {
+    padding-top: 132px;
+  }
+  .deep {
+    padding: 72px 0;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    font-size: 16px;
+  }
+  .feature-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hero-actions .btn {
+    flex: 1 1 auto;
+  }
+  .footer-inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .footer-links {
+    margin-left: 0;
+  }
+}

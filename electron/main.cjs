@@ -188,7 +188,8 @@ function createWindow() {
   if (process.env.ELECTRON_START_URL) {
     mainWindow.loadURL(process.env.ELECTRON_START_URL);
   } else {
-    mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+    // dist/index.html is the marketing landing; the workspace is app.html.
+    mainWindow.loadFile(path.join(__dirname, "..", "dist", "app.html"));
   }
 
   mainWindow.on("closed", () => {

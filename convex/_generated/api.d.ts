@@ -19,6 +19,7 @@ import type * as lib_publicHtml from "../lib/publicHtml.js";
 import type * as lib_snippet from "../lib/snippet.js";
 import type * as lib_versions from "../lib/versions.js";
 import type * as linkPreview from "../linkPreview.js";
+import type * as migrate from "../migrate.js";
 import type * as pages from "../pages.js";
 import type * as versions from "../versions.js";
 
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   "lib/snippet": typeof lib_snippet;
   "lib/versions": typeof lib_versions;
   linkPreview: typeof linkPreview;
+  migrate: typeof migrate;
   pages: typeof pages;
   versions: typeof versions;
 }>;

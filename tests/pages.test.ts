@@ -2,7 +2,7 @@
 // Lives outside convex/ so the Convex CLI doesn't typecheck/bundle it.
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
-import { api } from "../convex/_generated/api";
+import { api, internal } from "../convex/_generated/api";
 import schema from "../convex/schema";
 
 const modules = import.meta.glob([
@@ -10,6 +10,7 @@ const modules = import.meta.glob([
   "../convex/files.ts",
   "../convex/versions.ts",
   "../convex/comments.ts",
+  "../convex/migrate.ts",
   "../convex/schema.ts",
   "../convex/lib/*.ts",
   "../convex/_generated/*.js",
@@ -686,4 +687,126 @@ test("rollup and timestamp property configs persist through updateDbProps", asyn
     "lastEditedTime",
   ]);
   expect(doc?.dbProps?.[1].rollupCalc).toBe("sum");
+});
+
+/* ------------------------------------------------------------------ */
+/* Deployment host rewrite (Phase-6 migration helper)                  */
+/* ------------------------------------------------------------------ */
+
+const OLD_HOST = "https://old-deployment-000.eu-west-1.convex.cloud";
+const NEW_HOST = "https://new-deployment-111.eu-west-1.convex.cloud";
+
+function imageDoc(url: string) {
+  return [
+    { id: "b1", type: "paragraph", content: [{ type: "text", text: "hi" }] },
+    { id: "b2", type: "image", props: { url, caption: "" } },
+  ];
+}
+
+test("rewriteHostBatch swaps the deployment host and bumps both timestamps", async () => {
+  const ctx = t();
+  const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Shot" });
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: imageDoc(`${OLD_HOST}/api/storage/abc123`),
+    text: `see ${OLD_HOST}/api/storage/abc123`,
+  });
+  await ctx.mutation(api.pages.setCover, {
+    id,
+    cover: `${OLD_HOST}/api/storage/cover9`,
+  });
+  const before = (await ctx.query(api.pages.get, { id }))!;
+
+  const res = await ctx.mutation(internal.migrate.rewriteHostBatch, {
+    from: OLD_HOST,
+    to: NEW_HOST,
+    cursor: null,
+  });
+  expect(res.isDone).toBe(true);
+  expect(res.rewritten).toBe(1);
+
+  const after = (await ctx.query(api.pages.get, { id }))!;
+  const json = JSON.stringify(after);
+  expect(json).not.toContain(OLD_HOST);
+  expect(after.cover).toBe(`${NEW_HOST}/api/storage/cover9`);
+  expect((after.content as any)[1].props.url).toBe(
+    `${NEW_HOST}/api/storage/abc123`,
+  );
+  // Derived text is swept too, or search would keep matching the old host.
+  expect(after.contentText).toContain(NEW_HOST);
+  expect(after.searchText).toContain(NEW_HOST);
+  // Both bumped: updatedAt drives reconcile, contentUpdatedAt makes the
+  // rewritten copy win LWW so replicas re-pull it.
+  expect(after.updatedAt).toBeGreaterThanOrEqual(before.updatedAt);
+  expect(after.contentUpdatedAt!).toBeGreaterThanOrEqual(
+    before.contentUpdatedAt!,
+  );
+});
+
+test("rewriteHostBatch leaves untouched pages alone and paginates", async () => {
+  const ctx = t();
+  const clean = await ctx.mutation(api.pages.create, { type: "doc", title: "Clean" });
+  await ctx.mutation(api.pages.updateContent, {
+    id: clean,
+    content: imageDoc("https://example.com/pic.png"),
+    text: "nothing to see",
+  });
+  const dirty = await ctx.mutation(api.pages.create, { type: "doc", title: "Dirty" });
+  await ctx.mutation(api.pages.setCover, { id: dirty, cover: `${OLD_HOST}/x` });
+  const cleanBefore = (await ctx.query(api.pages.get, { id: clean }))!;
+
+  let cursor: string | null = null;
+  let rewritten = 0;
+  let batches = 0;
+  for (;;) {
+    const res: any = await ctx.mutation(internal.migrate.rewriteHostBatch, {
+      from: OLD_HOST,
+      to: NEW_HOST,
+      cursor,
+      numItems: 1,
+    });
+    rewritten += res.rewritten;
+    batches++;
+    if (res.isDone) break;
+    cursor = res.cursor;
+    expect(batches).toBeLessThan(20); // cursor must actually advance
+  }
+
+  expect(rewritten).toBe(1);
+  expect(batches).toBeGreaterThan(1);
+  const cleanAfter = (await ctx.query(api.pages.get, { id: clean }))!;
+  // Unmatched pages must not be touched — no timestamp churn, no re-pull.
+  expect(cleanAfter.updatedAt).toBe(cleanBefore.updatedAt);
+  expect(cleanAfter.contentUpdatedAt).toBe(cleanBefore.contentUpdatedAt);
+});
+
+test("rewriteVersionHostBatch sweeps history snapshots", async () => {
+  const ctx = t();
+  const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Hist" });
+  // First write seeds content; the second snapshots it into pageVersions.
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: imageDoc(`${OLD_HOST}/api/storage/old1`),
+    text: "v1",
+  });
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: imageDoc(`${OLD_HOST}/api/storage/old2`),
+    text: "v2",
+  });
+  const versions = await ctx.query(api.versions.list, { pageId: id });
+  expect(versions.length).toBeGreaterThan(0);
+
+  const res = await ctx.mutation(internal.migrate.rewriteVersionHostBatch, {
+    from: OLD_HOST,
+    to: NEW_HOST,
+    cursor: null,
+  });
+  expect(res.isDone).toBe(true);
+  expect(res.rewritten).toBe(versions.length);
+
+  for (const v of await ctx.query(api.versions.list, { pageId: id })) {
+    const full = await ctx.query(api.versions.get, { id: v._id });
+    expect(JSON.stringify(full)).not.toContain(OLD_HOST);
+  }
 });

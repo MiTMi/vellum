@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "concurrently -k -n convex,vite,app -c cyan,magenta,green \"convex dev\" \"vite\" \"npm:electron:dev\"",
     "dev:web": "concurrently -k -n convex,vite -c cyan,magenta \"convex dev\" \"vite\"",
-    "electron:dev": "wait-on tcp:5173 && cross-env ELECTRON_START_URL=http://localhost:5173 electron .",
+    "electron:dev": "wait-on tcp:5173 && cross-env ELECTRON_START_URL=http://localhost:5173/app.html electron .",
     "build": "tsc --noEmit && vite build",
     "app": "vite build && electron .",
     "dist": "vite build && electron-builder --mac",

@@ -19,7 +19,7 @@ import { chromium } from "playwright";
 import { execFileSync } from "node:child_process";
 import fs from "fs";
 
-const BASE = process.env.E2E_URL ?? "http://localhost:5201";
+const BASE = (process.env.E2E_URL ?? "http://localhost:5201") + "/app.html";
 const SHOTS = process.argv.includes("--shots-dir")
   ? process.argv[process.argv.indexOf("--shots-dir") + 1]
   : "/tmp/shots";

@@ -5,7 +5,7 @@
 import { chromium } from "playwright";
 import fs from "fs";
 
-const BASE = process.env.E2E_URL ?? "http://localhost:5199";
+const BASE = (process.env.E2E_URL ?? "http://localhost:5199") + "/app.html";
 const SHOTS = "/tmp/shots-pagemenu";
 fs.mkdirSync(SHOTS, { recursive: true });
 

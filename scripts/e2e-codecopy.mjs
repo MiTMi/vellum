@@ -20,7 +20,7 @@ const page = await context.newPage();
 page.on("pageerror", (err) => check(`pageerror: ${err.message}`, false));
 
 try {
-  await page.goto(process.env.E2E_URL ?? "http://localhost:5199");
+  await page.goto((process.env.E2E_URL ?? "http://localhost:5199") + "/app.html");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.waitForSelector(".page-title", { timeout: 10000 });

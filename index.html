@@ -3,10 +3,281 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vellum</title>
+    <title>Vellum — a personal workspace for notes, docs and databases</title>
+    <meta
+      name="description"
+      content="Vellum is a personal workspace for notes, docs and databases. Offline-first, synced between the web and a native Mac app, and private by default."
+    />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./favicon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Vellum — your ideas, organized beautifully" />
+    <meta
+      property="og:description"
+      content="A personal workspace for notes, docs and databases. Offline-first, synced everywhere, yours alone."
+    />
+    <meta property="og:image" content="/src/landing/assets/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <a class="skip-link" href="#features">Skip to content</a>
+
+    <!-- ---------------------------------------------------------- nav -->
+    <header class="nav">
+      <div class="nav-inner">
+        <a class="wordmark" href="/">
+          <img src="./favicon.png" alt="" width="26" height="26" />
+          <span>Vellum</span>
+        </a>
+        <nav class="nav-links" aria-label="Sections">
+          <a href="#features">Features</a>
+          <a href="#sync">Sync</a>
+          <a href="#publish">Publish</a>
+        </nav>
+        <a class="btn btn-primary btn-sm" data-cta href="/app">Get started</a>
+      </div>
+    </header>
+
+    <main>
+      <!-- ------------------------------------------------------- hero -->
+      <section class="hero">
+        <h1>Your ideas, organized beautifully.</h1>
+        <p class="hero-sub">
+          Vellum is a personal workspace for notes, docs, and databases —
+          offline-first, synced everywhere, yours alone.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" data-cta href="/app">Get started</a>
+          <a
+            class="btn btn-secondary"
+            href="https://github.com/MiTMi/vellum"
+            rel="noreferrer"
+            >Download for Mac</a
+          >
+        </div>
+        <figure class="shot shot-hero">
+          <img
+            src="/src/landing/assets/hero.png"
+            alt="The Vellum workspace: a sidebar of pages beside a document with headings, a checklist and a callout."
+            width="2880"
+            height="1800"
+          />
+        </figure>
+      </section>
+
+      <!-- --------------------------------------------------- features -->
+      <section class="band features" id="features">
+        <div class="wrap">
+          <h2 class="section-title">Everything a workspace should be</h2>
+          <div class="feature-grid">
+            <article class="feature">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></svg>
+              </span>
+              <h3>A block editor</h3>
+              <p>
+                Type <kbd>/</kbd> for headings, lists, code, math, callouts and
+                embeds. Every block drags, nests and copies as a deep link.
+              </p>
+            </article>
+            <article class="feature">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg>
+              </span>
+              <h3>Databases &amp; views</h3>
+              <p>
+                Table, board, calendar, gallery and timeline over the same rows.
+                Relations, rollups and formulas compute as you look at them.
+              </p>
+            </article>
+            <article class="feature">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 20 20"/><path d="M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193"/><path d="M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07"/></svg>
+              </span>
+              <h3>Offline-first</h3>
+              <p>
+                Reads and writes hit a local replica first, so the app never
+                waits on the network. Queued edits replay when you reconnect.
+              </p>
+            </article>
+            <article class="feature">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+              </span>
+              <h3>Publish to web</h3>
+              <p>
+                One toggle turns a page into a public link. Unpublishing revokes
+                it permanently — the link is the access control.
+              </p>
+            </article>
+            <article class="feature">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              </span>
+              <h3><kbd>⌘K</kbd> everything</h3>
+              <p>
+                Full-text search with contextual snippets, plus the actions you
+                reach for most — new page, new database, theme, trash.
+              </p>
+            </article>
+            <article class="feature">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+              </span>
+              <h3>Native Mac app</h3>
+              <p>
+                The same workspace as a real desktop app: native menus, Touch ID
+                unlock, proper PDF export and its own Dock icon.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- -------------------------------------------------- deep dives -->
+      <section class="deep" id="write">
+        <div class="wrap row">
+          <div class="row-copy">
+            <p class="eyebrow">Write</p>
+            <h2>Write with blocks, not boxes.</h2>
+            <p>
+              Everything on a page is a block, and every block is one keystroke
+              away. Press <kbd>/</kbd> for headings, checklists, code, LaTeX,
+              callouts, tables of contents or a live embed.
+            </p>
+            <p>
+              Mention another page with <kbd>@</kbd> and it stays in sync — rename
+              the target and every mention follows.
+            </p>
+          </div>
+          <figure class="shot row-shot">
+            <img
+              src="/src/landing/assets/editor.png"
+              alt="The slash menu open in a Vellum document, listing headings, quote, toggle list, numbered list and bullet list."
+              width="2880"
+              height="1800"
+              loading="lazy"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <section class="deep band" id="databases">
+        <div class="wrap row row-reverse">
+          <div class="row-copy">
+            <p class="eyebrow">Organize</p>
+            <h2>Databases that think with you.</h2>
+            <p>
+              A database is just a page whose children are rows — so every row
+              opens as a full document, with its own content and comments.
+            </p>
+            <p>
+              Point a relation at another database, roll its values up, or write
+              a formula like <code>prop("Points") * 2</code>. Computed columns are
+              evaluated as you look at them, never stored stale.
+            </p>
+          </div>
+          <figure class="shot row-shot">
+            <img
+              src="/src/landing/assets/database.png"
+              alt="A Vellum database in table view with status chips, dates, a number column and a formula column."
+              width="2880"
+              height="1800"
+              loading="lazy"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <section class="deep" id="sync">
+        <div class="wrap row">
+          <div class="row-copy">
+            <p class="eyebrow">Sync</p>
+            <h2>Works offline. Syncs everywhere.</h2>
+            <p>
+              Vellum keeps a full replica of your workspace on every device.
+              Reads come from the replica, writes land there instantly and queue
+              in a durable outbox.
+            </p>
+            <p>
+              Reconnect and the queue replays in order — so the Mac app and the
+              browser converge on the same workspace without you thinking about
+              it once.
+            </p>
+          </div>
+          <figure class="row-shot diagram" aria-hidden="true">
+            <div class="node">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+              <span>Mac app</span>
+            </div>
+            <div class="wire"><span class="pulse"></span></div>
+            <div class="node node-cloud">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+              <span>Convex</span>
+            </div>
+            <div class="wire"><span class="pulse pulse-late"></span></div>
+            <div class="node">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+              <span>Browser</span>
+            </div>
+          </figure>
+        </div>
+      </section>
+
+      <section class="deep band" id="publish">
+        <div class="wrap row row-reverse">
+          <div class="row-copy">
+            <p class="eyebrow">Share</p>
+            <h2>Share when you're ready.</h2>
+            <p>
+              Flip one switch and a page gets an unguessable public link that
+              anyone can read — no account, no app, just the page.
+            </p>
+            <p>
+              Links to your other pages render as plain titles, so a published
+              page can never leak the private ones. Unpublish and the URL is dead
+              for good.
+            </p>
+          </div>
+          <figure class="shot row-shot">
+            <img
+              src="/src/landing/assets/publish.png"
+              alt="The Vellum share popover showing a page published to the web with its public link and export options."
+              width="2880"
+              height="1800"
+              loading="lazy"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <!-- -------------------------------------------------- final CTA -->
+      <section class="band cta-band">
+        <div class="wrap">
+          <h2>Start writing today.</h2>
+          <p>Your workspace is one click away, on every device you own.</p>
+          <a class="btn btn-primary" data-cta href="/app">Get started</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer-inner">
+        <a class="wordmark" href="/">
+          <img src="./favicon.png" alt="" width="22" height="22" />
+          <span>Vellum</span>
+        </a>
+        <p class="footer-note">Built with Convex + React.</p>
+        <nav class="footer-links" aria-label="Elsewhere">
+          <a href="https://github.com/MiTMi/vellum" rel="noreferrer">GitHub</a>
+          <span>© <span data-year>2026</span></span>
+        </nav>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/landing/landing.ts"></script>
   </body>
 </html>

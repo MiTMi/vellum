@@ -6,6 +6,7 @@ import App from "./App";
 import { AuthGate } from "./components/Auth";
 import { IS_DIRECT, IS_MOCK } from "./data/api";
 import { initOfflineRuntime } from "./offline/runtime";
+import { registerSW } from "./pwa/register";
 import { initialTheme } from "./state";
 
 import "@blocknote/core/fonts/inter.css";
@@ -15,6 +16,9 @@ import "./styles/app.css";
 // Theme must be on <html> before first paint — the login screen and boot
 // states render before NavProvider (which owns the theme) mounts.
 document.documentElement.dataset.theme = initialTheme();
+
+// Offline app shell for the hosted build. No-ops in dev and inside Electron.
+registerSW();
 
 const url = import.meta.env.VITE_CONVEX_URL as string | undefined;
 
