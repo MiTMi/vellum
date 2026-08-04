@@ -45,13 +45,34 @@ self.addEventListener("activate", (event) => {
 
 /**
  * The shell entry a navigation should fall back to when the network is gone.
- * Root-absolute: the worker only ever runs on the hosted origin (it is never
- * registered inside Electron), so there is no relative-base problem to solve.
+ * Root-absolute, and the *canonical* URL rather than the file on disk — the
+ * host serves app.html at /app and 308s /app.html to it, so /app is what the
+ * precache is keyed by. The worker only ever runs on the hosted origin (never
+ * inside Electron), so there is no relative-base problem to solve.
  */
 function offlineFallbackFor(pathname) {
-  return pathname === "/" || pathname === "/index.html"
-    ? "/index.html"
-    : "/app.html";
+  return pathname === "/" || pathname === "/index.html" ? "/" : "/app";
+}
+
+/**
+ * Answer a navigation from cache.
+ *
+ * The response is rebuilt rather than returned as-is: navigation requests
+ * carry redirect:"manual", and handing one a response whose `redirected` flag
+ * is set makes the whole navigation fail. That flag is easy to acquire by
+ * accident (any host that redirects the cached URL), so strip it here instead
+ * of relying on the precache list never picking one up.
+ */
+async function cachedShell(pathname) {
+  const hit = await caches.match(offlineFallbackFor(pathname), {
+    ignoreSearch: true,
+  });
+  if (!hit) return Response.error();
+  return new Response(hit.body, {
+    status: 200,
+    statusText: "OK",
+    headers: hit.headers,
+  });
 }
 
 self.addEventListener("fetch", (event) => {
@@ -66,11 +87,7 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === "/p" || url.pathname.startsWith("/p/")) return;
 
   if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req).catch(() =>
-        caches.match(offlineFallbackFor(url.pathname), { ignoreSearch: true }),
-      ),
-    );
+    event.respondWith(fetch(req).catch(() => cachedShell(url.pathname)));
     return;
   }
 

@@ -58,10 +58,16 @@ function vellumPWA(): Plugin {
     // After vite:build-html, so the two HTML entries are in the bundle too.
     enforce: "post",
     generateBundle(_options, bundle) {
+      // Precache the URLs a browser actually navigates to, not the files on
+      // disk. Vercel's cleanUrls 308s /app.html → /app, and a *redirected*
+      // cached response cannot be used to answer a navigation request (those
+      // carry redirect:"manual"), so caching /app.html would silently break
+      // the offline shell in production while working fine under preview.
+      const CANONICAL = { "index.html": "/", "app.html": "/app" };
       const emitted = Object.keys(bundle).filter((f) => !RUNTIME_CACHED.test(f));
       const precache = [
         ...PUBLIC_SHELL,
-        ...emitted.map((f) => "/" + f),
+        ...emitted.map((f) => CANONICAL[f] ?? "/" + f),
       ].sort();
 
       // Hash the exact shell contents so a rebuild always mints a new cache
