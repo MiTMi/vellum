@@ -5,19 +5,25 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
- * In production `/app` is served by Vercel's `cleanUrls` (dist/app.html).
- * The dev server has no such mapping, so teach it the same one — otherwise
- * every landing CTA 404s while developing.
+ * In production `/app` and `/help` are served by Vercel's `cleanUrls`
+ * (dist/app.html, dist/help.html). The dev server has no such mapping, so
+ * teach it the same one — otherwise every landing CTA and every Help link
+ * 404s while developing.
  */
+const CLEAN_URLS: Record<string, string> = {
+  "/app": "/app.html",
+  "/help": "/help.html",
+};
+
 function appRouteAlias(): Plugin {
   return {
     name: "vellum-app-route-alias",
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
-        const path = req.url?.split("?")[0];
-        if (path === "/app" || path === "/app/") {
-          req.url = "/app.html" + req.url!.slice(path.length);
-        }
+        const path = req.url?.split("?")[0] ?? "";
+        // "/app" and "/app/" both map; the query string rides along.
+        const target = CLEAN_URLS[path.replace(/\/$/, "")];
+        if (target) req.url = target + req.url!.slice(path.length);
         next();
       });
     },
@@ -63,7 +69,11 @@ function vellumPWA(): Plugin {
       // cached response cannot be used to answer a navigation request (those
       // carry redirect:"manual"), so caching /app.html would silently break
       // the offline shell in production while working fine under preview.
-      const CANONICAL = { "index.html": "/", "app.html": "/app" };
+      const CANONICAL = {
+        "index.html": "/",
+        "app.html": "/app",
+        "help.html": "/help",
+      };
       const emitted = Object.keys(bundle).filter((f) => !RUNTIME_CACHED.test(f));
       const precache = [
         ...PUBLIC_SHELL,
@@ -103,10 +113,12 @@ export default defineConfig({
     outDir: "dist",
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
-      // Two entries: the marketing landing at "/" and the SPA at "/app".
+      // Three entries: the marketing landing at "/", the SPA at "/app" and
+      // the Help Center at "/help".
       input: {
         landing: resolve(__dirname, "index.html"),
         app: resolve(__dirname, "app.html"),
+        help: resolve(__dirname, "help.html"),
       },
     },
   },

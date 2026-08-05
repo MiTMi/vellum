@@ -1,0 +1,1271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vellum Help — guides for every part of your workspace</title>
+    <meta
+      name="description"
+      content="How to use Vellum: writing with blocks, pages and links, databases and views, templates, publishing, the Vault, offline sync and every keyboard shortcut."
+    />
+    <meta name="theme-color" content="#fbfaf7" />
+    <link rel="icon" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./favicon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Vellum Help" />
+    <meta
+      property="og:description"
+      content="Short, practical guides for every part of Vellum — from your first page to formulas, the Vault and offline sync."
+    />
+    <meta property="og:image" content="/src/landing/assets/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <a class="skip-link" href="#guides">Skip to the guides</a>
+
+    <!-- ---------------------------------------------------------- nav -->
+    <header class="nav">
+      <div class="nav-inner">
+        <a class="wordmark" href="/">
+          <img src="./favicon.png" alt="" width="26" height="26" />
+          <span>Vellum</span>
+        </a>
+        <nav class="nav-links" aria-label="Sections">
+          <a href="/#features">Features</a>
+          <a href="/#vault">Vault</a>
+          <a href="/#sync">Sync</a>
+          <a href="/help">Help</a>
+        </nav>
+        <a class="btn btn-primary btn-sm" data-cta href="/app">Get started</a>
+      </div>
+    </header>
+
+    <main>
+      <!-- ------------------------------------------------------- hero -->
+      <section class="help-hero">
+        <p class="eyebrow">
+          <span class="pilcrow" aria-hidden="true">&para;</span> Help center
+        </p>
+        <h1>Everything Vellum does, <em>plainly</em>.</h1>
+        <p>
+          Nineteen short guides. Every step below was carried out in the app
+          before it was written down &mdash; so if it says click it, it clicks.
+        </p>
+        <div class="help-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input
+            type="search"
+            placeholder="Search the guides…"
+            aria-label="Search the guides"
+            autocomplete="off"
+          />
+        </div>
+      </section>
+
+      <div class="wrap help-shell" id="guides">
+        <!-- ---------------------------------------------------- index -->
+        <nav class="help-index" aria-label="Guides">
+          <p class="help-index-group">Start here</p>
+          <a href="#getting-started">Getting started</a>
+
+          <p class="help-index-group">Writing</p>
+          <a href="#writing">Writing on a page</a>
+          <a href="#blocks">The block library</a>
+          <a href="#linking">Linking pages together</a>
+
+          <p class="help-index-group">Organising</p>
+          <a href="#organizing">Pages &amp; the sidebar</a>
+          <a href="#search">Search &amp; the ⌘K palette</a>
+          <a href="#tabs">Tabs &amp; getting around</a>
+
+          <p class="help-index-group">Databases</p>
+          <a href="#databases">Databases: the basics</a>
+          <a href="#properties">Property types</a>
+          <a href="#views">Views, filters &amp; sorting</a>
+          <a href="#formulas">Relations, rollups &amp; formulas</a>
+
+          <p class="help-index-group">Doing more</p>
+          <a href="#templates">Templates</a>
+          <a href="#history">Page history &amp; comments</a>
+
+          <p class="help-index-group">Sharing</p>
+          <a href="#publishing">Publishing to the web</a>
+          <a href="#exporting">Exporting &amp; importing</a>
+
+          <p class="help-index-group">Private</p>
+          <a href="#vault">The Vault</a>
+          <a href="#settings">Settings &amp; your account</a>
+
+          <p class="help-index-group">Everywhere</p>
+          <a href="#offline">Offline &amp; sync</a>
+
+          <p class="help-index-group">Reference</p>
+          <a href="#shortcuts">Keyboard shortcuts</a>
+
+          <p class="help-index-empty" hidden>No guide matches that.</p>
+        </nav>
+
+        <!-- --------------------------------------------------- guides -->
+        <div class="help-content">
+          <!-- ============================================ getting started -->
+          <article class="guide" id="getting-started">
+            <h1>Getting started</h1>
+            <p class="guide-lead">
+              Vellum is a personal workspace for notes, documents and
+              databases. One person owns it, everything lives on your device
+              first, and nothing is shared until you decide to share it.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Signing in</h2>
+            <p>
+              A Vellum workspace has exactly one account &mdash; the owner&rsquo;s.
+              The first time you open <a href="/app">the app</a> you&rsquo;ll see
+              <strong>&ldquo;Claim your workspace&rdquo;</strong>: enter your email,
+              choose a password, and the account is yours. After that the same
+              screen says <strong>&ldquo;Welcome back&rdquo;</strong> and simply
+              asks you to sign in.
+            </p>
+            <p>Your password needs all five of these:</p>
+            <ul>
+              <li>At least 12 characters</li>
+              <li>A lowercase letter</li>
+              <li>An uppercase letter</li>
+              <li>A number</li>
+              <li>A symbol, e.g. <code>! ? #</code></li>
+            </ul>
+            <p>
+              The checklist on the sign-up screen ticks each rule off as you
+              type, so you always know what&rsquo;s missing. On a Mac with Touch
+              ID you can tick <strong>Enable Touch ID sign-in on this Mac</strong>
+              while signing in, and next time a fingerprint is enough.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>The four parts of the window</h2>
+            <ul>
+              <li>
+                <strong>The sidebar</strong> (left) &mdash; Search, your recent
+                and favourite pages, templates, the Vault, and the tree of all
+                your pages under <em>Private</em>. Its footer has New page, New
+                database, Trash and Settings.
+              </li>
+              <li>
+                <strong>The tab bar</strong> (top) &mdash; one tab per page you
+                have open, exactly like a browser.
+              </li>
+              <li>
+                <strong>The top bar</strong> &mdash; back and forward arrows,
+                breadcrumbs showing where you are, when the page was last
+                edited, and the Share, favourite, theme and &ldquo;&hellip;&rdquo;
+                buttons.
+              </li>
+              <li>
+                <strong>The page</strong> &mdash; a title and, under it, an
+                editor made of blocks.
+              </li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Your first page</h2>
+            <ol class="steps">
+              <li>Press <kbd>⌘N</kbd>, or click <strong>New page</strong> at the bottom of the sidebar.</li>
+              <li>Type a title. It appears in the sidebar as you type &mdash; there is no Save button anywhere in Vellum.</li>
+              <li>Press <kbd>Enter</kbd> to drop from the title into the body, and start writing.</li>
+              <li>Press <kbd>/</kbd> whenever you want something that isn&rsquo;t a paragraph: a heading, a list, a table, an image, an equation, a video.</li>
+            </ol>
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                <strong>Everything saves itself.</strong> Edits are written to
+                your device immediately and sync in the background. Close the
+                window mid-sentence and it will be there when you come back.
+              </p>
+            </div>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Where to go next</h2>
+            <ul>
+              <li><a href="#writing">Writing on a page</a> &mdash; the editor, top to bottom.</li>
+              <li><a href="#databases">Databases: the basics</a> &mdash; when a list of pages wants to be a table.</li>
+              <li><a href="#shortcuts">Keyboard shortcuts</a> &mdash; the whole list on one screen.</li>
+            </ul>
+          </article>
+
+          <!-- ==================================================== writing -->
+          <article class="guide" id="writing">
+            <h1>Writing on a page</h1>
+            <p class="guide-lead">
+              A Vellum page is a stack of blocks. A paragraph is a block, so is
+              a heading, a to-do, an image, a table. Every block can be moved,
+              nested and linked to on its own.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>The title</h2>
+            <p>
+              The big line at the top is the page title. It&rsquo;s what shows in
+              the sidebar, in search results and in breadcrumbs. Press
+              <kbd>Enter</kbd> in the title and the cursor jumps into the body.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Type <kbd>/</kbd> for anything</h2>
+            <p>
+              Typing <kbd>/</kbd> at the start of an empty line opens the block
+              menu. Keep typing to filter it &mdash; <code>/quote</code>,
+              <code>/todo</code>, <code>/embed</code> &mdash; then press
+              <kbd>Enter</kbd> to insert what&rsquo;s highlighted. The whole
+              catalogue is in <a href="#blocks">the block library</a>.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Markdown shortcuts</h2>
+            <p>These work as you type, no menu needed:</p>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr><th>Type this</th><th>and you get</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><code># </code></td><td>Heading 1</td></tr>
+                  <tr><td><code>## </code></td><td>Heading 2</td></tr>
+                  <tr><td><code>### </code></td><td>Heading 3</td></tr>
+                  <tr><td><code>- </code></td><td>A bullet list</td></tr>
+                  <tr><td><code>1. </code></td><td>A numbered list</td></tr>
+                  <tr><td><code>[] </code></td><td>A to-do with a checkbox</td></tr>
+                  <tr><td><code>&gt; </code></td><td>A quote</td></tr>
+                  <tr><td><code>**bold**</code></td><td><strong>bold</strong> text</td></tr>
+                  <tr><td><code>*italic*</code></td><td><em>italic</em> text</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              Press <kbd>Enter</kbd> on an empty list item to leave the list, and
+              <kbd>Tab</kbd> / <kbd>⇧Tab</kbd> to indent and outdent one.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Moving blocks around</h2>
+            <p>
+              Hover a block and two controls appear in the left margin: a
+              <strong>&plus;</strong> that adds a block underneath, and a
+              <strong>⠿</strong> handle. Drag the handle to move the block
+              anywhere on the page; click it for a menu that can delete the
+              block or change its type.
+            </p>
+            <p>
+              Select some text and a formatting toolbar appears above it &mdash;
+              bold, italic, underline, strikethrough, code, colour, and a link
+              button.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Copy a link to one block</h2>
+            <p>
+              Hover any block and a small <strong>link</strong> button appears in
+              the right-hand margin: <em>Copy link to block</em>. The link it
+              copies points at that exact block, so opening it navigates to the
+              page, scrolls to the block and flashes it. It works in the browser
+              and in the Mac app.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Making a page look right</h2>
+            <p>
+              The <strong>&hellip;</strong> button in the top right holds the
+              page&rsquo;s appearance options:
+            </p>
+            <ul>
+              <li><strong>Default / Serif / Mono</strong> &mdash; the typeface for this page only.</li>
+              <li><strong>Small text</strong> &mdash; tightens the type for dense notes.</li>
+              <li><strong>Full width</strong> &mdash; lets the page use the whole window instead of a column.</li>
+              <li><strong>Lock page</strong> &mdash; makes it read-only so you can&rsquo;t edit it by accident. A <em>🔒 Page locked</em> note appears at the top; switch it off to edit again.</li>
+            </ul>
+            <p>
+              The bottom of that menu always shows the page&rsquo;s
+              <strong>word count</strong> and when it was last edited.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Icons and covers</h2>
+            <ol class="steps">
+              <li>Hover just above the title and click <strong>Add icon</strong>. Pick any emoji &mdash; it shows in the sidebar, in tabs and in search.</li>
+              <li>Click <strong>Add cover</strong> for a banner image. Ten gradients come built in, or upload your own picture.</li>
+              <li>Click the icon or <strong>Change cover</strong> at any time to swap or remove either.</li>
+            </ol>
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                <strong>Uploaded images are shrunk for you.</strong> Anything you
+                paste or upload is resized to at most 1600px on its long edge and
+                re-encoded as WebP, which usually makes it five to forty times
+                smaller. GIFs, SVGs and already-small files pass through
+                untouched.
+              </p>
+            </div>
+          </article>
+
+          <!-- ===================================================== blocks -->
+          <article class="guide" id="blocks">
+            <h1>The block library</h1>
+            <p class="guide-lead">
+              Everything the <kbd>/</kbd> menu can insert, and what each one is
+              for. Type enough of the name to highlight it, then press
+              <kbd>Enter</kbd>.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Text</h2>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Block</th><th>What it does</th></tr></thead>
+                <tbody>
+                  <tr><td>Heading 1–6</td><td>Section titles. Headings are what a table of contents picks up.</td></tr>
+                  <tr><td>Toggle Heading</td><td>A heading that folds the content under it away.</td></tr>
+                  <tr><td>Paragraph</td><td>Ordinary text.</td></tr>
+                  <tr><td>Bullet / Numbered / Check List</td><td>Lists. Check lists get real tickable boxes.</td></tr>
+                  <tr><td>Toggle List</td><td>A list item that hides its children until you open it.</td></tr>
+                  <tr><td>Quote</td><td>An indented quotation.</td></tr>
+                  <tr><td>Code Block</td><td>Monospaced code with syntax highlighting. Hover it for a <strong>copy</strong> button.</td></tr>
+                  <tr><td>Divider</td><td>A horizontal rule.</td></tr>
+                  <tr><td>Table</td><td>A simple grid &mdash; cells can be split, coloured and given headers.</td></tr>
+                  <tr><td>Emoji</td><td>Emoji picker, inline.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Media</h2>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Block</th><th>What it does</th></tr></thead>
+                <tbody>
+                  <tr><td>Image / Video / Audio / File</td><td>Upload a file, or point at a URL. Files live with your workspace.</td></tr>
+                  <tr><td><strong>Embed</strong></td><td>A live player for YouTube, Vimeo, Loom, Spotify, Figma, CodePen, Google Drive and Google Maps &mdash; paste the ordinary share link and it becomes a player. Any other framable page works too, and the original link always stays in the block&rsquo;s footer.</td></tr>
+                  <tr><td><strong>Web bookmark</strong></td><td>Turns a link into a card with the page&rsquo;s title, description and site name. If the preview can&rsquo;t be fetched (say you&rsquo;re offline) you still get a card, with a retry button.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                <strong>Embed, not Video.</strong> The plain <em>Video</em> block
+                plays a video file. To play a YouTube or Vimeo <em>link</em>, use
+                <strong>Embed</strong>.
+              </p>
+            </div>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Vellum&rsquo;s own blocks</h2>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Block</th><th>What it does</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Callout</strong></td><td>A tinted box with an emoji, for the sentence that matters. Click the emoji to change it or the box to recolour it.</td></tr>
+                  <tr><td><strong>Equation</strong></td><td>Display maths, written in LaTeX and rendered with KaTeX. Click it to edit the formula.</td></tr>
+                  <tr><td><strong>Table of contents</strong></td><td>An outline built from the page&rsquo;s headings that updates itself as you write. Click an entry to jump there.</td></tr>
+                  <tr><td><strong>Sub-page</strong></td><td>Creates a new page inside this one and leaves a link to it here.</td></tr>
+                  <tr><td><strong>Database</strong></td><td>Creates a database inside this page and links to it. See <a href="#databases">Databases</a>.</td></tr>
+                  <tr><td><strong>Link to page</strong></td><td>Links to a page you already have. Typing <kbd>@</kbd> does the same thing without opening the menu.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <!-- ==================================================== linking -->
+          <article class="guide" id="linking">
+            <h1>Linking pages together</h1>
+            <p class="guide-lead">
+              Vellum has three ways to point at another page, and all three keep
+              themselves up to date: rename the target and every link follows.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Mention a page inline: <kbd>@</kbd></h2>
+            <ol class="steps">
+              <li>While writing a sentence, type <kbd>@</kbd>.</li>
+              <li>Keep typing part of the page&rsquo;s name to narrow the list.</li>
+              <li>Press <kbd>Enter</kbd>. A little chip with the page&rsquo;s icon and title lands mid-sentence.</li>
+            </ol>
+            <p>
+              Click the chip to open that page. If you later rename it, the chip
+              shows the new name automatically.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Link on its own line</h2>
+            <p>
+              <code>/link to page</code> inserts the same link as a block of its
+              own &mdash; useful for a list of related documents.
+              <code>/sub-page</code> goes one step further: it
+              <em>creates</em> a new page inside the current one, links to it and
+              opens it.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Linked mentions</h2>
+            <p>
+              At the bottom of every page is a <strong>Linked mentions</strong>
+              section listing each page that links here. You never maintain it;
+              it appears as soon as something points at this page and disappears
+              when nothing does. Click the header to fold it away.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Links to a single block</h2>
+            <p>
+              To point at one paragraph rather than a whole page, hover the block
+              and click <em>Copy link to block</em> in the right margin. Paste
+              that link anywhere &mdash; opening it scrolls straight to the block
+              and flashes it.
+            </p>
+
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                <strong>The Vault stays out of it.</strong> Encrypted pages never
+                appear in the <kbd>@</kbd> list, because a mention in an ordinary
+                page would give away that the secret page exists. Link to Vault
+                pages from inside the Vault instead.
+              </p>
+            </div>
+          </article>
+
+          <!-- ================================================= organizing -->
+          <article class="guide" id="organizing">
+            <h1>Pages &amp; the sidebar</h1>
+            <p class="guide-lead">
+              Every page can hold other pages, so your workspace is a tree.
+              The sidebar is where you shape it.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>What&rsquo;s in the sidebar</h2>
+            <ul>
+              <li><strong>Search</strong> &mdash; the same thing as <kbd>⌘K</kbd>.</li>
+              <li><strong>Recents</strong> &mdash; the five pages you touched last.</li>
+              <li><strong>Favorites</strong> &mdash; appears once you star something.</li>
+              <li><strong>Templates</strong> &mdash; appears once you mark a page as a template.</li>
+              <li><strong>Vault</strong> &mdash; your encrypted corner. See <a href="#vault">The Vault</a>.</li>
+              <li><strong>Private</strong> &mdash; the full tree of your pages.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Making pages</h2>
+            <ul>
+              <li><kbd>⌘N</kbd> or <strong>New page</strong> in the footer &mdash; a page at the top level.</li>
+              <li>Hover any page in the tree and click <strong>+</strong> &mdash; a page inside it.</li>
+              <li>Right-click <strong>New page</strong> (or click the database icon beside it) to choose page or database.</li>
+              <li><code>/sub-page</code> in the editor &mdash; a page inside the one you&rsquo;re writing.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Rearranging the tree</h2>
+            <ol class="steps">
+              <li><strong>Drag a page onto another</strong> to file it inside &mdash; the target opens so you can see it land.</li>
+              <li><strong>Drag between two pages</strong> to reorder them; a line shows where it will go.</li>
+              <li><strong>Drag onto empty space</strong> under the tree to bring a page back to the top level.</li>
+              <li>Click the <strong>&rsaquo;</strong> chevron beside a page to fold its children away.</li>
+            </ol>
+            <p>
+              If dragging is awkward, use <strong>&hellip; &rsaquo; Move to</strong>
+              in the top bar: search for the destination page, or pick
+              <strong>Move to top level</strong>. Pages inside the one you&rsquo;re
+              moving are never offered &mdash; a page can&rsquo;t contain itself.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>The page&rsquo;s own menu</h2>
+            <p>Hover a page in the sidebar and click <strong>&hellip;</strong> for:</p>
+            <ul>
+              <li><strong>Add to / Remove from favorites</strong> &mdash; the star in the top bar does the same.</li>
+              <li><strong>Rename</strong> &mdash; edit the name in place; <kbd>Esc</kbd> cancels.</li>
+              <li><strong>Duplicate</strong> &mdash; a copy, with everything inside it. <kbd>⌘D</kbd> does this for the page you&rsquo;re on.</li>
+              <li><strong>Move to trash</strong>.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>The trash</h2>
+            <p>
+              Deleting is never immediate. <strong>Move to Trash</strong> takes the
+              page (and everything inside it) out of the tree; the bin icon in the
+              sidebar footer shows what&rsquo;s in there, with the date each item
+              was deleted.
+            </p>
+            <ul>
+              <li><strong>Restore</strong> puts a page back where it was and opens it.</li>
+              <li><strong>Delete forever</strong> asks a second time &mdash; click it twice.</li>
+              <li><strong>Empty trash</strong> clears everything, also with a confirm click.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Resizing and hiding the sidebar</h2>
+            <p>
+              Drag its right edge to make it wider or narrower; the width is
+              remembered. <kbd>⌘\</kbd> hides it entirely and brings it back.
+            </p>
+          </article>
+
+          <!-- ===================================================== search -->
+          <article class="guide" id="search">
+            <h1>Search &amp; the ⌘K palette</h1>
+            <p class="guide-lead">
+              <kbd>⌘K</kbd> is the fastest way to reach anything: it searches
+              your pages, runs commands, and creates pages that don&rsquo;t exist
+              yet.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Finding a page</h2>
+            <ol class="steps">
+              <li>Press <kbd>⌘K</kbd> (or click <strong>Search</strong> in the sidebar).</li>
+              <li>Start typing. Vellum searches titles <em>and</em> the text inside pages.</li>
+              <li>Each result shows the trail of pages it lives under, plus a snippet with your words highlighted.</li>
+              <li>Move with <kbd>↑</kbd> <kbd>↓</kbd> and press <kbd>Enter</kbd>; <kbd>Esc</kbd> closes.</li>
+            </ol>
+            <p>
+              Open it with the box empty and you get your six most recently
+              edited pages instead &mdash; usually all you need.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Running commands</h2>
+            <p>The <strong>Actions</strong> section at the top always offers:</p>
+            <ul>
+              <li><strong>New page</strong></li>
+              <li><strong>New database</strong></li>
+              <li><strong>Switch to dark / light mode</strong></li>
+              <li><strong>Open trash</strong></li>
+              <li><strong>Settings</strong></li>
+              <li><strong>New from template: &hellip;</strong> &mdash; one entry per template you&rsquo;ve made.</li>
+            </ul>
+            <p>
+              Actions match on more than their name: typing <em>&ldquo;theme&rdquo;</em>,
+              <em>&ldquo;kanban&rdquo;</em> or <em>&ldquo;bin&rdquo;</em> finds the
+              right one.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Creating from the search box</h2>
+            <p>
+              The last row is always <strong>Create page &ldquo;&hellip;&rdquo;</strong>
+              with whatever you typed. Press <kbd>Enter</kbd> on it and you get a
+              new page already titled &mdash; the quickest way to capture a
+              thought.
+            </p>
+
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                <strong>The Vault is excluded.</strong> Encrypted pages are never
+                indexed, so nothing inside them can surface here by its text.
+                While the Vault is unlocked you can still find those pages by
+                title &mdash; matched in memory on your device, never on the
+                server.
+              </p>
+            </div>
+          </article>
+
+          <!-- ======================================================= tabs -->
+          <article class="guide" id="tabs">
+            <h1>Tabs &amp; getting around</h1>
+            <p class="guide-lead">
+              Vellum keeps several pages open at once, remembers where you were,
+              and gives every page a trail back to where it lives.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Tabs</h2>
+            <ul>
+              <li><kbd>⌘T</kbd> or the <strong>+</strong> at the end of the strip opens a tab.</li>
+              <li>Click a tab to switch; click its <strong>×</strong> (or middle-click the tab) to close it.</li>
+              <li>In the Mac app, <kbd>⌘W</kbd> closes the current tab &mdash; and the window, once it&rsquo;s the last one.</li>
+              <li>Each tab keeps its own back/forward history.</li>
+              <li>Your tabs come back after a reload or a restart, still on the same pages.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Back, forward, breadcrumbs</h2>
+            <p>
+              The arrows at the top left step through the pages you&rsquo;ve
+              visited in this tab. Beside them, the breadcrumbs show where the
+              current page sits &mdash; click any step to go there. A deep trail
+              is shortened with an ellipsis so the bar never overflows.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Row peek</h2>
+            <p>
+              Opening a database row doesn&rsquo;t navigate anywhere: it floats the
+              row over the table so you keep your place. <kbd>Esc</kbd> or a click
+              outside closes it. See <a href="#databases">Databases</a>.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Light and dark</h2>
+            <p>
+              The sun/moon button in the top bar flips the theme, and so does
+              <strong>Settings &rsaquo; Appearance</strong> and the <kbd>⌘K</kbd>
+              action. Vellum starts on whichever your system prefers and then
+              remembers your choice.
+            </p>
+          </article>
+
+          <!-- ================================================== databases -->
+          <article class="guide" id="databases">
+            <h1>Databases: the basics</h1>
+            <p class="guide-lead">
+              A database is a page whose children are rows &mdash; so every row
+              is itself a full page, with its own content, sub-pages and
+              comments. Tasks, reading lists, contacts, a CRM: same building
+              block.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Making one</h2>
+            <ol class="steps">
+              <li>Click the database icon in the sidebar footer (or right-click <strong>New page</strong>) and choose <strong>New database</strong>. <kbd>⌘K &rsaquo; New database</kbd> works too.</li>
+              <li>Give it a title. It opens in <strong>Table</strong> view.</li>
+              <li>It starts with three columns: <strong>Status</strong> (Not started / In progress / Done), <strong>Tags</strong> and <strong>Date</strong>. Change or delete them freely.</li>
+            </ol>
+            <p>
+              To put a database inside a document instead, type
+              <code>/database</code> in the editor.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Adding rows</h2>
+            <ul>
+              <li>In Table view, click <strong>+ New</strong> under the last row and type the name straight into the cell.</li>
+              <li>In any view, the <strong>+ New</strong> button in the toolbar adds a row and opens it. In Calendar view the new row is dated today.</li>
+              <li>When the table is grouped, each group header has its own <strong>+</strong> &mdash; the new row already has that group&rsquo;s value.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Filling in cells</h2>
+            <ul>
+              <li><strong>Text / number / URL</strong> &mdash; click and type; <kbd>Enter</kbd> commits.</li>
+              <li><strong>Select and multi-select</strong> &mdash; click for the list of options. Type a name that doesn&rsquo;t exist yet and <em>Create</em> appears; the new option joins the column for good. Click a colour dot in the property menu to recolour one.</li>
+              <li><strong>Date</strong> &mdash; pick a day; tick <strong>End date</strong> to turn it into a range, which is what the Timeline view draws.</li>
+              <li><strong>Checkbox</strong> &mdash; click it.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Opening a row</h2>
+            <p>
+              Hover a row and click <strong>Open</strong>. The row appears in a
+              floating panel: its properties at the top, then an ordinary editor
+              for the body. Write as much as you like in there &mdash; a row is a
+              real page. <kbd>Esc</kbd> closes the panel.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Columns</h2>
+            <ul>
+              <li><strong>Add</strong> &mdash; the <strong>+</strong> at the right end of the header row.</li>
+              <li><strong>Rename or retype</strong> &mdash; click the column header. See <a href="#properties">Property types</a>.</li>
+              <li><strong>Resize</strong> &mdash; drag the edge of a header.</li>
+              <li><strong>Delete</strong> &mdash; <em>Delete property</em> at the bottom of the column menu.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Deleting rows</h2>
+            <p>
+              Hover a row and click the bin at the end of the name cell. Rows go
+              to the trash like any other page, so they can be restored.
+            </p>
+          </article>
+
+          <!-- ================================================= properties -->
+          <article class="guide" id="properties">
+            <h1>Property types</h1>
+            <p class="guide-lead">
+              Click any column header to rename it or change its type. There are
+              twelve.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>You fill these in</h2>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Type</th><th>For</th></tr></thead>
+                <tbody>
+                  <tr><td>Text</td><td>Any words. The catch-all.</td></tr>
+                  <tr><td>Number</td><td>Amounts, scores, prices. Sorts numerically and can be used in formulas.</td></tr>
+                  <tr><td>Select</td><td>One value from a coloured list &mdash; status, priority, stage.</td></tr>
+                  <tr><td>Multi-select</td><td>Several values at once &mdash; tags, people, topics.</td></tr>
+                  <tr><td>Date</td><td>A day, or a start-and-end range.</td></tr>
+                  <tr><td>Checkbox</td><td>Yes or no.</td></tr>
+                  <tr><td>URL</td><td>A link, shown with a button that opens it.</td></tr>
+                  <tr><td>Relation</td><td>Links to rows in another database. See <a href="#formulas">Relations, rollups &amp; formulas</a>.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Vellum works these out</h2>
+            <p>
+              These four are calculated whenever you look at them and never
+              stored, so they can&rsquo;t go stale &mdash; and they can&rsquo;t be
+              edited by hand either.
+            </p>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Type</th><th>Shows</th></tr></thead>
+                <tbody>
+                  <tr><td>Created time</td><td>When the row was made.</td></tr>
+                  <tr><td>Last edited time</td><td>When it last changed.</td></tr>
+                  <tr><td>Rollup</td><td>A summary of the rows reached through a relation &mdash; a sum, an average, a count.</td></tr>
+                  <tr><td>Formula</td><td>The result of an expression over this row&rsquo;s other properties.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Changing a type later</h2>
+            <p>
+              You can, at any time, from the column menu. Values that no longer
+              make sense in the new type simply stop being shown rather than
+              being thrown away &mdash; switch back and they return.
+            </p>
+          </article>
+
+          <!-- ====================================================== views -->
+          <article class="guide" id="views">
+            <h1>Views, filters &amp; sorting</h1>
+            <p class="guide-lead">
+              The same rows, five ways of looking at them. Switch with the tabs
+              at the top of a database; the choice sticks with the database.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>The five views</h2>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>View</th><th>Good for</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Table</strong></td><td>Everything at once: one row per record, one column per property.</td></tr>
+                  <tr><td><strong>Board</strong></td><td>A kanban board, one column per value of a select property. Drag cards between columns to change that value.</td></tr>
+                  <tr><td><strong>Calendar</strong></td><td>A month grid, placing each row on its date.</td></tr>
+                  <tr><td><strong>Gallery</strong></td><td>Cards &mdash; nice when rows have covers or images.</td></tr>
+                  <tr><td><strong>Timeline</strong></td><td>A Gantt chart drawn from date ranges. Rows without a date are listed underneath rather than dropped.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              When a database has more than one select column, Board gets a
+              menu for choosing which one makes the columns. Calendar and
+              Timeline get the same menu for choosing which date column they
+              follow.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Filtering</h2>
+            <ol class="steps">
+              <li>Click the <strong>filter</strong> icon in the toolbar.</li>
+              <li>Pick a column &mdash; select, multi-select and checkbox columns can be filtered.</li>
+              <li>Tick the values you want to keep. Tick several to mean &ldquo;any of these&rdquo;.</li>
+            </ol>
+            <p>
+              Active filters show as chips under the toolbar with a count like
+              <em>1 of 3</em>. Click a chip&rsquo;s <strong>×</strong> to drop it.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Sorting</h2>
+            <p>
+              The <strong>sort</strong> icon lists Name plus every property.
+              Clicking one cycles ascending &rarr; descending &rarr; off. You can
+              also sort from a column&rsquo;s own menu, and clear it from the chip
+              or the table&rsquo;s footer.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Grouping (Table)</h2>
+            <p>
+              Click <strong>Group</strong> and choose a select, multi-select or
+              checkbox column. Rows gather under a header per value, each with a
+              count, and each header has a <strong>+</strong> that makes a new row
+              already carrying that value. Click a header to fold the group away;
+              choose <strong>No grouping</strong> to undo it.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Searching inside a database</h2>
+            <p>
+              The magnifying glass in the toolbar filters rows by name as you
+              type. <kbd>Esc</kbd> clears it.
+            </p>
+
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                <strong>Filters, sorts, grouping and the in-database search are
+                yours alone.</strong> They&rsquo;re stored on the device you set
+                them on, not in the workspace &mdash; so a filter you apply on
+                your laptop won&rsquo;t rearrange the database on your phone. Which
+                view a database opens in <em>is</em> saved for everyone.
+              </p>
+            </div>
+          </article>
+
+          <!-- =================================================== formulas -->
+          <article class="guide" id="formulas">
+            <h1>Relations, rollups &amp; formulas</h1>
+            <p class="guide-lead">
+              Three ways for a database to work things out for itself: point at
+              another database, summarise what you find there, and calculate
+              from the values in a row.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Relations</h2>
+            <ol class="steps">
+              <li>Add a column and set its type to <strong>Relation</strong>.</li>
+              <li>Pick the database it should point at, under <em>Related database</em>.</li>
+              <li>Close the menu and click a cell in that column: search for rows and tick the ones to link.</li>
+            </ol>
+            <p>
+              Linked rows appear as chips; click one to jump to it. Rename a
+              linked row and the chip renames itself. Delete it and the chip
+              quietly disappears rather than dangling.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Rollups</h2>
+            <p>
+              A rollup follows one of your relation columns and summarises a
+              property of the rows on the other end.
+            </p>
+            <ol class="steps">
+              <li>Add a column and set its type to <strong>Rollup</strong>.</li>
+              <li>Choose which <strong>relation</strong> to follow.</li>
+              <li>Choose which <strong>property</strong> of the related rows to look at (or Name).</li>
+              <li>Choose the <strong>calculation</strong>.</li>
+            </ol>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Calculation</th><th>Result</th></tr></thead>
+                <tbody>
+                  <tr><td>Count all</td><td>How many rows are linked.</td></tr>
+                  <tr><td>Count values</td><td>How many of them actually have a value.</td></tr>
+                  <tr><td>Sum / Average / Min / Max</td><td>The usual arithmetic, for numbers.</td></tr>
+                  <tr><td>Percent checked</td><td>Share of linked rows whose checkbox is ticked.</td></tr>
+                  <tr><td>Show original</td><td>The values themselves, listed.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Formulas</h2>
+            <p>
+              Set a column&rsquo;s type to <strong>Formula</strong> and write an
+              expression. Refer to another column with
+              <code>prop("Name")</code> &mdash; the chips under the box insert one
+              for you. Errors are shown as you type, and the column reads
+              <em>Error</em> until the expression makes sense.
+            </p>
+            <p>Examples that work today:</p>
+            <ul>
+              <li><code>prop("Points") * 2</code></li>
+              <li><code>if(prop("Done"), "✅", "…")</code></li>
+              <li><code>concat(prop("First"), " ", prop("Last"))</code></li>
+              <li><code>dateDiff(prop("Due"), today())</code></li>
+              <li><code>round(prop("Total") / prop("Count"))</code></li>
+            </ul>
+
+            <h3>Operators</h3>
+            <p>
+              <code>+</code> <code>-</code> <code>*</code> <code>/</code>
+              <code>%</code> <code>^</code> for arithmetic;
+              <code>==</code> <code>!=</code> <code>&lt;</code> <code>&lt;=</code>
+              <code>&gt;</code> <code>&gt;=</code> for comparisons;
+              <code>&amp;&amp;</code> <code>||</code> <code>!</code> for logic.
+            </p>
+
+            <h3>Functions</h3>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Group</th><th>Functions</th></tr></thead>
+                <tbody>
+                  <tr><td>Logic</td><td><code>if</code>, <code>not</code>, <code>empty</code></td></tr>
+                  <tr><td>Text</td><td><code>concat</code>, <code>join</code>, <code>length</code>, <code>lower</code>, <code>upper</code>, <code>contains</code>, <code>replace</code>, <code>slice</code>, <code>format</code></td></tr>
+                  <tr><td>Numbers</td><td><code>abs</code>, <code>round</code>, <code>floor</code>, <code>ceil</code>, <code>sqrt</code>, <code>min</code>, <code>max</code>, <code>sum</code>, <code>number</code></td></tr>
+                  <tr><td>Dates</td><td><code>now</code>, <code>today</code>, <code>year</code>, <code>month</code>, <code>day</code>, <code>dateDiff</code>, <code>dateAdd</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                <strong>Nothing computed is ever stored.</strong> Rollups and
+                formulas are worked out each time they&rsquo;re shown, so they
+                update the moment anything they depend on changes. Two formulas
+                that refer to each other stop instead of looping forever.
+              </p>
+            </div>
+          </article>
+
+          <!-- ================================================== templates -->
+          <article class="guide" id="templates">
+            <h1>Templates</h1>
+            <p class="guide-lead">
+              Any page can become a template. Meeting notes, a weekly review, a
+              project skeleton &mdash; build it once, then start from it.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Making a template</h2>
+            <ol class="steps">
+              <li>Build the page the way you want every copy to start: headings, checklists, an icon, a cover, even sub-pages.</li>
+              <li>Open <strong>&hellip;</strong> in the top bar and switch <strong>Template</strong> on.</li>
+              <li>The page moves into a <strong>Templates</strong> section in the sidebar. It&rsquo;s still an ordinary page &mdash; edit it whenever the template needs to change.</li>
+            </ol>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Three ways to use one</h2>
+            <ul>
+              <li>Hover the template in the sidebar and click <strong>+</strong> &mdash; a fresh copy at the top level, opened for you.</li>
+              <li>On any empty page, pick from the <strong>Start with a template</strong> row that appears above the editor.</li>
+              <li><kbd>⌘K</kbd> &rsaquo; <strong>New from template: &hellip;</strong>.</li>
+            </ul>
+            <p>
+              A copy is a normal page: it carries the content, icon, cover and
+              sub-pages across, and it isn&rsquo;t a template itself. Editing it
+              never touches the original.
+            </p>
+
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                Switching <strong>Template</strong> back off returns the page to
+                the ordinary tree, exactly where it was.
+              </p>
+            </div>
+          </article>
+
+          <!-- ==================================================== history -->
+          <article class="guide" id="history">
+            <h1>Page history &amp; comments</h1>
+            <p class="guide-lead">
+              Vellum keeps older versions of your writing, and lets you leave
+              notes for yourself on any page.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Going back in time</h2>
+            <ol class="steps">
+              <li>Open <strong>&hellip;</strong> &rsaquo; <strong>Page history</strong>.</li>
+              <li>Versions are listed newest first. Click one to preview it on the right.</li>
+              <li><strong>Restore this version</strong> puts that text back on the page.</li>
+            </ol>
+            <p>
+              While you edit, Vellum saves a snapshot of the previous text at
+              most once every ten minutes, and keeps the last thirty per page.
+              Restoring is itself an edit &mdash; so if you restore the wrong one,
+              open history again and restore what you had.
+            </p>
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                <strong>History needs a connection.</strong> Snapshots live on
+                the server, not on your device, so the menu item is greyed out
+                while you&rsquo;re offline. Databases don&rsquo;t have page
+                history; their rows do.
+              </p>
+            </div>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Comments</h2>
+            <p>
+              Every page has a comment panel under the editor, next to Linked
+              mentions.
+            </p>
+            <ul>
+              <li>Type in <em>Add a comment&hellip;</em> and press <kbd>Enter</kbd> or click <strong>Send</strong>.</li>
+              <li>The tick <strong>resolves</strong> a comment; resolved ones stay visible but dimmed, and the arrow reopens them.</li>
+              <li>The bin deletes one for good.</li>
+              <li>The header counts the unresolved ones; click it to fold the panel.</li>
+            </ul>
+            <p>
+              Comments also live on the server, so the panel says
+              <em>&ldquo;Comments unavailable offline&rdquo;</em> until you
+              reconnect. Commenting on a comment isn&rsquo;t supported, and the
+              Vault has no comments at all &mdash; they couldn&rsquo;t be
+              encrypted, so they aren&rsquo;t offered.
+            </p>
+          </article>
+
+          <!-- ================================================= publishing -->
+          <article class="guide" id="publishing">
+            <h1>Publishing to the web</h1>
+            <p class="guide-lead">
+              Any page can become a public web page with one switch. No account
+              needed to read it, and no way in to the rest of your workspace.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Publishing</h2>
+            <ol class="steps">
+              <li>Open the page and click <strong>Share</strong> in the top bar.</li>
+              <li>Turn on <strong>Publish to web</strong>.</li>
+              <li>A link appears. <strong>Copy link</strong> puts it on your clipboard; <strong>Open</strong> shows you what readers see.</li>
+            </ol>
+            <p>
+              The link contains a long random string that nobody can guess &mdash;
+              that string <em>is</em> the access control. Anyone you give it to
+              can read the page; anyone who doesn&rsquo;t have it can&rsquo;t.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Unpublishing</h2>
+            <p>
+              Turn the switch off and the link stops working immediately and
+              permanently &mdash; it is destroyed, not hidden. If you publish the
+              same page again you get a <em>different</em> link, so the old one
+              stays dead. Publishing a page that&rsquo;s already published keeps
+              the link you&rsquo;ve shared, so a double click can&rsquo;t break it.
+            </p>
+            <p>Moving a published page to the trash also takes it offline.</p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>What a reader sees</h2>
+            <ul>
+              <li>The page&rsquo;s title and content, as plain, fast HTML.</li>
+              <li>Links to your other pages as <strong>plain titles, never links</strong> &mdash; a published page can&rsquo;t reveal that a private page exists, let alone open it.</li>
+              <li>Nothing else: no sidebar, no comments, no way to edit.</li>
+            </ul>
+
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                <strong>Publishing needs a connection</strong> &mdash; the switch
+                explains itself while you&rsquo;re offline. And
+                <strong>Vault pages can&rsquo;t be published at all</strong>: the
+                server only ever holds their ciphertext, so there would be
+                nothing to show.
+              </p>
+            </div>
+          </article>
+
+          <!-- ================================================== exporting -->
+          <article class="guide" id="exporting">
+            <h1>Exporting &amp; importing</h1>
+            <p class="guide-lead">
+              Your writing is yours. Every page can leave Vellum as a file, and
+              other people&rsquo;s files can come in.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Exporting a page</h2>
+            <p>
+              <strong>Share</strong> in the top bar (or <strong>&hellip;</strong>)
+              offers, for a document:
+            </p>
+            <ul>
+              <li><strong>Markdown</strong> &mdash; a <code>.md</code> file named after the page.</li>
+              <li><strong>HTML</strong> &mdash; a styled, self-contained <code>.html</code> file.</li>
+              <li><strong>PDF</strong> &mdash; in the Mac app this opens a save dialog; in a browser it hands the same document to the print dialog, where you choose <em>Save as PDF</em>.</li>
+            </ul>
+            <p>
+              For a database there&rsquo;s one option, <strong>Export as
+              CSV</strong>: one row per record, one column per property, ready
+              for a spreadsheet.
+            </p>
+            <p>Files land in your Downloads folder.</p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Copying instead of downloading</h2>
+            <p>
+              <strong>&hellip;</strong> &rsaquo; <strong>Copy page contents</strong>
+              puts the whole page on the clipboard as Markdown &mdash; handy for
+              pasting into an email, a chat or another editor.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Importing</h2>
+            <ol class="steps">
+              <li>Make (or open) the page you want the content to land in.</li>
+              <li><strong>&hellip;</strong> &rsaquo; <strong>Import Markdown or HTML…</strong></li>
+              <li>Choose a <code>.md</code>, <code>.markdown</code>, <code>.txt</code>, <code>.html</code> or <code>.htm</code> file.</li>
+            </ol>
+            <p>
+              Headings, lists, quotes, code and links all come across as proper
+              blocks. The import is added to the page you&rsquo;re on, so import
+              into an empty page unless you mean to append.
+            </p>
+
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                Export and import both work on the page currently on screen, so
+                the options are missing when no page is open &mdash; and a locked
+                page can&rsquo;t be imported into until you unlock it.
+              </p>
+            </div>
+          </article>
+
+          <!-- ====================================================== vault -->
+          <article class="guide" id="vault">
+            <h1>The Vault</h1>
+            <p class="guide-lead">
+              The Vault is the corner of your workspace that is end-to-end
+              encrypted. Pages inside are sealed on your device with a
+              passphrase only you know: the server, the database and the
+              network only ever see ciphertext.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Setting it up</h2>
+            <ol class="steps">
+              <li>Click <strong>Create Vault</strong> under the Vault heading in the sidebar.</li>
+              <li>Choose a passphrase &mdash; at least 8 characters &mdash; and type it twice.</li>
+              <li>Click <strong>Create Vault</strong>. It opens unlocked, ready for its first page.</li>
+            </ol>
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                <strong>There is no reset and no recovery.</strong> The passphrase
+                never leaves your device, so nobody &mdash; including Vellum
+                &mdash; can unlock the Vault for you. If you forget it, what&rsquo;s
+                inside is gone. That is the point; write it down somewhere safe.
+              </p>
+            </div>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Using it</h2>
+            <ul>
+              <li><strong>New page</strong> inside the Vault works like any other page &mdash; it&rsquo;s encrypted before it leaves the window.</li>
+              <li>The Vault view lists what&rsquo;s inside, with real titles, while unlocked.</li>
+              <li><strong>Lock now</strong> seals it immediately. So does closing or reloading Vellum, and fifteen minutes without activity.</li>
+              <li>Unlocking asks for the passphrase; a wrong one is refused with <em>Wrong passphrase</em>.</li>
+            </ul>
+            <p>
+              While locked, the sidebar shows a <strong>Locked</strong> chip, and
+              any Vault page you open reads <em>🔒 Locked page</em> with an unlock
+              form. Nothing of its content is on screen or in memory until you
+              unlock.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>What the Vault deliberately can&rsquo;t do</h2>
+            <ul>
+              <li><strong>Search</strong> can&rsquo;t look inside it &mdash; there is no readable text to index. While unlocked you can still find Vault pages by title.</li>
+              <li><strong>Publishing</strong> is refused for Vault pages.</li>
+              <li><strong>Comments</strong> aren&rsquo;t offered inside; they couldn&rsquo;t be encrypted.</li>
+              <li><strong>Databases</strong> can&rsquo;t be created inside the Vault.</li>
+              <li><strong>Mentions</strong> can&rsquo;t cross the boundary, in either direction.</li>
+              <li><strong>Pages can&rsquo;t be moved in or out.</strong> An ordinary page dragged in would leave its old, unencrypted history behind. Create the page inside the Vault instead.</li>
+              <li>Trashed Vault pages appear in the trash as <em>Locked page</em>, with no title.</li>
+            </ul>
+          </article>
+
+          <!-- =================================================== settings -->
+          <article class="guide" id="settings">
+            <h1>Settings &amp; your account</h1>
+            <p class="guide-lead">
+              <kbd>⌘,</kbd>, the gear in the sidebar footer, or
+              <kbd>⌘K</kbd> &rsaquo; Settings.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Account</h2>
+            <ul>
+              <li>Your <strong>email</strong> &mdash; the one the workspace is locked to.</li>
+              <li><strong>Change password</strong> &mdash; asks for the current one, then the new one twice, with the same live checklist as sign-up. A new password has to meet the policy in full.</li>
+              <li><strong>Sign out everywhere</strong> &mdash; ends every session on every device, including this one.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Security</h2>
+            <ul>
+              <li><strong>Vault</strong> &mdash; shows whether it&rsquo;s locked, with a <em>Lock now</em> button while it&rsquo;s open. Appears once you&rsquo;ve made a Vault.</li>
+              <li><strong>Touch ID sign-in</strong> &mdash; on a Mac with biometrics, removes the saved credentials. To enable it, tick the box while signing in.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Appearance</h2>
+            <p>
+              <strong>Light</strong> or <strong>Dark</strong>. Vellum follows your
+              system setting until you choose, then remembers.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Danger zone</h2>
+            <p>
+              <strong>Delete account</strong> erases everything: pages, databases,
+              the Vault, uploaded files, history, comments and the account
+              itself, on every device. To go through with it you must enter your
+              password <em>and</em> type <code>DELETE</code>.
+            </p>
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                There is no undo and no backup unless you made one. Export
+                anything you want to keep first &mdash; see
+                <a href="#exporting">Exporting &amp; importing</a>.
+              </p>
+            </div>
+          </article>
+
+          <!-- ==================================================== offline -->
+          <article class="guide" id="offline">
+            <h1>Offline &amp; sync</h1>
+            <p class="guide-lead">
+              Vellum keeps a full copy of your workspace on every device you use
+              it on. The network makes your devices agree with each other; it is
+              never what makes the app work.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>What happens when you go offline</h2>
+            <ul>
+              <li>Everything keeps working: reading, writing, new pages, databases, moving things around.</li>
+              <li>A small chip above the sidebar footer says <em>Offline &mdash; changes saved locally</em>, or counts what&rsquo;s waiting: <em>Offline &mdash; 3 changes pending</em>.</li>
+              <li>When you&rsquo;re back, the queue replays in order and the chip disappears. You don&rsquo;t press anything.</li>
+            </ul>
+            <p>
+              The chip only shows when there&rsquo;s something to say &mdash; while
+              you&rsquo;re connected and everything is saved, it stays out of the
+              way.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>What does need a connection</h2>
+            <ul>
+              <li><a href="#history">Page history</a> and <a href="#history">comments</a>, which live on the server.</li>
+              <li><a href="#publishing">Publishing</a> and public links.</li>
+              <li>Bookmark previews (the card still appears, just without the fetched title).</li>
+              <li>Account settings.</li>
+            </ul>
+            <p>Each one says so in place rather than failing silently.</p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Editing the same page in two places</h2>
+            <p>
+              If two devices edit the same page while apart, the version saved
+              last wins the whole page when they meet again. Different pages
+              never conflict &mdash; they merge cleanly.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Installing Vellum</h2>
+            <ul>
+              <li><strong>Mac app</strong> &mdash; native menus, its own Dock icon, Touch ID unlock and true PDF export.</li>
+              <li><strong>As an app from your browser</strong> &mdash; Vellum ships a web app manifest and a service worker, so you can install it from the address bar. It then opens in its own window and boots even with no connection at all.</li>
+              <li><strong>Any browser</strong> &mdash; just visit <a href="/app">the workspace</a>.</li>
+            </ul>
+            <p>All three are the same workspace; edits made in one show up in the others.</p>
+          </article>
+
+          <!-- ================================================== shortcuts -->
+          <article class="guide" id="shortcuts">
+            <h1>Keyboard shortcuts</h1>
+            <p class="guide-lead">
+              On Windows and Linux, use <kbd>Ctrl</kbd> wherever this says
+              <kbd>⌘</kbd>.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Everywhere in the app</h2>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Keys</th><th>Does</th></tr></thead>
+                <tbody>
+                  <tr><td><kbd>⌘K</kbd></td><td>Search pages and run commands</td></tr>
+                  <tr><td><kbd>⌘N</kbd></td><td>New page</td></tr>
+                  <tr><td><kbd>⌘T</kbd></td><td>New tab</td></tr>
+                  <tr><td><kbd>⌘W</kbd></td><td>Close the tab (Mac app)</td></tr>
+                  <tr><td><kbd>⌘D</kbd></td><td>Duplicate the current page</td></tr>
+                  <tr><td><kbd>⌘\</kbd></td><td>Show or hide the sidebar</td></tr>
+                  <tr><td><kbd>⌘,</kbd></td><td>Settings</td></tr>
+                  <tr><td><kbd>Esc</kbd></td><td>Close a menu, dialog or row panel</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>While writing</h2>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Keys</th><th>Does</th></tr></thead>
+                <tbody>
+                  <tr><td><kbd>/</kbd></td><td>Insert a block</td></tr>
+                  <tr><td><kbd>@</kbd></td><td>Mention another page</td></tr>
+                  <tr><td><kbd>Enter</kbd> (in the title)</td><td>Jump into the page body</td></tr>
+                  <tr><td><kbd>Tab</kbd> / <kbd>⇧Tab</kbd></td><td>Indent / outdent a list item</td></tr>
+                  <tr><td><kbd>⌘B</kbd> <kbd>⌘I</kbd> <kbd>⌘U</kbd></td><td>Bold, italic, underline</td></tr>
+                  <tr><td><kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd></td><td>Undo / redo</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>In ⌘K</h2>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Keys</th><th>Does</th></tr></thead>
+                <tbody>
+                  <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move through the results</td></tr>
+                  <tr><td><kbd>Enter</kbd></td><td>Open the highlighted result, or run the action</td></tr>
+                  <tr><td><kbd>Esc</kbd></td><td>Close</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer-inner">
+        <a class="wordmark" href="/">
+          <img src="./favicon.png" alt="" width="22" height="22" />
+          <span>Vellum</span>
+        </a>
+        <p class="footer-note">
+          Set in Newsreader &amp; Inter · Built with Convex + React
+        </p>
+        <nav class="footer-links" aria-label="Elsewhere">
+          <a href="/">Home</a>
+          <a href="https://github.com/MiTMi/vellum" rel="noreferrer">GitHub</a>
+          <span>© <span data-year>2026</span></span>
+        </nav>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/help/help.ts"></script>
+  </body>
+</html>

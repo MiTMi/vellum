@@ -51,7 +51,11 @@ self.addEventListener("activate", (event) => {
  * inside Electron), so there is no relative-base problem to solve.
  */
 function offlineFallbackFor(pathname) {
-  return pathname === "/" || pathname === "/index.html" ? "/" : "/app";
+  if (pathname === "/" || pathname === "/index.html") return "/";
+  // The Help Center is its own precached entry: offline, "how do I…?" should
+  // answer itself rather than dumping the reader into the workspace.
+  if (pathname === "/help" || pathname === "/help.html") return "/help";
+  return "/app";
 }
 
 /**

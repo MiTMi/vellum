@@ -100,6 +100,13 @@ try {
     !!(await page.getAttribute("link[rel=manifest]", "href")),
   );
 
+  // Visit the Help Center once online, like the other two entries above, so
+  // the offline pass below is comparing like with like. (Under `vite
+  // preview` it also matters: preview answers /assets/* with `Vary: Origin`,
+  // which no cached response can satisfy — Vercel sends no Vary at all.)
+  await page.goto(`${BASE}/help`);
+  await page.waitForSelector(".help-index", { timeout: 15000 });
+
   /* ---------------- offline shell ---------------- */
 
   await context.setOffline(true);
@@ -116,7 +123,14 @@ try {
   await page.waitForSelector(".hero h1", { timeout: 15000 });
   check(
     "offline: / boots the landing page from cache",
-    (await page.textContent(".hero h1")).includes("Your ideas"),
+    (await page.textContent(".hero h1")).includes("Write it down"),
+  );
+
+  await page.goto(`${BASE}/help`);
+  await page.waitForSelector(".help-index", { timeout: 15000 });
+  check(
+    "offline: /help boots the Help Center from cache",
+    (await page.locator(".guide.is-open").count()) === 1,
   );
 
   /* ---------------- what the worker must NOT serve ---------------- */
