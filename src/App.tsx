@@ -3,6 +3,11 @@ import { NavProvider, useNav } from "./state";
 import { usePagesIndex } from "./hooks/usePagesIndex";
 import { useMutations } from "./data";
 import { setRegistry } from "./lib/pageRegistry";
+import {
+  displayTitle,
+  syncVaultIndex,
+  useVaultVersion,
+} from "./lib/vaultSession";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import TabBar from "./components/TabBar";
@@ -69,14 +74,23 @@ function Workspace() {
     return () => window.removeEventListener("hashchange", go);
   }, [navigate]);
 
+  // Keep the vault session's membership set (and, while unlocked, its
+  // decrypted-title cache) in step with the page index.
+  const vaultVersion = useVaultVersion();
+  useEffect(() => {
+    syncVaultIndex(index.all);
+  }, [index]);
+
   // Mirror the page index into the module registry for editor blocks.
+  // Vault pages register their *display* title — the decrypted one while
+  // unlocked, a placeholder while locked — never the ciphertext.
   useEffect(() => {
     const map = new Map<string, { title: string; icon: string | null; type: "doc" | "database" }>();
     for (const p of index.all) {
-      map.set(p._id, { title: p.title, icon: p.icon, type: p.type });
+      map.set(p._id, { title: displayTitle(p), icon: p.icon, type: p.type });
     }
     setRegistry(map);
-  }, [index]);
+  }, [index, vaultVersion]);
 
   // First launch: seed the welcome page.
   useEffect(() => {

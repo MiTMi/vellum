@@ -91,6 +91,7 @@ export const list = query({
         cover: p.cover ?? null,
         isFavorite: p.isFavorite ?? false,
         isTemplate: p.isTemplate ?? false,
+        vault: p.vault ?? false,
         props: p.props ?? null,
         updatedAt: p.updatedAt,
         _creationTime: p._creationTime,
@@ -120,6 +121,7 @@ export const trashed = query({
         title: p.title,
         icon: p.icon ?? null,
         type: p.type,
+        vault: p.vault ?? false,
         trashedAt: p.trashedAt ?? 0,
       }));
   },
@@ -186,7 +188,10 @@ export const search = query({
       .withSearchIndex("search", (q) => q.search("searchText", args.term))
       .take(20);
     return results
-      .filter((p) => !p.inTrash)
+      // Vault pages are excluded defensively: their searchText is written
+      // empty (their plaintext never reaches the server), so nothing should
+      // match — but an encrypted page must never surface in results.
+      .filter((p) => !p.inTrash && !p.vault)
       .map((p) => ({
         _id: p._id,
         title: p.title,
@@ -209,9 +214,18 @@ export const create = mutation({
     title: v.optional(v.string()),
     icon: v.optional(v.string()),
     props: v.optional(v.record(v.string(), v.any())),
+    // True only when creating the vault root itself; children inherit below.
+    vault: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await requireUser(ctx);
+    // Vault membership is inherited server-side so a buggy client can't
+    // create a plaintext-indexed page inside the encrypted subtree.
+    const parent = args.parentId ? await ctx.db.get("pages", args.parentId) : null;
+    const vault = args.vault || parent?.vault ? true : undefined;
+    if (vault && args.type === "database") {
+      throw new Error("Databases inside the Vault are not supported yet");
+    }
     const rank = await nextRank(ctx, args.parentId);
     const now = Date.now();
     const id = await ctx.db.insert("pages", {
@@ -221,7 +235,8 @@ export const create = mutation({
       rank,
       icon: args.icon,
       props: args.props,
-      searchText: args.title ?? "",
+      vault,
+      searchText: vault ? "" : (args.title ?? ""),
       updatedAt: now,
       ...(args.type === "database"
         ? {
@@ -269,6 +284,7 @@ export const createWithDoc = mutation({
     smallText: v.optional(v.boolean()),
     fullWidth: v.optional(v.boolean()),
     locked: v.optional(v.boolean()),
+    vault: v.optional(v.boolean()),
     inTrash: v.optional(v.boolean()),
     trashRoot: v.optional(v.boolean()),
     trashedAt: v.optional(v.number()),
@@ -292,8 +308,15 @@ export const createWithDoc = mutation({
       .unique();
     if (existing) return existing._id;
     const { clientKey, publicSlug, publishedAt, ...doc } = args;
+    // Same server-side vault inheritance as `create`, plus: an encrypted
+    // page must never contribute plaintext to the search index.
+    const parent = doc.parentId ? await ctx.db.get("pages", doc.parentId) : null;
+    const vault = doc.vault || parent?.vault ? true : undefined;
     return await ctx.db.insert("pages", {
       ...doc,
+      vault,
+      contentText: vault ? "" : doc.contentText,
+      searchText: vault ? "" : doc.searchText,
       clientKey,
       contentUpdatedAt: args.updatedAt,
     });
@@ -322,7 +345,8 @@ export const rename = mutation({
     const now = args.clientUpdatedAt ?? Date.now();
     await ctx.db.patch("pages", args.id, {
       title: args.title,
-      searchText: args.title + " " + (page.contentText ?? ""),
+      // Vault titles arrive encrypted — keep them out of the search index.
+      searchText: page.vault ? "" : args.title + " " + (page.contentText ?? ""),
       updatedAt: now,
       contentUpdatedAt: now,
     });
@@ -381,8 +405,10 @@ export const updateContent = mutation({
 
     await ctx.db.patch("pages", args.id, {
       content: args.content,
-      contentText: args.text,
-      searchText: page.title + " " + args.text,
+      // Vault content arrives encrypted with an empty `text` — never let
+      // either search field hold vault plaintext (or ciphertext).
+      contentText: page.vault ? "" : args.text,
+      searchText: page.vault ? "" : page.title + " " + args.text,
       updatedAt: now,
       contentUpdatedAt: now,
     });
@@ -497,6 +523,26 @@ export const move = mutation({
     }
     const page = await ctx.db.get("pages", args.id);
     if (!page) return;
+    // The vault boundary is not crossable by moving: a plaintext page can't
+    // land inside the encrypted subtree (it would be unreadable there and
+    // its history would stay plaintext), and an encrypted page can't leave
+    // it (it would be undecryptable ciphertext outside). The vault *root*
+    // sits at the boundary by definition and may move anywhere (it drags
+    // its subtree along), so only its descendants are pinned.
+    const newParent = args.parentId
+      ? await ctx.db.get("pages", args.parentId)
+      : null;
+    const oldParent = page.parentId
+      ? await ctx.db.get("pages", page.parentId)
+      : null;
+    const isVaultRoot = (page.vault ?? false) && !(oldParent?.vault ?? false);
+    if (!isVaultRoot) {
+      if ((page.vault ?? false) !== (newParent?.vault ?? false)) {
+        throw new Error("Pages can't move into or out of the Vault");
+      }
+    } else if (newParent?.vault) {
+      throw new Error("The Vault can't be moved inside itself");
+    }
     await ctx.db.patch("pages", args.id, {
       parentId: args.parentId,
       rank: args.rank,
@@ -530,7 +576,29 @@ export const duplicate = mutation({
     const destRank = reparent
       ? await nextRank(ctx, destParent)
       : src.rank + 1;
-    const suffix = args.suffix ?? " (copy)";
+
+    // Vault guards. The root can't be duplicated (two roots would be
+    // ambiguous); descendants only duplicate within the vault, and
+    // plaintext pages never duplicate into it.
+    const srcParent = src.parentId
+      ? await ctx.db.get("pages", src.parentId)
+      : null;
+    if ((src.vault ?? false) && !(srcParent?.vault ?? false)) {
+      throw new Error("The Vault itself can't be duplicated");
+    }
+    const destParentDoc = destParent
+      ? await ctx.db.get("pages", destParent)
+      : null;
+    const destVault = reparent
+      ? (destParentDoc?.vault ?? false)
+      : (srcParent?.vault ?? false);
+    if ((src.vault ?? false) !== destVault) {
+      throw new Error("Pages can't be duplicated into or out of the Vault");
+    }
+
+    // An encrypted title can't take a " (copy)" suffix — it would corrupt
+    // the envelope. Vault copies keep their title verbatim.
+    const suffix = src.vault ? "" : (args.suffix ?? " (copy)");
 
     async function clone(
       page: Doc<"pages">,
@@ -540,7 +608,11 @@ export const duplicate = mutation({
       isRoot: boolean,
     ): Promise<Id<"pages">> {
       // clientKey must stay unique per created page — never copy it.
-      const { _id, _creationTime, clientKey, ...rest } = page;
+      // publicSlug/publishedAt must not be copied either: the slug is the
+      // access control for /p/<slug>, and two pages sharing one would both
+      // leak the copy and break the unique bySlug lookup.
+      const { _id, _creationTime, clientKey, publicSlug, publishedAt, ...rest } =
+        page;
       const newId = await ctx.db.insert("pages", {
         ...rest,
         parentId,
@@ -718,6 +790,13 @@ export const setPublished = mutation({
     await requireUser(ctx);
     const page = await ctx.db.get("pages", args.id);
     if (!page) return null;
+
+    // The Vault's contract is absolute: its pages are ciphertext to the
+    // server and can never be made public. (The client hides the toggle;
+    // this is the authoritative guard.)
+    if (page.vault) {
+      throw new Error("Vault pages can't be published");
+    }
 
     if (!args.value) {
       await ctx.db.patch("pages", args.id, {

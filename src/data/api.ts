@@ -74,6 +74,8 @@ export interface Mutations {
     title?: string;
     icon?: string;
     props?: Record<string, unknown>;
+    /** Creating the vault root. Children inherit membership server-side. */
+    vault?: boolean;
   }): Promise<PageId>;
   rename(args: { id: PageId; title: string }): Promise<void>;
   updateContent(args: { id: PageId; content: unknown; text: string }): Promise<void>;

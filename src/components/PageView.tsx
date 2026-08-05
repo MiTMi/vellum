@@ -19,6 +19,19 @@ import DatabaseView from "./database/DatabaseView";
 import RowPropsPanel from "./database/RowProps";
 import IconPicker from "./IconPicker";
 import CoverPicker from "./CoverPicker";
+import VaultView, { VaultUnlock } from "./VaultView";
+import {
+  decryptJson,
+  decryptTitle,
+  isEncryptedContent,
+  isVaultMeta,
+} from "../lib/vaultCrypto";
+import {
+  isVaultUnlocked,
+  useVaultVersion,
+  vaultKey,
+  vaultRootId,
+} from "../lib/vaultSession";
 
 interface PageViewProps {
   pageId: PageId;
@@ -27,6 +40,7 @@ interface PageViewProps {
 
 export default function PageView({ pageId, index }: PageViewProps) {
   const page = usePage(pageId);
+  useVaultVersion(); // re-render on vault lock/unlock
   const parentMeta = page?.parentId ? index.byId.get(page.parentId) : undefined;
   const isRow = parentMeta?.type === "database";
   const database = usePage(isRow ? (page!.parentId as PageId) : null);
@@ -43,12 +57,105 @@ export default function PageView({ pageId, index }: PageViewProps) {
     );
   }
 
+  if (page.vault) {
+    const isRoot = !parentMeta?.vault;
+    if (isRoot) return <VaultView key={page._id} page={page} index={index} />;
+    return <VaultPageGate key={page._id} page={page} index={index} />;
+  }
+
   return (
     <PageBody
       key={page._id}
       page={page}
       index={index}
       database={isRow ? (database ?? null) : null}
+    />
+  );
+}
+
+/**
+ * A page inside the Vault. Locked → the unlock form. Unlocked → decrypt
+ * title/content in memory and hand a plaintext PageDoc to the ordinary
+ * PageBody; every save goes back out through the data layer's encryption
+ * wrapper, so plaintext never leaves this component tree.
+ */
+function VaultPageGate({ page, index }: { page: PageDoc; index: PagesIndex }) {
+  useVaultVersion();
+  const unlocked = isVaultUnlocked();
+  const rootId = vaultRootId();
+  const root = usePage(unlocked ? null : (rootId as PageId | null));
+  const [dec, setDec] = useState<
+    | { status: "ok"; id: string; title: string; content: unknown }
+    | { status: "error"; id: string }
+    | null
+  >(null);
+
+  useEffect(() => {
+    if (!unlocked) {
+      setDec(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const key = vaultKey();
+        const title = await decryptTitle(key, page.title);
+        const content = isEncryptedContent(page.content)
+          ? await decryptJson(key, page.content)
+          : (page.content ?? []);
+        if (!cancelled) setDec({ status: "ok", id: page._id, title, content });
+      } catch {
+        // Never mount an editor over content we couldn't decrypt — a save
+        // would overwrite the ciphertext with an empty document.
+        if (!cancelled) setDec({ status: "error", id: page._id });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page._id, unlocked]);
+
+  if (!unlocked) {
+    const meta = isVaultMeta(root?.content) ? root!.content : null;
+    return (
+      <div className="page-view">
+        <div className="page-inner">
+          <div className="vault-head">
+            <h1 className="vault-title">🔒 Locked page</h1>
+            <p className="vault-sub">This page is in your encrypted Vault.</p>
+          </div>
+          {meta ? (
+            <VaultUnlock meta={meta} index={index} />
+          ) : (
+            <div className="page-loading" />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (dec === null || dec.id !== page._id) {
+    return <div className="page-loading" />;
+  }
+  if (dec.status === "error") {
+    return (
+      <div className="page-missing">
+        <h2>Can't decrypt this page</h2>
+        <p>
+          It was encrypted with a different passphrase, or its data is
+          incomplete. Lock and unlock the Vault to retry.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <PageBody
+      key={page._id}
+      page={{ ...page, title: dec.title, content: dec.content }}
+      index={index}
+      database={null}
     />
   );
 }

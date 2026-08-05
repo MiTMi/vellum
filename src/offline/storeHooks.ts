@@ -41,6 +41,7 @@ export function createStoreReadHooks(store: PageStore) {
               cover: p.cover ?? null,
               isFavorite: p.isFavorite ?? false,
               isTemplate: p.isTemplate ?? false,
+              vault: p.vault ?? false,
               props: p.props ?? null,
               updatedAt: p.updatedAt,
               _creationTime: p._creationTime,

@@ -43,6 +43,7 @@ import { PageMentionSpec } from "./PageMentionInline";
 import BlockAnchorOverlay from "./BlockAnchorOverlay";
 import { clearActiveEditor, setActiveEditor } from "../lib/editorRegistry";
 import CodeCopyOverlay from "./CodeCopyOverlay";
+import { isVaultPage } from "../lib/vaultSession";
 
 export const schema = BlockNoteSchema.create({
   blockSpecs: {
@@ -220,6 +221,11 @@ export default function PageEditor({ page }: EditorProps) {
     const items: DefaultReactSuggestionItem[] = [];
     for (const [id, p] of registrySnapshot()) {
       if (id === page._id || p.inTrash) continue;
+      // Vault pages are never mention targets: a link in a plaintext page
+      // would leak that the vault page exists, and vault content can't
+      // reference plaintext-page machinery symmetrically. (The vault's own
+      // sub-pages are reached from the Vault view instead.)
+      if (isVaultPage(id) || isVaultPage(page._id)) continue;
       const title = p.title || "Untitled";
       if (q && !title.toLowerCase().includes(q)) continue;
       items.push({
@@ -391,7 +397,12 @@ export default function PageEditor({ page }: EditorProps) {
       if (t.includes(q)) return 2;
       return 3; // matched only through an alias
     };
-    return filterSuggestionItems([...defaults, ...custom], query).sort(
+    // Inside the Vault: no inline databases (unsupported there) and no
+    // "Link to page" (mentions across the vault boundary are blocked).
+    const custom2 = isVaultPage(page._id)
+      ? custom.filter((c) => c.title !== "Database" && c.title !== "Link to page")
+      : custom;
+    return filterSuggestionItems([...defaults, ...custom2], query).sort(
       (a, b) => rank(a.title) - rank(b.title),
     );
   };

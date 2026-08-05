@@ -5,6 +5,29 @@ import { PageMeta, VersionDoc, VersionMeta } from "../lib/types";
 import { useMutations, useVersionHistory } from "../data";
 import { blocksToPlainText, extractText } from "../lib/blocks";
 import { getActiveEditorFor } from "../lib/editorRegistry";
+import {
+  decryptJson,
+  decryptTitle,
+  isEncryptedContent,
+  isEncryptedTitle,
+} from "../lib/vaultCrypto";
+import { displayTitle, vaultKey } from "../lib/vaultSession";
+
+/**
+ * Vault snapshots are stored as ciphertext (title and content alike).
+ * Decrypt before showing or restoring — restore especially: handing the
+ * envelope back to updateContent would make the wrapper encrypt it twice.
+ */
+async function decryptVersion(doc: VersionDoc): Promise<VersionDoc> {
+  const out = { ...doc };
+  if (isEncryptedTitle(out.title)) {
+    out.title = await decryptTitle(vaultKey(), out.title);
+  }
+  if (isEncryptedContent(out.content)) {
+    out.content = await decryptJson(vaultKey(), out.content);
+  }
+  return out;
+}
 
 /**
  * Notion-style page history: a list of snapshots on the left, a read-only
@@ -58,8 +81,9 @@ export default function HistoryModal({
     setLoadingDetail(true);
     history
       .get(selectedId)
-      .then((doc) => {
-        if (!cancelled) setDetail(doc);
+      .then(async (doc) => {
+        const plain = doc ? await decryptVersion(doc) : doc;
+        if (!cancelled) setDetail(plain);
       })
       .catch(() => {
         if (!cancelled) setError("Could not load that version.");
@@ -99,7 +123,7 @@ export default function HistoryModal({
       <div className="history-head">
         <History size={15} />
         <span>Page history</span>
-        <span className="history-page-title">{page.title || "Untitled"}</span>
+        <span className="history-page-title">{displayTitle(page) || "Untitled"}</span>
       </div>
       <div className="history-body">
         <div className="history-list">
@@ -119,7 +143,9 @@ export default function HistoryModal({
               onClick={() => setSelectedId(v._id)}
             >
               <span className="history-when">{formatWhen(v.savedAt)}</span>
-              <span className="history-title">{v.title || "Untitled"}</span>
+              <span className="history-title">
+                {isEncryptedTitle(v.title) ? "🔒 Encrypted" : v.title || "Untitled"}
+              </span>
             </button>
           ))}
         </div>

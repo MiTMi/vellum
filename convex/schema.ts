@@ -93,6 +93,11 @@ export default defineSchema({
     smallText: v.optional(v.boolean()),
     fullWidth: v.optional(v.boolean()),
     locked: v.optional(v.boolean()),
+    // End-to-end encrypted Vault. True on the vault root and every
+    // descendant (denormalized so guards never walk the parent chain).
+    // Vault pages carry client-encrypted `title`/`content` and empty
+    // search fields — the server never sees their plaintext.
+    vault: v.optional(v.boolean()),
     inTrash: v.optional(v.boolean()),
     trashRoot: v.optional(v.boolean()), // true only on the page the user trashed
     trashedAt: v.optional(v.number()),

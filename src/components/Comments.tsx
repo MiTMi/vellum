@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { CommentMeta, PageId } from "../lib/types";
 import { useComments } from "../data";
+import { isVaultPage } from "../lib/vaultSession";
 
 /**
  * Notion-style page comments, rendered under the editor next to "Linked
@@ -19,6 +20,13 @@ import { useComments } from "../data";
  * change — the same approach HistoryModal takes.
  */
 export default function Comments({ pageId }: { pageId: PageId }) {
+  // Comments live in a server-side table the vault's encryption can't
+  // cover — no comments inside the Vault, rather than plaintext ones.
+  if (isVaultPage(pageId)) return null;
+  return <CommentsPanel pageId={pageId} />;
+}
+
+function CommentsPanel({ pageId }: { pageId: PageId }) {
   const api = useComments();
   const [items, setItems] = useState<CommentMeta[] | null>(null);
   const [draft, setDraft] = useState("");

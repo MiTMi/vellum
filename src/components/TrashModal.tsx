@@ -3,6 +3,7 @@ import { Trash2, RotateCcw, FileText, Database, X } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useMutations, useTrashed } from "../data";
 import { useNav } from "../state";
+import { displayTitle } from "../lib/vaultSession";
 
 export default function TrashModal({ onClose }: { onClose: () => void }) {
   const trashed = useTrashed();
@@ -47,7 +48,7 @@ export default function TrashModal({ onClose }: { onClose: () => void }) {
                 <FileText size={15} />
               )}
             </span>
-            <span className="tree-title">{p.title || "Untitled"}</span>
+            <span className="tree-title">{displayTitle(p) || "Untitled"}</span>
             <span className="trash-date">
               {new Date(p.trashedAt).toLocaleDateString()}
             </span>

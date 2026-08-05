@@ -9,6 +9,8 @@ import {
   ChevronsLeft,
   History,
   LayoutTemplate,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import { PageId, PagesIndex } from "../lib/types";
 import { IS_DIRECT, IS_MOCK, useMutations } from "../data";
@@ -17,6 +19,7 @@ import { useNav } from "../state";
 import { SignOutButton } from "./Auth";
 import PageTreeItem from "./PageTreeItem";
 import Menu from "./ui/Menu";
+import { isVaultUnlocked, useVaultVersion } from "../lib/vaultSession";
 
 interface SidebarProps {
   index: PagesIndex;
@@ -136,6 +139,7 @@ export default function Sidebar({
               <History size={11} /> Recents
             </div>
             {[...index.all]
+              .filter((p) => !p.vault) // vault pages never surface here
               .sort((a, b) => b.updatedAt - a.updatedAt)
               .slice(0, 5)
               .map((p) => (
@@ -225,6 +229,8 @@ export default function Sidebar({
             ))}
           </>
         )}
+
+        <VaultSection index={index} />
 
         <div className="sidebar-heading">Private</div>
         <div
@@ -320,6 +326,58 @@ export default function Sidebar({
         }}
       />
     </aside>
+  );
+}
+
+/**
+ * The Vault's sidebar entry: one row for the root, never its children —
+ * the sidebar must not reveal what's inside. Creating it is lazy: the row
+ * only appears as a call-to-action until the root page exists.
+ */
+function VaultSection({ index }: { index: PagesIndex }) {
+  useVaultVersion();
+  const { navigate } = useNav();
+  const mutations = useMutations();
+  const unlocked = isVaultUnlocked();
+
+  const createVault = async () => {
+    const id = await mutations.create({
+      type: "doc",
+      title: "Vault",
+      icon: "🔒",
+      vault: true,
+    });
+    navigate(id);
+  };
+
+  return (
+    <>
+      <div className="sidebar-heading">
+        <Lock size={11} /> Vault
+      </div>
+      {index.vaultRoot ? (
+        <button
+          className="sidebar-item fav-item"
+          onClick={() => navigate(index.vaultRoot!._id)}
+        >
+          <span className="tree-icon">
+            {unlocked ? <LockOpen size={15} /> : <Lock size={15} />}
+          </span>
+          <span className="tree-title">Vault</span>
+          {!unlocked && <span className="vault-chip">Locked</span>}
+        </button>
+      ) : (
+        <button
+          className="sidebar-item fav-item vault-create"
+          onClick={() => void createVault()}
+        >
+          <span className="tree-icon">
+            <Plus size={15} />
+          </span>
+          <span className="tree-title">Create Vault</span>
+        </button>
+      )}
+    </>
   );
 }
 

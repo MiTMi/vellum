@@ -22,6 +22,7 @@ import { PagesIndex, PageMeta, childrenKey } from "../lib/types";
 import { pathTo } from "../hooks/usePagesIndex";
 import { useMutations, usePage, usePublish } from "../data";
 import { useNav } from "../state";
+import { displayTitle, useVaultVersion } from "../lib/vaultSession";
 import Popover from "./ui/Popover";
 import PageMenu from "./PageMenu";
 import {
@@ -50,6 +51,7 @@ function timeAgo(ts: number): string {
 export default function TopBar({ index }: TopBarProps) {
   const { pageId, navigate, back, forward, canBack, canForward, theme, toggleTheme } =
     useNav();
+  useVaultVersion(); // breadcrumb titles change on vault lock/unlock
   const mutations = useMutations();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [shareAnchor, setShareAnchor] = useState<HTMLElement | null>(null);
@@ -83,7 +85,7 @@ export default function TopBar({ index }: TopBarProps) {
                 {i > 0 && <span className="crumb-sep">/</span>}
                 <button className="crumb" onClick={() => navigate(c._id)}>
                   {c.icon && <span className="crumb-icon">{c.icon}</span>}
-                  <span>{c.title || "Untitled"}</span>
+                  <span>{displayTitle(c) || "Untitled"}</span>
                 </button>
               </React.Fragment>
             ),
@@ -190,7 +192,7 @@ function SharePopover({
           onClick={() =>
             void run(() =>
               exportDatabaseCSV(
-                page.title,
+                displayTitle(page),
                 fullPage?.dbProps ?? [],
                 index.children.get(childrenKey(page._id)) ?? [],
               ),
@@ -207,7 +209,7 @@ function SharePopover({
           <button
             className="menu-item"
             disabled={busy}
-            onClick={() => void run(() => exportPageMarkdown(page.title))}
+            onClick={() => void run(() => exportPageMarkdown(displayTitle(page)))}
           >
             <span className="menu-icon">
               <FileDown size={15} />
@@ -217,7 +219,7 @@ function SharePopover({
           <button
             className="menu-item"
             disabled={busy}
-            onClick={() => void run(() => exportPageHTML(page.title))}
+            onClick={() => void run(() => exportPageHTML(displayTitle(page)))}
           >
             <span className="menu-icon">
               <FileCode size={15} />
@@ -227,7 +229,7 @@ function SharePopover({
           <button
             className="menu-item"
             disabled={busy}
-            onClick={() => void run(() => exportPagePDF(page.title))}
+            onClick={() => void run(() => exportPagePDF(displayTitle(page)))}
           >
             <span className="menu-icon">
               <FileDown size={15} />
@@ -268,6 +270,18 @@ function PublishSection({ page }: { page: PageMeta }) {
       setBusy(false);
     }
   };
+
+  // The server rejects publishing vault pages; don't offer the toggle.
+  if (page.vault) {
+    return (
+      <>
+        <div className="prop-menu-label">Share to web</div>
+        <div className="share-note">
+          Vault pages are end-to-end encrypted and can't be published.
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

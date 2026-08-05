@@ -810,3 +810,155 @@ test("rewriteVersionHostBatch sweeps history snapshots", async () => {
     expect(JSON.stringify(full)).not.toContain(OLD_HOST);
   }
 });
+
+/* ------------------------------------------------------------------ vault */
+
+test("vault: children inherit the flag through create and createWithDoc", async () => {
+  const ctx = t();
+  const root = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Vault",
+    vault: true,
+  });
+  const child = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "venc1:aaa:bbb",
+    parentId: root,
+  });
+  const replayed = await ctx.mutation(api.pages.createWithDoc, {
+    clientKey: "local_vault_kid",
+    title: "venc1:ccc:ddd",
+    type: "doc",
+    parentId: root,
+    rank: 2048,
+    contentText: "should be scrubbed",
+    searchText: "should be scrubbed",
+    updatedAt: Date.now(),
+  });
+  const pages = await ctx.query(api.pages.list, {});
+  expect(pages.find((p) => p._id === root)!.vault).toBe(true);
+  expect(pages.find((p) => p._id === child)!.vault).toBe(true);
+  expect(pages.find((p) => p._id === replayed)!.vault).toBe(true);
+  // Search fields must never hold vault text — even client-sent values.
+  const doc = await ctx.query(api.pages.getMany, { ids: [replayed] });
+  expect(doc[0].contentText).toBe("");
+  expect(doc[0].searchText).toBe("");
+});
+
+test("vault: rename and updateContent keep search fields empty", async () => {
+  const ctx = t();
+  const root = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Vault",
+    vault: true,
+  });
+  const page = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    parentId: root,
+  });
+  await ctx.mutation(api.pages.rename, { id: page, title: "venc1:iv:secret" });
+  await ctx.mutation(api.pages.updateContent, {
+    id: page,
+    content: { __venc: 1, iv: "iv", data: "ciphertext" },
+    text: "",
+  });
+  const [doc] = await ctx.query(api.pages.getMany, { ids: [page] });
+  expect(doc.searchText).toBe("");
+  expect(doc.contentText).toBe("");
+  // And search can never surface it.
+  const hits = await ctx.query(api.pages.search, { term: "secret" });
+  expect(hits.find((h) => h._id === page)).toBeUndefined();
+});
+
+test("vault: pages cannot be published", async () => {
+  const ctx = t();
+  const root = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Vault",
+    vault: true,
+  });
+  const page = await ctx.mutation(api.pages.create, { type: "doc", parentId: root });
+  await expect(
+    ctx.mutation(api.pages.setPublished, { id: page, value: true }),
+  ).rejects.toThrow(/can't be published/);
+  await expect(
+    ctx.mutation(api.pages.setPublished, { id: root, value: true }),
+  ).rejects.toThrow(/can't be published/);
+});
+
+test("vault: no databases inside", async () => {
+  const ctx = t();
+  const root = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Vault",
+    vault: true,
+  });
+  await expect(
+    ctx.mutation(api.pages.create, { type: "database", parentId: root }),
+  ).rejects.toThrow(/not supported/);
+});
+
+test("vault: moves across the boundary are rejected, root stays movable", async () => {
+  const ctx = t();
+  const root = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Vault",
+    vault: true,
+  });
+  const inside = await ctx.mutation(api.pages.create, { type: "doc", parentId: root });
+  const outside = await ctx.mutation(api.pages.create, { type: "doc", title: "Plain" });
+
+  await expect(
+    ctx.mutation(api.pages.move, { id: inside, parentId: undefined, rank: 1 }),
+  ).rejects.toThrow(/into or out of the Vault/);
+  await expect(
+    ctx.mutation(api.pages.move, { id: outside, parentId: root, rank: 1 }),
+  ).rejects.toThrow(/into or out of the Vault/);
+  // Vault-internal moves and root reordering stay legal.
+  const inside2 = await ctx.mutation(api.pages.create, { type: "doc", parentId: root });
+  await ctx.mutation(api.pages.move, { id: inside2, parentId: inside, rank: 1 });
+  await ctx.mutation(api.pages.move, { id: root, parentId: undefined, rank: 9999 });
+  // Moving the root under its own descendant is a cycle — the existing
+  // cycle guard swallows it as a silent no-op before the vault guard runs.
+  await ctx.mutation(api.pages.move, { id: root, parentId: inside, rank: 1 });
+  const [rootDoc] = await ctx.query(api.pages.getMany, { ids: [root] });
+  expect(rootDoc.parentId).toBeUndefined();
+});
+
+test("vault: duplication is fenced and never copies a slug", async () => {
+  const ctx = t();
+  const root = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Vault",
+    vault: true,
+  });
+  const inside = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    parentId: root,
+    title: "venc1:iv:data",
+  });
+  const outside = await ctx.mutation(api.pages.create, { type: "doc", title: "Plain" });
+
+  await expect(
+    ctx.mutation(api.pages.duplicate, { id: root }),
+  ).rejects.toThrow(/can't be duplicated/);
+  await expect(
+    ctx.mutation(api.pages.duplicate, { id: inside, toRoot: true }),
+  ).rejects.toThrow(/into or out of the Vault/);
+  await expect(
+    ctx.mutation(api.pages.duplicate, { id: outside, parentId: root }),
+  ).rejects.toThrow(/into or out of the Vault/);
+
+  // In-place duplication inside the vault keeps the encrypted title intact.
+  const copy = await ctx.mutation(api.pages.duplicate, { id: inside });
+  const [copyDoc] = await ctx.query(api.pages.getMany, { ids: [copy!] });
+  expect(copyDoc.title).toBe("venc1:iv:data");
+  expect(copyDoc.vault).toBe(true);
+
+  // Published plaintext page: the duplicate never rides the slug.
+  const slug = await ctx.mutation(api.pages.setPublished, { id: outside, value: true });
+  expect(slug).toBeTruthy();
+  const plainCopy = await ctx.mutation(api.pages.duplicate, { id: outside });
+  const [plainCopyDoc] = await ctx.query(api.pages.getMany, { ids: [plainCopy!] });
+  expect(plainCopyDoc.publicSlug).toBeUndefined();
+});

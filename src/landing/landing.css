@@ -608,6 +608,85 @@ code {
   font-weight: 500;
 }
 
+/* ----------------------------------------------------------- vault mock
+   CSS-built visual for the Vault section: blurred "text" behind a small
+   unlock card. No screenshot — the whole point is that nothing inside the
+   vault is showable. */
+
+.vault-mock {
+  position: relative;
+  margin: 0;
+  min-height: 300px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--vellum);
+  box-shadow: var(--shadow-shot);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.vm-lines {
+  position: absolute;
+  inset: 36px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  filter: blur(6px);
+  opacity: 0.55;
+}
+.vm-lines i {
+  display: block;
+  height: 14px;
+  width: 100%;
+  border-radius: 7px;
+  background: var(--hairline);
+}
+.vm-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sheet);
+}
+.vm-lock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: var(--vellum);
+  border: 1px solid var(--hairline);
+  color: var(--rubric);
+}
+.vm-lock svg {
+  width: 19px;
+  height: 19px;
+}
+.vm-field {
+  min-width: 150px;
+  padding: 9px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  color: var(--ink-2);
+  font-size: 14px;
+  letter-spacing: 2px;
+  background: var(--vellum);
+}
+.vm-btn {
+  padding: 9px 16px;
+  border-radius: 7px;
+  background: var(--rubric);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+}
+
 /* ------------------------------------------------------------- diagram */
 
 .diagram {

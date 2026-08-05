@@ -16,6 +16,11 @@ import { useMutations, useSearch } from "../data";
 import { PagesIndex, PageId } from "../lib/types";
 import { pathTo } from "../hooks/usePagesIndex";
 import { useNav } from "../state";
+import {
+  isVaultPage,
+  searchVaultTitles,
+  useVaultVersion,
+} from "../lib/vaultSession";
 
 interface QuickSwitcherProps {
   index: PagesIndex;
@@ -103,11 +108,16 @@ export default function QuickSwitcher({
     [mutations, navigate, theme, toggleTheme, onOpenTrash, index.templates],
   );
 
+  const vaultVersion = useVaultVersion();
+
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
     const q = term.trim().toLowerCase();
     if (q) {
       for (const hit of results ?? []) {
+        // Vault pages never surface through stored search text (it's kept
+        // empty for them); this filter is defense in depth.
+        if (isVaultPage(hit._id)) continue;
         const crumbPath = pathTo(index, hit.parentId)
           .map((p) => p.title || "Untitled")
           .join(" / ");
@@ -119,6 +129,18 @@ export default function QuickSwitcher({
           type: hit.type,
           crumb: crumbPath,
           snippet: hit.snippet,
+        });
+      }
+      // While the vault is unlocked, its pages are findable by (decrypted)
+      // title — matched in memory, never from a stored index.
+      for (const hit of searchVaultTitles(term)) {
+        out.push({
+          kind: "page",
+          id: hit._id as PageId,
+          title: hit.title || "Untitled",
+          icon: "🔒",
+          type: "doc",
+          crumb: "Vault",
         });
       }
       for (const a of actions) {
@@ -137,6 +159,7 @@ export default function QuickSwitcher({
     } else {
       out.push(...actions);
       const recent = [...index.all]
+        .filter((p) => !p.vault) // never reveal vault pages here
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .slice(0, 6);
       for (const p of recent) {
@@ -154,7 +177,8 @@ export default function QuickSwitcher({
       }
     }
     return out;
-  }, [term, results, index, actions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [term, results, index, actions, vaultVersion]);
 
   useEffect(() => setSelected(0), [term, rows.length]);
 

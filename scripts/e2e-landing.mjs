@@ -49,14 +49,14 @@ try {
     String(await page.locator(".feature").count()),
   );
   check(
-    "four deep-dive rows",
-    (await page.locator(".deep .row").count()) === 4,
+    "five deep-dive rows",
+    (await page.locator(".deep .row").count()) === 5,
     String(await page.locator(".deep .row").count()),
   );
   check("footer renders", (await page.locator(".footer").count()) === 1);
 
   // Anchor links in the nav must actually land somewhere.
-  for (const id of ["features", "sync", "publish"]) {
+  for (const id of ["features", "vault", "sync", "publish"]) {
     check(`#${id} section exists`, (await page.locator(`#${id}`).count()) === 1);
   }
 

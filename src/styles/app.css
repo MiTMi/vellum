@@ -3673,3 +3673,156 @@ tbody.db-group + tbody.db-group .group-row td {
 .share-note.error {
   color: var(--danger);
 }
+
+/* ------------------------------------------------------------------ vault
+   The E2E-encrypted Vault: root view (setup/unlock/contents), the locked-
+   page gate, and the sidebar chip. Uses the app's existing tokens so it
+   follows light/dark automatically. */
+
+.vault-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding-top: 48px;
+  margin-bottom: 28px;
+}
+.vault-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.vault-title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0;
+}
+.vault-sub {
+  color: var(--text-secondary);
+  max-width: 52ch;
+  margin: 0;
+}
+
+.vault-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 380px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+.vault-card h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+.vault-note {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  margin: 0;
+}
+.vault-warning {
+  color: var(--text-faint);
+  font-size: 12.5px;
+  margin: 6px 0 0;
+}
+.vault-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+.vault-input {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+.vault-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.vault-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.vault-btn:hover {
+  background: var(--accent-hover);
+}
+.vault-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.vault-btn.subtle {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.vault-btn.subtle:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.vault-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.vault-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+.vault-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 6px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.vault-item:hover {
+  background: var(--bg-hover);
+}
+.vault-empty {
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding: 18px 0;
+}
+.vault-contents .vault-note {
+  margin-top: 18px;
+}
+
+.vault-chip {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 1px 7px;
+}

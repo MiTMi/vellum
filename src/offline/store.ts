@@ -17,6 +17,8 @@ export interface CreateArgs {
   title?: string;
   icon?: string;
   props?: Record<string, unknown>;
+  /** Creating the vault root itself. Children inherit from their parent. */
+  vault?: boolean;
 }
 
 export type CommitListener = (changed: PageId[], removed: PageId[]) => void;
@@ -233,6 +235,10 @@ export function createPageStore(): PageStore {
     },
 
     create(args, id, now) {
+      // Vault membership is inherited exactly like the server does it, so
+      // the replica and Convex agree on which pages are encrypted.
+      const parent = args.parentId ? map.get(args.parentId) : undefined;
+      const vault = args.vault || parent?.vault ? true : undefined;
       const doc: PageDoc = {
         _id: id,
         _creationTime: now,
@@ -242,7 +248,8 @@ export function createPageStore(): PageStore {
         rank: nextRank(args.parentId),
         icon: args.icon,
         props: args.props,
-        searchText: args.title ?? "",
+        vault,
+        searchText: vault ? "" : (args.title ?? ""),
         updatedAt: now,
         ...(args.type === "database"
           ? {
@@ -261,7 +268,8 @@ export function createPageStore(): PageStore {
       const p = map.get(id);
       if (!p) return undefined;
       p.title = title;
-      p.searchText = title + " " + (p.contentText ?? "");
+      // Vault titles are ciphertext — keep them out of the search text.
+      p.searchText = p.vault ? "" : title + " " + (p.contentText ?? "");
       p.updatedAt = now;
       commit([id]);
       return p;
@@ -271,8 +279,8 @@ export function createPageStore(): PageStore {
       const p = map.get(id);
       if (!p) return undefined;
       p.content = content;
-      p.contentText = text;
-      p.searchText = p.title + " " + text;
+      p.contentText = p.vault ? "" : text;
+      p.searchText = p.vault ? "" : p.title + " " + text;
       p.updatedAt = now;
       commit([id]);
       return p;
@@ -362,10 +370,16 @@ export function createPageStore(): PageStore {
           _creationTime: now,
           parentId,
           rank,
-          title: page.title + suffix,
+          // An encrypted title can't take a suffix without corrupting its
+          // envelope; vault copies keep the title verbatim (server parity).
+          title: page.vault ? page.title : page.title + suffix,
           isFavorite: false,
           updatedAt: now,
         };
+        // The slug is the public-access control — never copy it (parity
+        // with the server's clone).
+        delete copy.publicSlug;
+        delete copy.publishedAt;
         // Spawning *from* a template yields a normal page, not another one.
         if (isRoot && opts?.asInstance) delete copy.isTemplate;
         map.set(copy._id, copy);

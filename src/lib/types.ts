@@ -13,6 +13,8 @@ export interface PageMeta {
   cover: string | null;
   isFavorite: boolean;
   isTemplate: boolean;
+  /** End-to-end encrypted Vault member (root included). Encrypted title. */
+  vault: boolean;
   props: Record<string, unknown> | null;
   updatedAt: number;
   _creationTime: number;
@@ -89,6 +91,8 @@ export interface PagesIndex {
   children: Map<string, PageMeta[]>; // key: parentId or "root"
   favorites: PageMeta[];
   templates: PageMeta[];
+  /** The vault root, if one exists. Its subtree is E2E encrypted. */
+  vaultRoot: PageMeta | null;
 }
 
 export function childrenKey(parentId: PageId | null): string {
@@ -115,6 +119,8 @@ export interface PageDoc {
   smallText?: boolean;
   fullWidth?: boolean;
   locked?: boolean;
+  /** End-to-end encrypted Vault member — title/content are ciphertext. */
+  vault?: boolean;
   inTrash?: boolean;
   trashRoot?: boolean;
   trashedAt?: number;
@@ -161,6 +167,7 @@ export interface TrashedMeta {
   title: string;
   icon: string | null;
   type: "doc" | "database";
+  vault?: boolean;
   trashedAt: number;
 }
 

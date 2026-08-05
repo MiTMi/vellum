@@ -10,11 +10,21 @@ export function usePagesIndex(): PagesIndex {
     const byId = new Map<string, PageMeta>();
     const children = new Map<string, PageMeta[]>();
     for (const p of all) byId.set(p._id, p);
+    let vaultRoot: PageMeta | null = null;
+    for (const p of all) {
+      if (p.vault && !(p.parentId && byId.get(p.parentId)?.vault)) {
+        vaultRoot = p;
+      }
+    }
     for (const p of all) {
       // Template roots live in their own sidebar section, not the tree —
       // but their children still land in `children` so the template's own
       // subtree renders normally once you open it.
       if (p.isTemplate) continue;
+      // Vault pages never enter the tree: the root has its own sidebar
+      // entry, and its children are listed only inside the unlocked
+      // VaultView — the sidebar must not reveal the vault's structure.
+      if (p.vault) continue;
       const key = childrenKey(p.parentId);
       const list = children.get(key);
       if (list) list.push(p);
@@ -22,10 +32,10 @@ export function usePagesIndex(): PagesIndex {
     }
     for (const list of children.values()) list.sort((a, b) => a.rank - b.rank);
     const favorites = all
-      .filter((p) => p.isFavorite)
+      .filter((p) => p.isFavorite && !p.vault)
       .sort((a, b) => a.title.localeCompare(b.title));
     const templates = all
-      .filter((p) => p.isTemplate)
+      .filter((p) => p.isTemplate && !p.vault)
       .sort((a, b) => a.title.localeCompare(b.title));
     return {
       loading: pages === undefined,
@@ -34,6 +44,7 @@ export function usePagesIndex(): PagesIndex {
       children,
       favorites,
       templates,
+      vaultRoot,
     };
   }, [pages]);
 }

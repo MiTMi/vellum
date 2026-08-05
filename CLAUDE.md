@@ -166,6 +166,52 @@ Invariants to preserve when touching `convex/pages.ts`:
   temp id after the create syncs (the server side is already covered by
   `mapIdsDeep`).
 
+### Vault (end-to-end encryption)
+
+One `vault: true` subtree whose pages are E2E encrypted: `title` is a
+`"venc1:<iv>:<data>"` string, `content` a `{ __venc: 1, iv, data }` envelope
+(AES-GCM-256, key = PBKDF2 of a passphrase that never leaves the device).
+The vault **root** is exempt — its content is the plaintext `vaultMeta`
+(salt + encrypted sentinel) and it renders `VaultView`, not an editor.
+
+Layering (keep these boundaries):
+
+- `src/lib/vaultCrypto.ts` — pure WebCrypto, no app imports, unit-tested.
+- `src/lib/vaultSession.ts` — module-level session (like pageRegistry): the
+  in-memory key (reload always locks; 15-min idle auto-lock), the vault-id
+  set mirrored from the index, and the decrypted-title cache. React
+  subscribes via `useVaultVersion()`.
+- **Encryption happens only in `wrapVaultMutations`** (`src/data/index.ts`),
+  wrapping whichever DataApi impl is active — so editor saves, renames,
+  template application and history restore all encrypt at one choke point,
+  and mock/offline/real behave identically. Reads stay ciphertext;
+  `PageView`'s `VaultPageGate` decrypts per page (and refuses to mount an
+  editor over content it couldn't decrypt — a save would clobber it).
+- The server re-derives everything it enforces: `create`/`createWithDoc`
+  inherit the flag from the parent, search fields are forced empty for
+  vault pages, `setPublished` throws, `move`/`duplicate` fence the boundary
+  (root stays movable), and `search` filters `vault` defensively.
+
+Known v1 limits (all deliberate): no databases inside the vault, no
+moving pages into/out of it (old plaintext history would leak; create
+inside instead), no comments, no cross-boundary mentions, trashed vault
+pages list as "Locked page", and `pageVersions` snapshots are ciphertext
+(HistoryModal decrypts, and must keep decrypting before restore or the
+wrapper would double-encrypt).
+
+Leak checklist when touching UI that shows titles: go through
+`displayTitle()` from vaultSession (breadcrumbs, trash, exports, registry
+in `App.tsx`) and exclude vault pages from recents/⌘K/mention pickers.
+
+### Image upload compression
+
+`useFileUpload` in `src/data/index.ts` runs every upload through
+`maybeCompressImage` (`src/lib/imageCompress.ts`): raster images get
+downscaled to ≤1600px long edge and re-encoded as WebP q0.8 (~5–40×
+smaller); GIFs/SVGs/non-images and already-small files pass through, and
+any failure falls back to the original file. Decision helpers are pure and
+unit-tested; the end-to-end path is covered by `e2e-vault.mjs` (paste).
+
 ### Auth
 
 Convex Auth with a single Password provider (`convex/auth.ts`), restricted
@@ -545,6 +591,9 @@ plain rows with a `run()` callback.
   `~/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google
   Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing` (note:
   not `Chromium.app` — newer Playwright ships Chrome for Testing).
+- `node scripts/e2e-vault.mjs` — the E2E-encrypted Vault (same mock server):
+  setup, the no-plaintext-at-rest assertion against `vellum:mockdb`,
+  lock/unlock, ⌘K exclusion, reload-relocks, and image-paste compression.
 - `node scripts/e2e-landing.mjs` — the landing page at `/` (same mock server):
   structure, images, CTA hrefs, the `vellum:hasSession` copy flip, and
   click-through to `/app`. Takes `E2E_URL`, and accepts either the workspace or
