@@ -7,6 +7,7 @@ import schema from "../convex/schema";
 
 const modules = import.meta.glob([
   "../convex/pages.ts",
+  "../convex/account.ts",
   "../convex/files.ts",
   "../convex/versions.ts",
   "../convex/comments.ts",
@@ -961,4 +962,48 @@ test("vault: duplication is fenced and never copies a slug", async () => {
   const plainCopy = await ctx.mutation(api.pages.duplicate, { id: outside });
   const [plainCopyDoc] = await ctx.query(api.pages.getMany, { ids: [plainCopy!] });
   expect(plainCopyDoc.publicSlug).toBeUndefined();
+});
+
+/* ---------------------------------------------------------------- account */
+
+test("wipeEverything erases pages, sidecars, and auth state", async () => {
+  const ctx = t();
+  const pageId = await ctx.mutation(api.pages.create, { type: "doc", title: "Doomed" });
+  await ctx.mutation(api.pages.updateContent, {
+    id: pageId,
+    content: [{ type: "paragraph" }],
+    text: "doomed body",
+  });
+  // Seed sidecar + auth rows directly, then nuke.
+  await ctx.run(async (c) => {
+    await c.db.insert("pageVersions", {
+      pageId,
+      title: "Doomed",
+      content: [],
+      savedAt: Date.now(),
+    });
+    await c.db.insert("comments", {
+      pageId,
+      text: "gone soon",
+      createdAt: Date.now(),
+    });
+    await c.db.insert("users", { email: "owner@example.com" });
+  });
+  await ctx.mutation(internal.account.wipeEverything, {});
+  await ctx.run(async (c) => {
+    expect(await c.db.query("pages").collect()).toHaveLength(0);
+    expect(await c.db.query("pageVersions").collect()).toHaveLength(0);
+    expect(await c.db.query("comments").collect()).toHaveLength(0);
+    expect(await c.db.query("users").collect()).toHaveLength(0);
+    expect(await c.db.query("authAccounts").collect()).toHaveLength(0);
+    expect(await c.db.query("authSessions").collect()).toHaveLength(0);
+  });
+});
+
+test("account.me requires auth and reports the owner email", async () => {
+  const anon = convexTest(schema, modules);
+  await expect(anon.query(api.account.me, {})).rejects.toThrow(/Not authenticated/);
+  process.env.OWNER_EMAIL = "owner@example.com";
+  const ctx = t();
+  expect((await ctx.query(api.account.me, {})).email).toBe("owner@example.com");
 });

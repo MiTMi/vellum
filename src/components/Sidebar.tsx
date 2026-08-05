@@ -11,6 +11,7 @@ import {
   LayoutTemplate,
   Lock,
   LockOpen,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { PageId, PagesIndex } from "../lib/types";
 import { IS_DIRECT, IS_MOCK, useMutations } from "../data";
@@ -25,6 +26,7 @@ interface SidebarProps {
   index: PagesIndex;
   onOpenSearch: () => void;
   onOpenTrash: () => void;
+  onOpenSettings: () => void;
   onCollapse: () => void;
   width: number;
   setWidth: (w: number) => void;
@@ -44,6 +46,7 @@ export default function Sidebar({
   index,
   onOpenSearch,
   onOpenTrash,
+  onOpenSettings,
   onCollapse,
   width,
   setWidth,
@@ -295,6 +298,13 @@ export default function Sidebar({
         </button>
         <button className="icon-btn" title="Trash" onClick={onOpenTrash}>
           <Trash2 size={15} />
+        </button>
+        <button
+          className="icon-btn"
+          title="Settings (⌘,)"
+          onClick={onOpenSettings}
+        >
+          <SettingsIcon size={15} />
         </button>
         {!IS_MOCK && <SignOutButton />}
       </div>

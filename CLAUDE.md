@@ -257,6 +257,35 @@ CLI gotchas below). `SITE_URL` must be the hosted origin, not `.convex.site`.
   and cleanup, and signs into the real UI with `VELLUM_E2E_PASSWORD`
   (email defaults to the deployment's `OWNER_EMAIL`).
 
+### Settings & account management (2026-08-05)
+
+`SettingsModal.tsx` (sidebar gear, ⌘, or the ⌘K "Settings" action):
+Account (email, change password), Security (sign out everywhere, Touch ID
+credential removal, Vault lock), Appearance (theme), and a danger zone
+(delete account + erase workspace). Server side is `convex/account.ts`:
+
+- Every credentialed operation re-verifies the password with
+  `retrieveAccount` — the same scrypt check `signIn` uses — so an open
+  session alone can't change or destroy the account. Wrong passwords
+  surface as a readable ConvexError.
+- `changePassword` also runs `assertPasswordPolicy` (a change can't weaken
+  the sign-up policy) and the client re-seals Touch ID credentials after a
+  successful change so the biometric button doesn't go stale.
+- `deleteAccount` → `wipeEverything` (**must stay `internalMutation`**):
+  one transaction deleting pages, pageVersions, comments, every `_storage`
+  file, and all auth tables — after it, the deployment is factory-fresh
+  and the sign-up flow works again. The client then clears the Touch ID
+  keychain entry, the session flag, and the IndexedDB replica.
+- Account calls flow through `useAccount()` on the DataApi (offline mode:
+  `convexClient()` + connected gate; mock: `available: false`, Settings
+  shows a demo note and hides the auth-provider-dependent sections — they
+  can't mount without `ConvexAuthProvider`).
+- `scripts/e2e-settings.mjs` covers the UI; `wipeEverything` and
+  `account.me` are convex-tested. The changePassword failure path can be
+  exercised non-destructively against prod:
+  `npx convex run account:changePassword '{"currentPassword":"wrong…","newPassword":"…"}' --identity '{"subject":"owner|cli"}' --prod`
+  must throw "current password is incorrect" and change nothing.
+
 ### Editor (`src/components/Editor.tsx`)
 
 BlockNote with custom block specs registered on one shared `schema`:

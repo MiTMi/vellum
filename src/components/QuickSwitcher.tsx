@@ -10,6 +10,7 @@ import {
   Trash2,
   Zap,
   LayoutTemplate,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useMutations, useSearch } from "../data";
@@ -26,6 +27,7 @@ interface QuickSwitcherProps {
   index: PagesIndex;
   onClose: () => void;
   onOpenTrash: () => void;
+  onOpenSettings: () => void;
 }
 
 interface Row {
@@ -45,6 +47,7 @@ export default function QuickSwitcher({
   index,
   onClose,
   onOpenTrash,
+  onOpenSettings,
 }: QuickSwitcherProps) {
   const { navigate, theme, toggleTheme } = useNav();
   const mutations = useMutations();
@@ -88,6 +91,14 @@ export default function QuickSwitcher({
         keywords: "trash deleted bin restore",
         run: () => onOpenTrash(),
       },
+      {
+        kind: "action",
+        title: "Settings",
+        icon: null,
+        actionIcon: <SettingsIcon size={16} />,
+        keywords: "settings account password delete theme preferences",
+        run: () => onOpenSettings(),
+      },
       ...index.templates.map<Row>((t) => ({
         kind: "action" as const,
         title: `New from template: ${t.title || "Untitled"}`,
@@ -105,7 +116,7 @@ export default function QuickSwitcher({
         },
       })),
     ],
-    [mutations, navigate, theme, toggleTheme, onOpenTrash, index.templates],
+    [mutations, navigate, theme, toggleTheme, onOpenTrash, onOpenSettings, index.templates],
   );
 
   const vaultVersion = useVaultVersion();

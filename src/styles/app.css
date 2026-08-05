@@ -3944,3 +3944,142 @@ tbody.db-group + tbody.db-group .group-row td {
   border-radius: 9px;
   padding: 1px 7px;
 }
+
+/* --------------------------------- settings ---------------------------- */
+
+.settings-modal {
+  width: 520px;
+  max-width: calc(100vw - 48px);
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+}
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 14px;
+}
+.settings-head .icon-btn {
+  margin-left: auto;
+}
+.settings-body {
+  overflow-y: auto;
+  padding: 6px 16px 18px;
+}
+.settings-section {
+  padding: 14px 0;
+}
+.settings-section + .settings-section {
+  border-top: 1px solid var(--border);
+}
+.settings-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+.settings-section.danger h3 {
+  color: var(--danger);
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 14px;
+}
+.settings-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+  min-width: 110px;
+}
+.settings-row .btn {
+  margin-left: auto;
+}
+.settings-value {
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+.settings-note {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0;
+  flex: 1;
+}
+.settings-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  font-size: 12.5px;
+  margin-left: auto;
+}
+.settings-success + .btn {
+  margin-left: 0;
+}
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  margin: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+.settings-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.btn.danger-solid {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+}
+.btn.danger-solid:hover {
+  filter: brightness(0.92);
+}
+.btn.danger-solid:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.theme-picker {
+  display: flex;
+  gap: 0;
+  margin-left: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.theme-picker button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.theme-picker button + button {
+  border-left: 1px solid var(--border-strong);
+}
+.theme-picker button.active {
+  background: var(--bg-active);
+  color: var(--text);
+}

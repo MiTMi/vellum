@@ -313,6 +313,26 @@ const mockApi: DataApi = {
     }, []);
   },
 
+  useAccount() {
+    // Demo mode has no account at all — Settings shows a note instead.
+    return useMemo(
+      () => ({
+        available: false,
+        getEmail: async () => null,
+        changePassword: async () => {
+          throw new Error("No account in demo mode");
+        },
+        signOutEverywhere: async () => {
+          throw new Error("No account in demo mode");
+        },
+        deleteAccount: async () => {
+          throw new Error("No account in demo mode");
+        },
+      }),
+      [],
+    );
+  },
+
   useFileUpload() {
     return useCallback(async (file: File): Promise<string> => {
       return await new Promise<string>((resolve, reject) => {

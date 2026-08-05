@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import {
   IS_DIRECT,
   IS_MOCK,
+  AccountApi,
   DataApi,
   Mutations,
   VersionHistoryApi,
@@ -149,6 +150,9 @@ export function useComments(): CommentsApi {
 export function usePublish(): PublishApi {
   return impl.usePublish();
 }
+export function useAccount(): AccountApi {
+  return impl.useAccount();
+}
 
 export { IS_MOCK, IS_DIRECT };
-export type { Mutations, VersionHistoryApi, CommentsApi, PublishApi };
+export type { Mutations, VersionHistoryApi, CommentsApi, PublishApi, AccountApi };

@@ -14,6 +14,7 @@ import TabBar from "./components/TabBar";
 import PageView from "./components/PageView";
 import QuickSwitcher from "./components/QuickSwitcher";
 import TrashModal from "./components/TrashModal";
+import SettingsModal from "./components/SettingsModal";
 import PeekModal from "./components/PeekModal";
 import { PageId } from "./lib/types";
 import { parseAnchor, scrollToBlock } from "./lib/anchors";
@@ -33,6 +34,7 @@ function Workspace() {
   const { pageId, navigate, theme, newTab } = useNav();
   const [searchOpen, setSearchOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [peekId, setPeekId] = useState<PageId | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -131,6 +133,9 @@ function Workspace() {
       } else if (mod && e.key === "\\") {
         e.preventDefault();
         setSidebarCollapsed((c) => !c);
+      } else if (mod && e.key === ",") {
+        e.preventDefault();
+        setSettingsOpen(true);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -144,6 +149,7 @@ function Workspace() {
           index={index}
           onOpenSearch={() => setSearchOpen(true)}
           onOpenTrash={() => setTrashOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
           onCollapse={() => setSidebarCollapsed(true)}
           width={sidebarWidth}
           setWidth={setSidebarWidth}
@@ -175,9 +181,11 @@ function Workspace() {
           index={index}
           onClose={() => setSearchOpen(false)}
           onOpenTrash={() => setTrashOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
       )}
       {trashOpen && <TrashModal onClose={() => setTrashOpen(false)} />}
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {peekId && index.byId.has(peekId) && (
         <PeekModal
           pageId={peekId}

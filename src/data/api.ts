@@ -41,6 +41,21 @@ export interface DataApi {
   useComments(): CommentsApi;
   /** Publish to web — server-only, like history and comments. */
   usePublish(): PublishApi;
+  /** Account management (Settings) — server-only, single-owner. */
+  useAccount(): AccountApi;
+}
+
+export interface AccountApi {
+  /** False in mock mode and while offline — the sections hide themselves. */
+  available: boolean;
+  /** Owner email for display + Touch ID re-enrollment after a change. */
+  getEmail(): Promise<string | null>;
+  /** Re-verifies the current password server-side before changing. */
+  changePassword(currentPassword: string, newPassword: string): Promise<void>;
+  /** Revokes every session on every device. */
+  signOutEverywhere(): Promise<void>;
+  /** Password-gated: erases the workspace and the account entirely. */
+  deleteAccount(password: string): Promise<void>;
 }
 
 export interface PublishApi {

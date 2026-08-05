@@ -164,6 +164,30 @@ const realApi: DataApi = {
     );
   },
 
+  useAccount() {
+    const client = useConvex();
+    const changePassword = useAction(api.account.changePassword);
+    const signOutEverywhere = useAction(api.account.signOutEverywhere);
+    const deleteAccount = useAction(api.account.deleteAccount);
+    return useMemo(
+      () => ({
+        available: true,
+        getEmail: async () =>
+          (await client.query(api.account.me, {})).email,
+        changePassword: async (currentPassword: string, newPassword: string) => {
+          await changePassword({ currentPassword, newPassword });
+        },
+        signOutEverywhere: async () => {
+          await signOutEverywhere({});
+        },
+        deleteAccount: async (password: string) => {
+          await deleteAccount({ password });
+        },
+      }),
+      [client, changePassword, signOutEverywhere, deleteAccount],
+    );
+  },
+
   useFileUpload() {
     const generateUploadUrl = useMutation(api.files.generateUploadUrl);
     const getFileUrl = useMutation(api.files.getFileUrl);

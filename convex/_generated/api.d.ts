@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as account from "../account.js";
 import type * as auth from "../auth.js";
 import type * as comments from "../comments.js";
 import type * as files from "../files.js";
@@ -15,6 +16,7 @@ import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_linkMeta from "../lib/linkMeta.js";
 import type * as lib_pageLinks from "../lib/pageLinks.js";
+import type * as lib_passwordPolicy from "../lib/passwordPolicy.js";
 import type * as lib_publicHtml from "../lib/publicHtml.js";
 import type * as lib_snippet from "../lib/snippet.js";
 import type * as lib_versions from "../lib/versions.js";
@@ -30,6 +32,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  account: typeof account;
   auth: typeof auth;
   comments: typeof comments;
   files: typeof files;
@@ -37,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/linkMeta": typeof lib_linkMeta;
   "lib/pageLinks": typeof lib_pageLinks;
+  "lib/passwordPolicy": typeof lib_passwordPolicy;
   "lib/publicHtml": typeof lib_publicHtml;
   "lib/snippet": typeof lib_snippet;
   "lib/versions": typeof lib_versions;

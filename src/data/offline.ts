@@ -2,6 +2,7 @@ import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import {
+  AccountApi,
   CommentsApi,
   DataApi,
   PublishApi,
@@ -137,6 +138,34 @@ const offlineApi: DataApi = {
           })) as string | null;
         },
         urlFor: publicUrlFor,
+      }),
+      [connected],
+    );
+  },
+
+  useAccount(): AccountApi {
+    const connected = useSyncExternalStore(
+      (cb) => offlineEngine().subscribeStatus(cb),
+      () => offlineEngine().getStatus().connected,
+      () => false,
+    );
+    return useMemo<AccountApi>(
+      () => ({
+        available: connected,
+        getEmail: async () =>
+          (await convexClient().query(api.account.me, {})).email,
+        changePassword: async (currentPassword, newPassword) => {
+          await convexClient().action(api.account.changePassword, {
+            currentPassword,
+            newPassword,
+          });
+        },
+        signOutEverywhere: async () => {
+          await convexClient().action(api.account.signOutEverywhere, {});
+        },
+        deleteAccount: async (password) => {
+          await convexClient().action(api.account.deleteAccount, { password });
+        },
       }),
       [connected],
     );
