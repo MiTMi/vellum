@@ -5,9 +5,12 @@
  */
 
 // Inter ships with BlockNote, so the landing page reuses it rather than
-// pulling a font off a CDN. Imported here (not linked in the HTML) so Vite
-// bundles it into the landing entry's stylesheet.
+// pulling a font off a CDN. Newsreader (the display serif) is bundled the
+// same way via @fontsource — imported here (not linked in the HTML) so Vite
+// bundles both into the landing entry's stylesheet.
 import "@blocknote/core/fonts/inter.css";
+import "@fontsource-variable/newsreader/opsz.css";
+import "@fontsource-variable/newsreader/opsz-italic.css";
 import "./landing.css";
 import { registerSW } from "../pwa/register";
 

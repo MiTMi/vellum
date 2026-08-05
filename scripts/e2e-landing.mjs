@@ -39,7 +39,7 @@ try {
 
   check(
     "hero headline renders",
-    (await page.textContent(".hero h1")).includes("Your ideas"),
+    (await page.textContent(".hero h1")).includes("Write it down"),
     await page.textContent(".hero h1"),
   );
   check("sticky nav is present", (await page.locator(".nav").count()) === 1);
