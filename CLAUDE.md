@@ -31,6 +31,11 @@ The Vite build has **two HTML entries** (`rollupOptions.input` in
 - **`index.html`** — the marketing landing page at `/`. Plain semantic HTML
   plus `src/landing/{landing.css,landing.ts}`; no React, so `/` stays small.
 
+`public/` is copied to `dist/` verbatim and holds the PWA manifest, the
+`icons/` set and `favicon.png` (all generated from `build/icon.png` with
+`sips`). Both HTML entries reference them **relatively** (`./favicon.png`), so
+the same markup resolves under Electron's `file://` as well as over http.
+
 Consequences to remember:
 
 - **Every Playwright script that drives the workspace must navigate to
@@ -82,6 +87,34 @@ A real process env var outranks `.env.production` in Vite, so anything written
 there under the Convex name works in every local build and is silently reverted
 on every Vercel build. `tests/publicUrl.test.ts` guards this. Whichever
 variable is used, it must be Vercel's stable alias, never a per-deployment URL.
+
+### Hosting (Vercel)
+
+`vellum-gilt.vercel.app`, auto-deploying from `main`. Config lives in
+`vercel.json` and in the Vercel project settings:
+
+- **Build command** (overridden in the dashboard, not in `package.json`):
+  `npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name VITE_CONVEX_URL`.
+  Convex functions are pushed *first*, then the frontend is built against the
+  deployment that was just pushed to — so the two can't drift.
+- **`CONVEX_DEPLOY_KEY`** is set on the **Production environment only**. This
+  is a security boundary, not tidiness: a preview branch holding a production
+  key would push its functions and schema straight into prod.
+- **Preview builds therefore fail** at the `convex deploy` step — no key, and
+  no `.env.local` in CI to fall back on. That is the safe failure. Give Preview
+  its own *preview* deploy key if you want them green; Convex spins up throwaway
+  preview deployments for those.
+- `cleanUrls: true` serves `dist/app.html` at `/app` and 308s `/app.html` → `/app`.
+  `trailingSlash: false` kills `/app/`, which is the one URL that would break
+  relative asset resolution under `base: "./"`.
+- The `/p/:path*` rewrite proxies published pages to the deployment's
+  `.convex.site`. Filesystem wins before rewrites, so it can't shadow real files.
+- Cache headers: `/assets/*` immutable for a year (content-hashed), `sw.js` and
+  the manifest `no-cache` — a cached service worker would pin users to an old
+  shell.
+
+Old `…convex.site/p/<slug>` links keep working; Convex serves that route
+directly, so proxying is additive rather than a cutover.
 
 ### Data layer (three modes)
 
@@ -137,8 +170,13 @@ Invariants to preserve when touching `convex/pages.ts`:
 
 Convex Auth with a single Password provider (`convex/auth.ts`), restricted
 to the deployment's `OWNER_EMAIL` env var — a single-user lock, not
-multi-user auth. Key material and `SITE_URL` live as deployment env vars
-(set by `npx @convex-dev/auth`).
+multi-user auth.
+
+`OWNER_EMAIL`, `SITE_URL`, `JWT_PRIVATE_KEY` and `JWKS` are **per-deployment**
+env vars, so a new deployment needs all four before anyone can sign in. The dev
+set was written by `npx @convex-dev/auth`; prod's were generated with the
+`jose` snippet from the Convex Auth docs and set via `--from-file` (see the
+CLI gotchas below). `SITE_URL` must be the hosted origin, not `.convex.site`.
 
 - **Every public function in `convex/` must start with
   `await requireUser(ctx)`** (`convex/lib/auth.ts`). The convex-test suites
@@ -365,6 +403,12 @@ invariants as security-critical:
 Publishing is server-only, like history and comments: `usePublish()` goes
 through `convexClient()` and reports `available: false` while offline.
 
+The URL the user is shown comes from `publicUrlFor()` and points at the Vercel
+origin, which proxies `/p/*` back to this action — see "Hosting" above. Convex
+still serves `…convex.site/p/<slug>` directly, so links minted before the proxy
+existed keep working; the slug is what matters, not the host. The service
+worker must never cache either form (a cached page would outlive an unpublish).
+
 ### Landing page (`index.html`, `src/landing/`)
 
 Static markup + one stylesheet + ~35 lines of vanilla TS. `landing.ts` only
@@ -393,19 +437,65 @@ no-ops unless `import.meta.env.PROD` on an http(s) origin outside Electron.
   unpublish, which is a privacy leak.
 - Non-GET is never cached.
 
-`scripts/e2e-pwa.mjs` asserts all three plus offline boot; run it against a
-built app on `vite preview`, not the dev server.
+`scripts/e2e-pwa.mjs` asserts all three plus offline boot. It needs a built app
+over http, so `vite preview` rather than the dev server — but **preview is not
+sufficient**: it serves `/app.html` as a plain 200 where Vercel 308s it, which
+is precisely how the offline shell shipped broken once. Re-run with
+`E2E_URL=https://vellum-gilt.vercel.app` after deploying.
+
+The precache list is built from the emitted bundle, but the two HTML entries
+are mapped to their **canonical URLs** (`/` and `/app`) rather than their
+filenames. A cached *redirected* response cannot answer a navigation request
+(those carry `redirect: "manual"`), so caching `/app.html` behind `cleanUrls`
+silently breaks offline boot. Landing screenshots and the `.ttf`/`.woff` font
+fallbacks are excluded from the precache and left to the runtime cache.
 
 ### One-off migrations (`convex/migrate.ts`)
 
 `rewriteHostBatch` / `rewriteVersionHostBatch` swap a deployment origin inside
-stored `content`, `cover`, `props` and history snapshots — needed because
-uploaded files are stored as absolute `https://<deployment>/api/storage/<id>`
-URLs, so moving deployments strands every image. Both **must stay
-`internalMutation`**: they rewrite user data in bulk and must be unreachable
-from any client. Driven from the CLI, looping on the returned cursor. Only
-changed rows are patched, and those get `updatedAt` + `contentUpdatedAt` bumped
-so offline replicas re-pull them.
+stored `content`, `cover`, `props`, the derived text fields and history
+snapshots. `useFileUpload` stores whatever absolute URL `ctx.storage.getUrl()
+` returned, so a workspace with uploaded images or covers would strand all of
+them when it changes deployment.
+
+Both **must stay `internalMutation`**: they rewrite user data in bulk and must
+be unreachable from any client. Driven from the CLI, looping on the returned
+cursor. Only changed rows are patched, and those get `updatedAt` +
+`contentUpdatedAt` bumped so offline replicas re-pull them.
+
+Two things the 2026-08-04 migration established, worth knowing before trusting
+the premise again: the serving URL's last segment is an **internal UUID**, not
+the `_storage` id (both survived the import unchanged), and this workspace
+turned out to embed **no** file URLs at all — every cover is a `gradient:N`
+token — so the rewrite was a 0-row no-op. Check before assuming it's needed:
+`grep -c "<old-deployment>" pages/documents.jsonl` in an unzipped export.
+
+### Migrating between deployments
+
+Done once, on 2026-08-04 (dev → prod). The runbook, should it be needed again:
+
+1. Freeze every client — online, signed in, outbox drained. There is no UI for
+   this; check `indexedDB.open("vellum-offline")` → `outbox` store count is 0
+   in each client's DevTools console (the Mac app has them under View →
+   Toggle Developer Tools).
+2. `npx convex export --path <zip> --include-file-storage` from the source.
+   **Keep this zip** — it and the untouched source deployment are the rollback.
+3. `npx convex import <zip> --prod --replace-all -y`. `--replace-all` clears the
+   destination first, so scratch data doesn't need separate cleanup.
+4. **Gate before anything irreversible:** row counts match, a known page keeps
+   its `_id` *and* `updatedAt`, and a known storage id still serves its exact
+   byte count. Convex preserved all of these, but verify rather than assume.
+5. Run the rewrite mutations above.
+6. Auth: the imported `authAccounts` row carries a self-contained scrypt hash,
+   so **the same password keeps working and the account need not be recreated**
+   — which also keeps Touch ID enrollment valid. Do clear `authSessions`,
+   `authRefreshTokens`, `authVerifiers`, `authVerificationCodes` and
+   `authRateLimits`, which are signed by / scoped to the source deployment:
+   `: > empty.jsonl` then, per table,
+   `npx convex import --table <t> --replace -y --format jsonLines empty.jsonl --prod`.
+7. Verify on the **hosted** app, not a local build: full tree, trash, database
+   property definitions, history, search hits, and images loading from the new
+   host.
 
 ### Search
 
@@ -425,10 +515,10 @@ plain rows with a `run()` callback.
 - `npm run dev` — convex + vite + electron. `npm run dev:web` — no electron.
 - `npx vitest run` — all tests: Convex function tests (`tests/pages.test.ts`,
   convex-test), pure-helper tests (`tests/linkMeta.test.ts`,
-  `tests/snippet.test.ts`, `tests/dbviews.test.ts`) and offline-layer
-  unit/integration tests (`tests/offline/`). New `convex/*.ts` modules must
-  be added to the `import.meta.glob` list in `tests/pages.test.ts` or
-  convex-test can't resolve them.
+  `tests/snippet.test.ts`, `tests/dbviews.test.ts`, `tests/publicUrl.test.ts`)
+  and offline-layer unit/integration tests (`tests/offline/`). New
+  `convex/*.ts` modules must be added to the `import.meta.glob` list in
+  `tests/pages.test.ts` or convex-test can't resolve them.
 - `npm run build` — typecheck + vite build.
 - `node scripts/e2e*.mjs` — Playwright UI suites against a mock-mode vite
   server on port 5199 (`VITE_MOCK_CONVEX=1 npx vite --port 5199`), e.g.
@@ -440,7 +530,8 @@ plain rows with a `run()` callback.
   `~/Library/Caches/ms-playwright/chromium-*/chrome-mac-arm64/…`).
 - `node scripts/e2e-landing.mjs` — the landing page at `/` (same mock server):
   structure, images, CTA hrefs, the `vellum:hasSession` copy flip, and
-  click-through into a booted workspace.
+  click-through to `/app`. Takes `E2E_URL`, and accepts either the workspace or
+  the login screen on arrival, so it doubles as a post-deploy smoke test.
 - `node scripts/e2e-pwa.mjs` — service worker + manifest. Needs a **built**
   app over http (`npm run build && npx vite preview --port 5197`), since the
   worker only registers in PROD builds.
@@ -454,23 +545,43 @@ plain rows with a `run()` callback.
   binary start as plain Node — `require("electron")` returns a path string,
   so every API is `undefined`, and Playwright just says "Process failed to
   launch!". `electron-pdf-smoke.mjs` strips it.
-- `node scripts/e2e-offline.mjs` — offline-sync e2e against the REAL dev
-  deployment (vite on port 5201, no mock flag; push functions first with
-  `npx convex dev --once`). Sign-in is required: pass the owner's password
-  as `VELLUM_E2E_PASSWORD` (the owner account must already exist).
+- `node scripts/e2e-offline.mjs` — offline-sync e2e against a real (non-mock)
+  deployment; defaults to whatever `.env.local` names, i.e. dev (vite on port
+  5201, no mock flag; push functions first with `npx convex dev --once`).
+  Sign-in is required: pass the owner's password as `VELLUM_E2E_PASSWORD`.
+- **`npx vitest run` reports one failing *file*, `_to_delete/pages.test.ts`.**
+  It's a stale copy in a gitignored scratch folder whose `./_generated/api`
+  import can't resolve. Pre-existing and unrelated — don't chase it. The real
+  count is what matters: all tests in `tests/` pass.
 
-**The dev deployment in `.env.local` contains real user data.** Anything
-that writes to it (e2e-offline, ad-hoc scripts) must create uniquely-named
-pages and delete them afterwards; `e2e-offline.mjs` does this in its
-`finally` block.
+### Convex CLI gotchas
 
-**That is no longer true since the migration** — dev now holds a frozen
-pre-migration copy, and prod is the system of record. The warning is kept
-because the habit still matters: treat both deployments as holding real data,
-and never point `.env.local` at prod.
+- **`npx convex env list` prints secret values in full**, and multi-line values
+  (like `JWT_PRIVATE_KEY`) survive a single-line `grep -v` filter. Print names
+  only — `| grep -oE '^[A-Z_]+='` — or you will leak a key into a transcript.
+- **Set multi-line secrets with `--from-file`**, never by shell interpolation:
+  `npx convex env set JWT_PRIVATE_KEY --from-file key.pem --prod`. It preserves
+  PKCS8 newlines byte-exactly (verified by hash), so the dashboard paste that's
+  usually recommended isn't necessary.
+- **`npx convex deploy` prompts for confirmation** and refuses to run in a
+  non-interactive terminal. Piping `y` doesn't help — it checks for a TTY. Wrap
+  it: `expect -c 'spawn npx convex deploy; expect -re "push your code.*"; send
+  "y\r"; expect eof'`.
+- A project has one **default** production deployment; `deployment create
+  --default` fails while another holds the slot, and there is no promote
+  command. Delete the incumbent from its dashboard settings page first.
+
+### Where the real data lives
+
+**Prod is the system of record; dev holds a frozen pre-migration copy.**
+Anything that writes to *either* should still create uniquely-named pages and
+delete them afterwards — `e2e-offline.mjs` does this in its `finally` block —
+because dev is the rollback artefact and prod is live.
 
 Two verifications proved worthless during this work, both for the same reason:
 `vite preview` and a local `vite build` don't reproduce production. Vercel's
 `cleanUrls` broke the service worker's offline shell, and `convex deploy`
 overrode a `VITE_*` variable — each passed locally and failed once deployed.
-**Verify hosted behaviour against the hosted site**, not a local build.
+**Verify hosted behaviour against the hosted site**, not a local build. Both
+new suites take `E2E_URL` for exactly this:
+`E2E_URL=https://vellum-gilt.vercel.app node scripts/e2e-pwa.mjs`.
