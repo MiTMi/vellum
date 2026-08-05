@@ -3218,42 +3218,112 @@ tbody.db-group + tbody.db-group .group-row td {
   border-radius: 4px;
 }
 
-/* ---------------------------- Login screen ---------------------------- */
+/* ---------------------------- Login screen ----------------------------
+   The front door. A constant ink-dark brand panel (the landing page's
+   "ink on vellum" identity — Newsreader serif, vermilion rubric) beside a
+   form pane that follows the app theme. The sign-up flow renders a live
+   checklist driven by convex/lib/passwordPolicy.ts — the same rules the
+   server enforces. */
 
 .login-screen {
   height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(340px, 42%) minmax(0, 1fr);
+  background: var(--bg);
+}
+
+.login-brand {
+  background: #1c1a17;
+  color: #efece5;
+  display: flex;
+  align-items: center;
+  padding: 48px 56px;
+}
+.login-brand-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.brand-pilcrow {
+  font-family: "Newsreader Variable", Georgia, serif;
+  font-size: 44px;
+  line-height: 1;
+  color: #d4553f;
+  margin-bottom: 18px;
+}
+.brand-word {
+  font-family: "Newsreader Variable", Georgia, serif;
+  font-weight: 600;
+  font-size: 46px;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.brand-tag {
+  font-family: "Newsreader Variable", Georgia, serif;
+  font-style: italic;
+  font-size: 21px;
+  color: #a9a399;
+  margin: 10px 0 40px;
+}
+.brand-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.brand-points li {
+  position: relative;
+  padding-left: 22px;
+  font-size: 14.5px;
+  color: #cfcabf;
+}
+.brand-points li::before {
+  content: "\00b6";
+  position: absolute;
+  left: 0;
+  font-family: "Newsreader Variable", Georgia, serif;
+  color: #d4553f;
+}
+
+.login-pane {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
+  padding: 32px;
+  overflow-y: auto;
 }
 .login-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  width: 300px;
-  padding: 36px 32px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-card);
-  background: var(--bg);
-  text-align: center;
+  gap: 8px;
+  width: 360px;
+  max-width: 100%;
 }
-.login-logo {
-  font-size: 34px;
-}
-.login-card h1 {
-  font-size: 20px;
+.login-title {
+  font-family: "Newsreader Variable", Georgia, serif;
+  font-weight: 550;
+  font-size: 30px;
+  letter-spacing: -0.008em;
   margin: 0;
   color: var(--text);
 }
 .login-sub {
-  margin: 0 0 10px;
-  font-size: 13px;
+  margin: 0 0 18px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.login-label {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--text-secondary);
 }
 .login-input {
-  padding: 8px 10px;
+  height: 38px;
+  padding: 0 11px;
   font-size: 14px;
   font-family: var(--font-sans);
   color: var(--text);
@@ -3264,13 +3334,51 @@ tbody.db-group + tbody.db-group .group-row td {
 }
 .login-input:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.18);
 }
 .login-error {
   font-size: 12.5px;
   color: var(--danger);
 }
+
+.pw-checks {
+  list-style: none;
+  margin: 4px 0 2px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+}
+.pw-checks li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.pw-checks li.ok {
+  color: var(--text-secondary);
+}
+.pw-check-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  color: #fff;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.pw-checks li.ok .pw-check-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 .login-submit {
-  padding: 8px 10px;
+  margin-top: 10px;
+  height: 38px;
   font-size: 14px;
   font-weight: 500;
   color: #fff;
@@ -3283,16 +3391,17 @@ tbody.db-group + tbody.db-group .group-row td {
   background: var(--accent-hover);
 }
 .login-submit:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: default;
 }
 .login-flip {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 12.5px;
   color: var(--text-secondary);
   background: none;
   border: none;
   cursor: pointer;
+  align-self: center;
 }
 .login-flip:hover {
   color: var(--text);
@@ -3303,7 +3412,7 @@ tbody.db-group + tbody.db-group .group-row td {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 8px 10px;
+  padding: 9px 10px;
   font-size: 14px;
   font-weight: 500;
   color: var(--text);
@@ -3323,7 +3432,7 @@ tbody.db-group + tbody.db-group .group-row td {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 2px 0;
+  margin: 6px 0;
   font-size: 11.5px;
   color: var(--text-faint);
 }
@@ -3336,8 +3445,8 @@ tbody.db-group + tbody.db-group .group-row td {
 .login-remember {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
+  margin-top: 6px;
   font-size: 12.5px;
   color: var(--text-secondary);
   cursor: pointer;
@@ -3346,6 +3455,15 @@ tbody.db-group + tbody.db-group .group-row td {
 .login-remember input {
   accent-color: var(--accent);
   margin: 0;
+}
+
+@media (max-width: 900px) {
+  .login-screen {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .login-brand {
+    display: none;
+  }
 }
 
 /* ------------------------------ Embed block ------------------------------ */

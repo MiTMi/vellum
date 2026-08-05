@@ -229,6 +229,20 @@ CLI gotchas below). `SITE_URL` must be the hosted origin, not `.convex.site`.
   bind an identity with `.withIdentity({ subject: "owner|test" })`;
   `tests/pages.test.ts` has a regression test asserting anonymous calls are
   rejected.
+- **Password policy** (2026-08-05): `convex/lib/passwordPolicy.ts` — 12+
+  chars with lower/upper/digit/symbol — is shared by the server (wired as
+  the Password provider's `validatePasswordRequirements`, which Convex Auth
+  runs on **signUp/reset flows only, never signIn** — the existing owner
+  password keeps working) and by the login screen's live checklist, so the
+  UI can't drift from what the server enforces. `tests/passwordPolicy.test.ts`.
+- **Login screen** (redesigned 2026-08-05): split layout — a constant
+  ink-dark brand panel echoing the landing identity (Newsreader serif,
+  loaded in the *app* entry via `@fontsource` imports in `Auth.tsx`) beside
+  a form pane that follows the app theme. The sign-up flow disables submit
+  until the checklist passes and the confirm field matches. Selector
+  contract: `e2e-offline.mjs` pins `.login-card`, `input[name=email]`,
+  `input[name=password]`, `.login-submit`; `e2e-landing.mjs` accepts
+  `.login-screen` — keep all of them through any restyle.
 - Client wiring is `ConvexAuthProvider` + `AuthGate` (`main.tsx`,
   `src/components/Auth.tsx`). Offline rule: a machine with a prior session
   (localStorage `vellum:hasSession`) may open its local replica while

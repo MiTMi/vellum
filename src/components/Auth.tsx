@@ -7,8 +7,14 @@ import React, {
 import { ConvexReactClient, useConvexAuth } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { ConvexError } from "convex/values";
-import { Fingerprint, LogOut } from "lucide-react";
+import { Check, Fingerprint, LogOut } from "lucide-react";
 import { setSyncAuthorized } from "../offline/runtime";
+import { unmetPasswordRules, PASSWORD_RULES } from "../../convex/lib/passwordPolicy";
+// The landing page's display serif, reused here so the front door carries
+// the same "ink on vellum" identity as the marketing page. Bundled locally
+// via @fontsource (subsetted woff2, loaded on demand) — never a CDN link.
+import "@fontsource-variable/newsreader/opsz.css";
+import "@fontsource-variable/newsreader/opsz-italic.css";
 
 /**
  * Login gate for the real backends (offline + direct modes; mock mode never
@@ -74,14 +80,15 @@ export function AuthGate({
 }
 
 function authErrorMessage(err: unknown, flow: "signIn" | "signUp"): string {
-  // Our own server-side rejections (e.g. the OWNER_EMAIL check) arrive as
-  // ConvexError with a readable string; everything else gets a generic line.
+  // Our own server-side rejections (the OWNER_EMAIL check and the password
+  // policy) arrive as ConvexError with a readable string; everything else
+  // gets a generic line.
   if (err instanceof ConvexError && typeof err.data === "string") {
     return err.data;
   }
   return flow === "signIn"
     ? "Sign-in failed — check the email and password."
-    : "Could not create the account — passwords need 8+ characters.";
+    : "Could not create the account — check the password requirements.";
 }
 
 function LoginScreen() {
@@ -89,6 +96,10 @@ function LoginScreen() {
   const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Controlled only for the live sign-up checklist; FormData still reads the
+  // named inputs, so the submit path is unchanged.
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   // Touch ID (Electron on a Mac with biometrics only; undefined elsewhere).
   const [touch, setTouch] = useState<{
     available: boolean;
@@ -155,75 +166,152 @@ function LoginScreen() {
     }
   }
 
+  const signingUp = flow === "signUp";
+  const unmet = unmetPasswordRules(password);
+  const confirmOk = confirm === password && password.length > 0;
+  const signUpBlocked = signingUp && (unmet.length > 0 || !confirmOk);
+
   return (
     <div className="login-screen">
-      <form className="login-card" onSubmit={onSubmit}>
-        <div className="login-logo">📓</div>
-        <h1>Vellum</h1>
-        <p className="login-sub">
-          {flow === "signIn"
-            ? "Sign in to your workspace"
-            : "Create the owner account"}
-        </p>
-        {touch?.enrolled && flow === "signIn" && (
-          <>
-            <button
-              type="button"
-              className="login-touchid"
-              onClick={() => void onTouchId()}
-              disabled={busy}
-            >
-              <Fingerprint size={16} />
-              Sign in with Touch ID
-            </button>
-            <div className="login-divider">or use your password</div>
-          </>
-        )}
-        <input
-          className="login-input"
-          name="email"
-          type="email"
-          placeholder="Email"
-          autoComplete="email"
-          autoFocus
-          required
-        />
-        <input
-          className="login-input"
-          name="password"
-          type="password"
-          placeholder="Password"
-          autoComplete={flow === "signIn" ? "current-password" : "new-password"}
-          minLength={8}
-          required
-        />
-        {touch?.available && (
-          <label className="login-remember">
-            <input
-              type="checkbox"
-              checked={enableTouchId}
-              onChange={(e) => setEnableTouchId(e.target.checked)}
-            />
-            Enable Touch ID sign-in on this Mac
+      {/* Constant ink-dark brand panel — the front door wears the same
+          "ink on vellum" identity as the landing page, in both themes. */}
+      <aside className="login-brand" aria-hidden="true">
+        <div className="login-brand-inner">
+          <span className="brand-pilcrow">&para;</span>
+          <span className="brand-word">Vellum</span>
+          <p className="brand-tag">Write it down. Keep it forever.</p>
+          <ul className="brand-points">
+            <li>Private by default</li>
+            <li>Offline by design</li>
+            <li>Yours to keep</li>
+          </ul>
+        </div>
+      </aside>
+
+      <main className="login-pane">
+        <form className="login-card" onSubmit={onSubmit}>
+          <h1 className="login-title">
+            {signingUp ? "Claim your workspace." : "Welcome back."}
+          </h1>
+          <p className="login-sub">
+            {signingUp
+              ? "Create the owner account — this workspace has exactly one."
+              : "Sign in to open your workspace."}
+          </p>
+
+          {touch?.enrolled && !signingUp && (
+            <>
+              <button
+                type="button"
+                className="login-touchid"
+                onClick={() => void onTouchId()}
+                disabled={busy}
+              >
+                <Fingerprint size={16} />
+                Sign in with Touch ID
+              </button>
+              <div className="login-divider">or use your password</div>
+            </>
+          )}
+
+          <label className="login-label" htmlFor="login-email">
+            Email
           </label>
-        )}
-        {error && <div className="login-error">{error}</div>}
-        <button className="login-submit" type="submit" disabled={busy}>
-          {busy ? "Signing in…" : flow === "signIn" ? "Sign in" : "Create account"}
-        </button>
-        <button
-          type="button"
-          className="login-flip"
-          onClick={() => {
-            setFlow(flow === "signIn" ? "signUp" : "signIn");
-            setError(null);
-          }}
-        >
-          {flow === "signIn"
-            ? "First time here? Create the owner account"
-            : "Already set up? Sign in"}
-        </button>
-      </form>
+          <input
+            id="login-email"
+            className="login-input"
+            name="email"
+            type="email"
+            placeholder="you@example.com"
+            autoComplete="email"
+            autoFocus
+            required
+          />
+
+          <label className="login-label" htmlFor="login-password">
+            Password
+          </label>
+          <input
+            id="login-password"
+            className="login-input"
+            name="password"
+            type="password"
+            placeholder={signingUp ? "Choose a strong passphrase" : "Password"}
+            autoComplete={signingUp ? "new-password" : "current-password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+
+          {signingUp && (
+            <>
+              <ul className="pw-checks">
+                {PASSWORD_RULES.map((rule) => {
+                  const ok = rule.test(password);
+                  return (
+                    <li key={rule.id} className={ok ? "ok" : ""}>
+                      <span className="pw-check-box">
+                        {ok && <Check size={11} strokeWidth={3} />}
+                      </span>
+                      {rule.label}
+                    </li>
+                  );
+                })}
+              </ul>
+              <label className="login-label" htmlFor="login-confirm">
+                Repeat password
+              </label>
+              <input
+                id="login-confirm"
+                className="login-input"
+                type="password"
+                placeholder="Same passphrase again"
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+              />
+              {confirm.length > 0 && !confirmOk && (
+                <div className="login-error">The passwords don't match.</div>
+              )}
+            </>
+          )}
+
+          {touch?.available && !signingUp && (
+            <label className="login-remember">
+              <input
+                type="checkbox"
+                checked={enableTouchId}
+                onChange={(e) => setEnableTouchId(e.target.checked)}
+              />
+              Enable Touch ID sign-in on this Mac
+            </label>
+          )}
+          {error && <div className="login-error">{error}</div>}
+
+          <button
+            className="login-submit"
+            type="submit"
+            disabled={busy || signUpBlocked}
+          >
+            {busy ? "Signing in…" : signingUp ? "Create account" : "Sign in"}
+          </button>
+          <button
+            type="button"
+            className="login-flip"
+            onClick={() => {
+              setFlow(signingUp ? "signIn" : "signUp");
+              setError(null);
+              setPassword("");
+              setConfirm("");
+            }}
+          >
+            {signingUp
+              ? "Already set up? Sign in"
+              : "First time here? Create the owner account"}
+          </button>
+        </form>
+      </main>
     </div>
   );
 }

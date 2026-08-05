@@ -39,9 +39,17 @@ It bakes in the URLs from the checked-in `.env.production`, which outranks `.env
 
 ## What's inside
 
-- **Pages** — infinitely nestable, with emoji icons, cover images (gradients or your own uploads), favorites, and full-text search (⌘K).
-- **Editor** — Notion-style block editor (BlockNote): type `/` for headings, lists, checklists, quotes, code, tables, images, and Vellum's own **Sub-page** and **Database** blocks. Drag handles, nesting, markdown shortcuts — all included.
-- **Databases** — typed properties (text, number, select, multi-select, date, checkbox, URL), editable table view with column resize/sort, kanban board grouped by any select property with drag-and-drop, and every row opens as a full page with a property panel.
+- **Pages** — infinitely nestable, with emoji icons, cover images, favorites, templates, and full-text search (⌘K).
+- **Editor** — Notion-style block editor (BlockNote): type `/` for headings, lists, checklists, quotes, code, tables, images, LaTeX equations, callouts, tables of contents, web bookmarks, live embeds (YouTube, Figma, Spotify, …), and Vellum's own **Sub-page** and **Database** blocks. `@`-mention pages inline; copy deep links to any block.
+- **Databases** — typed properties (text, number, select, multi-select, date/date-range, checkbox, URL, relation, rollup, formula), with table, board, calendar, gallery, and timeline views. Every row opens as a full page.
+- **🔒 The Vault** — an **end-to-end encrypted** subtree: pages inside are sealed on-device with a passphrase-derived key (AES-GCM) before they sync, so the server only ever stores ciphertext. Auto-locks after 15 minutes and on reload. No recovery by design.
+- **Offline-first** — a full local replica plus a durable write outbox; the app works with no connection and replays your edits in order when you're back.
+- **Publish to web** — one toggle mints an unguessable public link; unpublishing kills it permanently. (Vault pages can never be published.)
+- **History & comments** — server-side version snapshots with one-click restore, and per-page comments.
+- **Import / export** — Markdown and HTML import; Markdown, HTML, CSV, and PDF export.
+- **Native macOS app** — Electron shell with Touch ID sign-in (credentials sealed in the Keychain) and native PDF export.
+- **Automatic image compression** — pasted or uploaded images are downscaled and re-encoded as WebP on-device before they hit storage (typically 5–40× smaller).
+- **Hardened sign-up** — the owner account requires a 12+ character password with mixed character classes, enforced server-side.
 - **Trash** — deleting moves pages (and their subtrees) to trash; restore or delete forever.
 - **Dark mode** — toggle in the top bar, follows through the editor and every view.
 - **Sidebar** — drag pages to reorder or nest, resize the sidebar, collapse it (⌘\).
