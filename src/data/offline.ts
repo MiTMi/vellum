@@ -218,6 +218,16 @@ const offlineApi: DataApi = {
           }) as Promise<string>,
         ask: (question) =>
           convexClient().action(api.ai.ask, { question }) as Promise<AiAnswer>,
+        converse: (args) =>
+          convexClient().action(api.ai.converse, {
+            ...args,
+            pageId: args.pageId as Id<"pages"> | undefined,
+          }) as Promise<AiAnswer>,
+        deckOutline: (args) =>
+          convexClient().action(api.ai.deckOutline, {
+            ...args,
+            pageId: args.pageId as Id<"pages"> | undefined,
+          }) as Promise<string>,
       }),
       [connected],
     );

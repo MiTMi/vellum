@@ -402,6 +402,27 @@ const mockApi: DataApi = {
           sources: [],
           model: "demo",
         }),
+        converse: async ({ messages }): Promise<AiAnswer> => {
+          const last = [...messages].reverse().find((m) => m.role === "user");
+          return {
+            answer: `Demo reply to "${last?.content ?? ""}". Connect a workspace to chat for real.`,
+            sources: [],
+            model: "demo",
+          };
+        },
+        deckOutline: async ({ topic }) =>
+          [
+            `## ${topic?.trim() || "Overview"}`,
+            "- What this covers",
+            "- Why it matters",
+            "",
+            "## Key points",
+            "- First point",
+            "- Second point",
+            "",
+            "## Next steps",
+            "- What to do next",
+          ].join("\n"),
       }),
       [],
     );

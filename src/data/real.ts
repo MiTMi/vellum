@@ -215,6 +215,8 @@ const realApi: DataApi = {
     const transform = useAction(api.ai.transform);
     const fillProperty = useAction(api.ai.fillProperty);
     const ask = useAction(api.ai.ask);
+    const converse = useAction(api.ai.converse);
+    const deckOutline = useAction(api.ai.deckOutline);
     return useMemo<AiApi>(
       () => ({
         available: true,
@@ -222,8 +224,18 @@ const realApi: DataApi = {
         fillProperty: (args) =>
           fillProperty({ ...args, pageId: args.pageId as Id<"pages"> }) as Promise<string>,
         ask: (question) => ask({ question }) as Promise<AiAnswer>,
+        converse: (args) =>
+          converse({
+            ...args,
+            pageId: args.pageId as Id<"pages"> | undefined,
+          }) as Promise<AiAnswer>,
+        deckOutline: (args) =>
+          deckOutline({
+            ...args,
+            pageId: args.pageId as Id<"pages"> | undefined,
+          }) as Promise<string>,
       }),
-      [transform, fillProperty, ask],
+      [transform, fillProperty, ask, converse, deckOutline],
     );
   },
 };

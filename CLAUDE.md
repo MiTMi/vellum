@@ -710,11 +710,28 @@ retrying just burns the minute budget).
   paid round-trip, so it must never re-run on render. Generation is per row,
   on demand, from a button in `AiCell` (`database/Cell.tsx`), and writes
   through the normal `setRowProp` so it syncs through the outbox.
-- `ask` — workspace Q&A with citations (`AskAiModal.tsx`, ⌘⇧J or the
-  sidebar). Retrieval uses the **existing `search` index**, not embeddings:
-  it is already maintained on every write, needs no backfill, and a personal
-  workspace is small enough that keyword recall suffices. Swapping in a
-  vector index only changes `_retrieve`.
+- `ask` — one-shot workspace Q&A with citations. Retrieval uses the
+  **existing `search` index**, not embeddings: it is already maintained on
+  every write, needs no backfill, and a personal workspace is small enough
+  that keyword recall suffices. Swapping in a vector index only changes
+  `_retrieve`.
+- `converse` + `deckOutline` — the docked chat panel (`AiChatPanel.tsx`,
+  ⌘⇧J or the sidebar). `converse` is multi-turn and optionally grounded in
+  the open page (the composer's context chip) and/or workspace retrieval.
+  History is folded into one labelled transcript because the provider takes
+  a flat message list. `deckOutline` returns Markdown the panel maps onto
+  heading/bullet blocks in a brand-new page.
+
+  The panel is a **sibling of `.main-col`** in `.app`'s flex row, so it
+  narrows the page instead of covering it. It replaced an earlier
+  `AskAiModal` — the panel does everything the modal did and holds a
+  conversation, and two surfaces for one task was clutter. `ask` is kept
+  because it is the cheaper primitive and still has tests.
+
+  "Personalize" stores custom instructions in `localStorage`
+  (`vellum:ai-persona`) and passes them as `persona`, injected into the
+  system prompt. Deliberately not in the schema: it is a per-device
+  preference, not workspace data.
 
 **Vault.** AI is absent inside the vault, not merely disabled. `aiAllowed`
 in `Editor.tsx` gates the client, `fillProperty` refuses `vault` rows
@@ -729,7 +746,7 @@ is a live round-trip, so there is nothing meaningful to queue in the outbox —
 the affordances hide themselves rather than failing on click.
 
 **Shortcuts collide if you're careless.** ⌘J (selection menu, `Editor.tsx`)
-and ⌘⇧J (Q&A, `App.tsx`) — the editor handler *must* test `!e.shiftKey`,
+and ⌘⇧J (chat panel, `App.tsx`) — the editor handler *must* test `!e.shiftKey`,
 because `"J".toLowerCase() === "j"` and `preventDefault()` doesn't stop
 propagation, so ⌘⇧J would otherwise open both surfaces at once.
 

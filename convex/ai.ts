@@ -349,3 +349,174 @@ export const ask = action({
     };
   },
 });
+
+/* ------------------------------------------------------------------ *
+ * Chat panel
+ * ------------------------------------------------------------------ */
+
+/** How much of a turn's history to keep. Older turns are dropped from the
+ *  front — the free tier is slow, and the tail carries the intent. */
+const MAX_HISTORY_TURNS = 12;
+/** The current page, when the composer's context chip is on. */
+const MAX_PAGE_CONTEXT_CHARS = 6000;
+/** Custom instructions ("Personalize"), capped so they can't crowd out the
+ *  system prompt or smuggle in a whole document. */
+const MAX_PERSONA_CHARS = 1000;
+
+export const chatTurn = v.object({
+  role: v.union(v.literal("user"), v.literal("assistant")),
+  content: v.string(),
+});
+
+/**
+ * The side-panel chat: multi-turn, optionally grounded in the open page
+ * and/or the wider workspace.
+ *
+ * Distinct from `ask`, which is a single question against retrieval. This
+ * one carries history, so it is the surface where a conversation happens.
+ */
+export const converse = action({
+  args: {
+    messages: v.array(chatTurn),
+    /** The open page, when the composer's context chip is active. */
+    pageId: v.optional(v.id("pages")),
+    /** Also retrieve across the workspace (Notion's "search your brain"). */
+    useWorkspace: v.optional(v.boolean()),
+    /** User's saved custom instructions, from "Personalize". */
+    persona: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<AskResult> => {
+    await requireUser(ctx);
+
+    const history = args.messages.slice(-MAX_HISTORY_TURNS);
+    const latest = [...history].reverse().find((m) => m.role === "user");
+    if (!latest?.content.trim()) throw new ConvexError("Say something first.");
+
+    const contextParts: string[] = [];
+    const sources: AskSource[] = [];
+
+    // The open page, when the chip is on.
+    if (args.pageId) {
+      const page: Doc<"pages"> | null = await ctx.runQuery(
+        internal.ai._rowForFill,
+        { pageId: args.pageId },
+      );
+      if (page?.vault) {
+        throw new ConvexError(
+          "AI is unavailable inside the Vault — its content is encrypted and never leaves your device.",
+        );
+      }
+      if (page && !page.inTrash) {
+        const body = (page.contentText ?? "").slice(0, MAX_PAGE_CONTEXT_CHARS);
+        contextParts.push(
+          `The page currently open is "${page.title || "Untitled"}":\n${body || "(empty)"}`,
+        );
+        sources.push({
+          pageId: page._id as string,
+          title: page.title || "Untitled",
+          icon: page.icon ?? null,
+        });
+      }
+    }
+
+    // Workspace retrieval, keyed off the newest user turn.
+    if (args.useWorkspace) {
+      const docs: {
+        pageId: string;
+        title: string;
+        icon: string | null;
+        text: string;
+      }[] = await ctx.runQuery(internal.ai._retrieve, {
+        question: latest.content,
+      });
+      const fresh = docs.filter((d) => !sources.some((s) => s.pageId === d.pageId));
+      if (fresh.length > 0) {
+        contextParts.push(
+          "Relevant pages from the workspace:\n" +
+            fresh
+              .map((d, i) => `[${i + 1}] ${d.title}\n${d.text || "(no body text)"}`)
+              .join("\n\n"),
+        );
+        sources.push(
+          ...fresh.map(({ pageId, title, icon }) => ({ pageId, title, icon })),
+        );
+      }
+    }
+
+    const persona = args.persona?.trim().slice(0, MAX_PERSONA_CHARS);
+    const system =
+      "You are the AI assistant built into Vellum, a personal Notion-style " +
+      "workspace. Be concise and concrete, and use Markdown. When workspace " +
+      "context is supplied, prefer it over general knowledge and say plainly " +
+      "when it does not contain the answer rather than guessing." +
+      (persona ? `\n\nThe user's instructions for you:\n${persona}` : "") +
+      (contextParts.length > 0 ? `\n\n---\n${contextParts.join("\n\n")}` : "");
+
+    // The provider takes a flat message list; history is folded into one
+    // labelled transcript so a single `user` message carries the exchange.
+    const transcript = history
+      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+      .join("\n\n");
+
+    const answer = await chat([
+      { role: "system", content: system },
+      { role: "user", content: transcript },
+    ]);
+
+    return { answer, sources, model: AI_MODEL };
+  },
+});
+
+/**
+ * "Create a slide deck" — a structured outline the client turns into a new
+ * page of heading + bullet blocks, one section per slide.
+ */
+export const deckOutline = action({
+  args: {
+    /** Base the deck on this page, when one is open. */
+    pageId: v.optional(v.id("pages")),
+    /** Otherwise (or additionally) a free-form topic. */
+    topic: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<string> => {
+    await requireUser(ctx);
+
+    let source = args.topic?.trim() ?? "";
+    let title = source;
+
+    if (args.pageId) {
+      const page: Doc<"pages"> | null = await ctx.runQuery(
+        internal.ai._rowForFill,
+        { pageId: args.pageId },
+      );
+      if (page?.vault) {
+        throw new ConvexError(
+          "AI is unavailable inside the Vault — its content is encrypted and never leaves your device.",
+        );
+      }
+      if (page) {
+        title = page.title || title || "Untitled";
+        source = `${page.title || "Untitled"}\n\n${(page.contentText ?? "").slice(0, MAX_PAGE_CONTEXT_CHARS)}`;
+      }
+    }
+
+    if (!source.trim()) {
+      throw new ConvexError("Open a page or give me a topic for the deck.");
+    }
+
+    return await chat([
+      {
+        role: "system",
+        content:
+          "You outline slide decks. Output Markdown only, in exactly this " +
+          "shape and nothing else: a '## ' heading per slide, followed by 2-4 " +
+          "'- ' bullets. No preamble, no slide numbers, no closing remarks. " +
+          "Aim for 5-8 slides.",
+      },
+      {
+        role: "user",
+        content: `Outline a slide deck titled "${title}" from the following:\n\n---\n${source}\n---`,
+      },
+    ]);
+  },
+});

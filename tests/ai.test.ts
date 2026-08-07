@@ -254,6 +254,74 @@ test("ask never retrieves vault or trashed pages", async () => {
   expect(sent).not.toMatch(/secret|obsolete/);
 });
 
+/* ------------------------------------------------------------- converse */
+
+test("converse refuses a vault page as chat context", async () => {
+  const ctx = t();
+  const root = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Vault",
+    vault: true,
+  });
+  await expect(
+    ctx.action(api.ai.converse, {
+      messages: [{ role: "user", content: "summarize this" }],
+      pageId: root,
+    }),
+  ).rejects.toThrow(/Vault/);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("converse sends the conversation history, not just the last turn", async () => {
+  fetchMock.mockResolvedValue(ok("Sure."));
+  await t().action(api.ai.converse, {
+    messages: [
+      { role: "user", content: "who wrote the roadmap" },
+      { role: "assistant", content: "You did." },
+      { role: "user", content: "when" },
+    ],
+  });
+  const sent = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+  const transcript = sent.messages[1].content as string;
+  expect(transcript).toContain("who wrote the roadmap");
+  expect(transcript).toContain("You did.");
+  expect(transcript).toContain("when");
+});
+
+test("converse injects custom instructions into the system prompt", async () => {
+  fetchMock.mockResolvedValue(ok("Aye."));
+  await t().action(api.ai.converse, {
+    messages: [{ role: "user", content: "hello" }],
+    persona: "Answer in British English.",
+  });
+  const sent = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+  expect(sent.messages[0].role).toBe("system");
+  expect(sent.messages[0].content).toContain("Answer in British English.");
+});
+
+test("converse rejects an empty conversation", async () => {
+  await expect(
+    t().action(api.ai.converse, { messages: [] }),
+  ).rejects.toThrow(/Say something/);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("deckOutline refuses vault pages and needs a source", async () => {
+  const ctx = t();
+  const vault = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Vault",
+    vault: true,
+  });
+  await expect(
+    ctx.action(api.ai.deckOutline, { pageId: vault }),
+  ).rejects.toThrow(/Vault/);
+  await expect(ctx.action(api.ai.deckOutline, {})).rejects.toThrow(
+    /Open a page or give me a topic/,
+  );
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
 test("ask short-circuits when retrieval finds nothing", async () => {
   const res = await t().action(api.ai.ask, {
     question: "something that matches no page at all",

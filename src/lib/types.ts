@@ -202,6 +202,20 @@ export interface AiAnswer {
   model: string;
 }
 
+/** One exchange in the AI side panel. */
+export interface AiChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** A rendered panel message — a turn plus what the answer drew on. */
+export interface AiChatMessage extends AiChatTurn {
+  sources?: AiSource[];
+  /** Set instead of `content` when the request failed, so the thread keeps
+   *  its shape and the user can retry without losing the conversation. */
+  error?: string;
+}
+
 export interface TrashedMeta {
   _id: PageId;
   title: string;

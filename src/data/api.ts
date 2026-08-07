@@ -1,5 +1,6 @@
 import {
   AiAnswer,
+  AiChatTurn,
   AiPropKind,
   AiTransformKind,
   BacklinkMeta,
@@ -71,6 +72,15 @@ export interface AiApi {
   }): Promise<string>;
   /** Answer a question from the workspace, with page citations. */
   ask(question: string): Promise<AiAnswer>;
+  /** Multi-turn side-panel chat, optionally grounded in a page/workspace. */
+  converse(args: {
+    messages: AiChatTurn[];
+    pageId?: PageId;
+    useWorkspace?: boolean;
+    persona?: string;
+  }): Promise<AiAnswer>;
+  /** Markdown slide outline for "Create a slide deck". */
+  deckOutline(args: { pageId?: PageId; topic?: string }): Promise<string>;
 }
 
 export interface AccountApi {

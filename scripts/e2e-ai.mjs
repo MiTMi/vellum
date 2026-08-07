@@ -178,27 +178,73 @@ try {
     }
   }
 
-  /* ---------------- 4. workspace Q&A ---------------- */
+  /* ---------------- 4. docked AI chat panel ---------------- */
 
   await page.keyboard.press(`${mod}+Shift+J`);
-  const askOpened = await page
-    .waitForSelector(".ask-ai", { timeout: 4000 })
+  const panelOpened = await page
+    .waitForSelector(".ai-panel", { timeout: 4000 })
     .then(() => true)
     .catch(() => false);
-  check("⌘⇧J opens workspace Q&A", askOpened);
+  check("⌘⇧J opens the AI chat panel", panelOpened);
 
-  if (askOpened) {
-    await page.fill(".ask-ai input", "What is on the roadmap?");
+  if (panelOpened) {
+    check(
+      "the empty state greets and offers suggestions",
+      (await page.locator(".ai-panel-empty h2").isVisible()) &&
+        (await page.locator(".ai-panel-suggestion").count()) > 0,
+    );
+    check(
+      "the composer shows the open page as a context chip",
+      await page.locator(".ai-context-chip").isVisible(),
+    );
+    await page.screenshot({ path: `${SHOTS}/05-panel-empty.png` });
+
+    // The panel docks beside the page rather than covering it.
+    const mainVisible = await page.locator(".main-content").isVisible();
+    check("the panel docks alongside the page, not over it", mainVisible);
+
+    await page.fill(".ai-panel-composer textarea", "What is on the roadmap?");
     await page.keyboard.press("Enter");
-    const answered = await page
-      .waitForSelector(".ask-ai-body", { timeout: 6000 })
+    const replied = await page
+      .waitForSelector(".ai-msg-assistant .ai-msg-body", { timeout: 8000 })
       .then(() => true)
       .catch(() => false);
-    check("Q&A renders an answer", answered);
-    await page.screenshot({ path: `${SHOTS}/05-ask-ai.png` });
-    await page.keyboard.press("Escape");
+    check("the panel answers and renders the thread", replied);
+    check(
+      "the user's own turn is in the thread",
+      (await page.locator(".ai-msg-user").count()) === 1,
+    );
+
+    // Multi-turn: a second message must not wipe the first exchange.
+    await page.fill(".ai-panel-composer textarea", "And after that?");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(1500);
+    check(
+      "conversation is multi-turn (history is kept)",
+      (await page.locator(".ai-msg-user").count()) === 2,
+    );
+    await page.screenshot({ path: `${SHOTS}/06-panel-thread.png` });
+
+    // Personalize persists to localStorage.
+    await page.click(".ai-composer-foot .icon-btn[title='Personalize']");
+    await page.waitForSelector(".ai-persona textarea", { timeout: 4000 });
+    await page.fill(".ai-persona textarea", "Be blunt.");
     await page.waitForTimeout(300);
-    check("Escape closes Q&A", !(await page.locator(".ask-ai").isVisible()));
+    const saved = await page.evaluate(() =>
+      localStorage.getItem("vellum:ai-persona"),
+    );
+    check("Personalize persists custom instructions", saved === "Be blunt.");
+
+    await page.click(".ai-panel-head-actions .icon-btn[title='New chat']");
+    await page.waitForTimeout(400);
+    check(
+      "New chat clears the thread",
+      (await page.locator(".ai-msg-user").count()) === 0,
+    );
+
+    await page.click(".ai-panel-head-actions .icon-btn[title='Close']");
+    await page.waitForTimeout(300);
+    check("the panel closes", !(await page.locator(".ai-panel").isVisible()));
   }
 
   // The sidebar entry point should be present in mock mode (available: true).

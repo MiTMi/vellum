@@ -13,7 +13,7 @@ import TopBar from "./components/TopBar";
 import TabBar from "./components/TabBar";
 import PageView from "./components/PageView";
 import QuickSwitcher from "./components/QuickSwitcher";
-import AskAiModal from "./components/AskAiModal";
+import AiChatPanel from "./components/AiChatPanel";
 import TrashModal from "./components/TrashModal";
 import SettingsModal from "./components/SettingsModal";
 import PeekModal from "./components/PeekModal";
@@ -36,7 +36,8 @@ function Workspace() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [askAiOpen, setAskAiOpen] = useState(false);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [aiPanelWidth, setAiPanelWidth] = useState(380);
   const [peekId, setPeekId] = useState<PageId | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -136,10 +137,10 @@ function Workspace() {
         e.preventDefault();
         setSidebarCollapsed((c) => !c);
       } else if (mod && e.key.toLowerCase() === "j" && e.shiftKey) {
-        // ⌘⇧J — workspace Q&A. Plain ⌘J belongs to the editor's own
-        // "Ask AI" over a selection (see Editor.tsx).
+        // ⌘⇧J — the docked AI chat panel. Plain ⌘J belongs to the editor's
+        // own "Ask AI" over a selection (see Editor.tsx).
         e.preventDefault();
-        setAskAiOpen((o) => !o);
+        setAiPanelOpen((o) => !o);
       } else if (mod && e.key === ",") {
         e.preventDefault();
         setSettingsOpen(true);
@@ -155,7 +156,7 @@ function Workspace() {
         <Sidebar
           index={index}
           onOpenSearch={() => setSearchOpen(true)}
-          onOpenAskAi={() => setAskAiOpen(true)}
+          onOpenAskAi={() => setAiPanelOpen(true)}
           onOpenTrash={() => setTrashOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onCollapse={() => setSidebarCollapsed(true)}
@@ -183,6 +184,15 @@ function Workspace() {
           )}
         </main>
       </div>
+      {aiPanelOpen && (
+        <AiChatPanel
+          page={(pageId && index.byId.get(pageId)) || null}
+          onClose={() => setAiPanelOpen(false)}
+          onOpenPage={(id) => navigate(id)}
+          width={aiPanelWidth}
+          setWidth={setAiPanelWidth}
+        />
+      )}
 
       {searchOpen && (
         <QuickSwitcher
@@ -190,12 +200,6 @@ function Workspace() {
           onClose={() => setSearchOpen(false)}
           onOpenTrash={() => setTrashOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
-        />
-      )}
-      {askAiOpen && (
-        <AskAiModal
-          onClose={() => setAskAiOpen(false)}
-          onOpenPage={(id) => navigate(id)}
         />
       )}
       {trashOpen && <TrashModal onClose={() => setTrashOpen(false)} />}
