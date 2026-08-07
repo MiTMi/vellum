@@ -3,6 +3,7 @@ import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import {
   AccountApi,
+  AiApi,
   CommentsApi,
   DataApi,
   PublishApi,
@@ -10,6 +11,7 @@ import {
   VersionHistoryApi,
 } from "./api";
 import {
+  AiAnswer,
   CommentMeta,
   LinkPreview,
   VersionDoc,
@@ -193,6 +195,32 @@ const offlineApi: DataApi = {
       if (!fileUrl) throw new Error("Could not resolve file URL");
       return fileUrl;
     }, []);
+  },
+
+  useAi(): AiApi {
+    const connected = useSyncExternalStore(
+      (cb) => offlineEngine().subscribeStatus(cb),
+      () => offlineEngine().getStatus().connected,
+      () => false,
+    );
+    return useMemo<AiApi>(
+      () => ({
+        // Every AI call is a live model round-trip; there is nothing
+        // meaningful to queue in the outbox, so the affordances hide
+        // themselves while offline rather than failing on click.
+        available: connected,
+        transform: (args) =>
+          convexClient().action(api.ai.transform, args) as Promise<string>,
+        fillProperty: (args) =>
+          convexClient().action(api.ai.fillProperty, {
+            ...args,
+            pageId: args.pageId as Id<"pages">,
+          }) as Promise<string>,
+        ask: (question) =>
+          convexClient().action(api.ai.ask, { question }) as Promise<AiAnswer>,
+      }),
+      [connected],
+    );
   },
 };
 

@@ -664,6 +664,81 @@ in `<mark>` client-side rather than accepting HTML from the server.
 (new page/database, theme toggle, open trash, new-from-template). Actions are
 plain rows with a `run()` callback.
 
+### AI (2026-08-07)
+
+Three Notion-AI-style features over one model provider (OpenRouter).
+
+**Setup.** The key is a Convex environment variable — *never* a `VITE_*` one.
+Vite inlines those into the client bundle, and Vellum ships as a web app and
+an Electron bundle, so the key would be readable in DevTools:
+
+```
+npx convex env set OPENROUTER_API_KEY "sk-or-v1-…"          # dev
+npx convex env set OPENROUTER_API_KEY "sk-or-v1-…" --prod   # live
+```
+
+**The model is pinned and enforced twice.** `AI_MODEL` in
+`convex/lib/openrouter.ts` is `nvidia/nemotron-3-ultra-550b-a55b:free`, and
+the key carries an OpenRouter *guardrail* allowlisting exactly that slug.
+Changing the constant alone breaks every call with a 404 — the guardrail
+must be widened in the OpenRouter dashboard too. The `:free` suffix is part
+of the identity; the paid variant is a different slug and is not allowlisted.
+
+Nemotron is a **reasoning** model: responses carry `reasoning` /
+`reasoning_details` beside `content`, and reasoning tokens dominate the
+completion count on short answers. `chat()` returns `content` only — the
+scratchpad must never reach the UI. It can also spend its whole budget
+thinking and return empty content, which `chat()` reports rather than retries.
+
+Free-tier limits are 20 req/min and 1,000/day. `chat()` retries 429 and 5xx
+three times with exponential backoff, honours `Retry-After`, and does *not*
+retry other 4xx (a bad key or a guardrail miss will never succeed, and
+retrying just burns the minute budget).
+
+**The three features** (all in `convex/ai.ts`):
+
+- `transform` — the writing assistant. Takes raw text, not a page id: the
+  editor operates on a live selection that may not be persisted, and the
+  result is applied client-side so the user can discard it. UI is
+  `AiMenu.tsx`, a portalled overlay (same technique as `CodeCopyOverlay` /
+  `BlockAnchorOverlay` — BlockNote's own chrome is fragile to extend).
+  Opens on ⌘J or `/Ask AI`. Results are parsed with
+  `tryParseMarkdownToBlocks` so a bulleted answer lands as real blocks.
+- `fillProperty` — Notion's AI database properties. `dbProp.type === "ai"`
+  with `aiKind` (summary / keyTopics / sentiment / actionItems / custom) and
+  `aiPrompt`. Unlike rollup/formula the value **is stored**: each fill is a
+  paid round-trip, so it must never re-run on render. Generation is per row,
+  on demand, from a button in `AiCell` (`database/Cell.tsx`), and writes
+  through the normal `setRowProp` so it syncs through the outbox.
+- `ask` — workspace Q&A with citations (`AskAiModal.tsx`, ⌘⇧J or the
+  sidebar). Retrieval uses the **existing `search` index**, not embeddings:
+  it is already maintained on every write, needs no backfill, and a personal
+  workspace is small enough that keyword recall suffices. Swapping in a
+  vector index only changes `_retrieve`.
+
+**Vault.** AI is absent inside the vault, not merely disabled. `aiAllowed`
+in `Editor.tsx` gates the client, `fillProperty` refuses `vault` rows
+server-side, and `_retrieve` filters them from Q&A. Vault content is
+ciphertext the server cannot read anyway — the guards keep the *shape* of the
+guarantee honest rather than relying on that accident.
+
+**Availability.** `useAi().available` is false while offline and true with
+deterministic stubs in mock mode (like `useLinkPreview`), so demo mode and
+e2e specs exercise the menus without a key or a network call. Every AI call
+is a live round-trip, so there is nothing meaningful to queue in the outbox —
+the affordances hide themselves rather than failing on click.
+
+**Shortcuts collide if you're careless.** ⌘J (selection menu, `Editor.tsx`)
+and ⌘⇧J (Q&A, `App.tsx`) — the editor handler *must* test `!e.shiftKey`,
+because `"J".toLowerCase() === "j"` and `preventDefault()` doesn't stop
+propagation, so ⌘⇧J would otherwise open both surfaces at once.
+
+**Tests.** `tests/ai.test.ts` stubs `fetch` and covers the guards (auth,
+vault, empty/oversized input, error translation, model pinning, that only
+`content` is returned). `scripts/e2e-ai.mjs` clicks all three features in
+mock mode:
+`VITE_MOCK_CONVEX=1 npx vite --port 5241 & E2E_URL=http://localhost:5241 node scripts/e2e-ai.mjs`
+
 ## Commands
 
 - `npm run dev` — convex + vite + electron. `npm run dev:web` — no electron.

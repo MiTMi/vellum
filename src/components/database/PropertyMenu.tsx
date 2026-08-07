@@ -18,9 +18,16 @@ import {
   History,
   Sigma,
   FunctionSquare,
+  Sparkles,
 } from "lucide-react";
 import Popover from "../ui/Popover";
-import { DbProp, PropType, RollupCalc, SelectOption } from "../../lib/types";
+import {
+  AiPropKind,
+  DbProp,
+  PropType,
+  RollupCalc,
+  SelectOption,
+} from "../../lib/types";
 import { SELECT_COLORS, randomColor } from "../../lib/colors";
 import { uid } from "../../lib/ranks";
 import { usePage, usePagesList } from "../../data";
@@ -42,7 +49,17 @@ export const PROP_TYPE_META: Record<
   lastEditedTime: { label: "Last edited time", icon: <History size={15} /> },
   rollup: { label: "Rollup", icon: <Sigma size={15} /> },
   formula: { label: "Formula", icon: <FunctionSquare size={15} /> },
+  ai: { label: "AI", icon: <Sparkles size={15} /> },
 };
+
+/** What an AI column generates for each row (convex/ai.ts `fillProperty`). */
+export const AI_PROP_KINDS: { id: AiPropKind; label: string; hint: string }[] = [
+  { id: "summary", label: "Summary", hint: "One-sentence summary of the page" },
+  { id: "keyTopics", label: "Key topics", hint: "2–4 main topics, comma-separated" },
+  { id: "sentiment", label: "Sentiment", hint: "Positive, Neutral, or Negative" },
+  { id: "actionItems", label: "Action items", hint: "Concrete next steps, one per line" },
+  { id: "custom", label: "Custom…", hint: "Your own instruction" },
+];
 
 const ROLLUP_CALCS: { id: RollupCalc; label: string }[] = [
   { id: "count", label: "Count all" },
@@ -164,6 +181,8 @@ export default function PropertyMenu({
         <FormulaConfig prop={prop} dbProps={dbProps} update={update} />
       )}
 
+      {prop.type === "ai" && <AiConfig prop={prop} update={update} />}
+
       {isSelect && (
         <>
           <div className="prop-menu-label">Options</div>
@@ -242,6 +261,50 @@ export default function PropertyMenu({
  * reads it through the ordinary `usePage` hook — which works identically in
  * all three data modes.
  */
+/**
+ * AI column editor. Only picks *what* to generate — generation itself is
+ * per-row and on demand (see AiCell), because each fill is a paid model call
+ * and re-running the whole column on a config change would be a nasty
+ * surprise. Existing values stay put when the kind changes; the user
+ * regenerates the rows they care about.
+ */
+function AiConfig({
+  prop,
+  update,
+}: {
+  prop: DbProp;
+  update: (next: DbProp) => void;
+}) {
+  const kind: AiPropKind = prop.aiKind ?? "summary";
+  return (
+    <>
+      <div className="prop-menu-label">Generate</div>
+      {AI_PROP_KINDS.map((k) => (
+        <button
+          key={k.id}
+          className={`menu-item ${kind === k.id ? "active" : ""}`}
+          onClick={() => update({ ...prop, aiKind: k.id })}
+          title={k.hint}
+        >
+          {k.label}
+        </button>
+      ))}
+      {kind === "custom" && (
+        <textarea
+          className="formula-input"
+          rows={3}
+          placeholder="e.g. Extract the customer name, or Nothing if absent"
+          value={prop.aiPrompt ?? ""}
+          onChange={(e) => update({ ...prop, aiPrompt: e.target.value })}
+        />
+      )}
+      <div className="formula-hint">
+        Values are generated per row from that page's content, then stored.
+      </div>
+    </>
+  );
+}
+
 /**
  * Formula editor. Validation is live but non-blocking: the text is saved as
  * typed (so a half-written expression survives closing the menu) and an

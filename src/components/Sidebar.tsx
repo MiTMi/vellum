@@ -12,9 +12,10 @@ import {
   Lock,
   LockOpen,
   Settings as SettingsIcon,
+  Sparkles,
 } from "lucide-react";
 import { PageId, PagesIndex } from "../lib/types";
-import { IS_DIRECT, IS_MOCK, useMutations } from "../data";
+import { IS_DIRECT, IS_MOCK, useAi, useMutations } from "../data";
 import { useSyncStatus } from "../offline/runtime";
 import { useNav } from "../state";
 import { SignOutButton } from "./Auth";
@@ -25,6 +26,7 @@ import { isVaultUnlocked, useVaultVersion } from "../lib/vaultSession";
 interface SidebarProps {
   index: PagesIndex;
   onOpenSearch: () => void;
+  onOpenAskAi: () => void;
   onOpenTrash: () => void;
   onOpenSettings: () => void;
   onCollapse: () => void;
@@ -45,6 +47,7 @@ function loadExpanded(): Set<string> {
 export default function Sidebar({
   index,
   onOpenSearch,
+  onOpenAskAi,
   onOpenTrash,
   onOpenSettings,
   onCollapse,
@@ -53,6 +56,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const { navigate } = useNav();
   const mutations = useMutations();
+  const ai = useAi();
   const [expanded, setExpanded] = useState<Set<string>>(loadExpanded);
   const [dragId, setDragId] = useState<PageId | null>(null);
   const [newMenuAnchor, setNewMenuAnchor] = useState<HTMLElement | null>(null);
@@ -133,6 +137,13 @@ export default function Sidebar({
           <span>Search</span>
           <kbd className="kbd">⌘K</kbd>
         </button>
+        {ai.available && (
+          <button className="sidebar-item" onClick={onOpenAskAi}>
+            <Sparkles size={15} />
+            <span>Ask AI</span>
+            <kbd className="kbd">⌘⇧J</kbd>
+          </button>
+        )}
       </div>
 
       <div className="sidebar-scroll">

@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import {
+  AiApi,
   CommentsApi,
   DataApi,
   Mutations,
@@ -7,6 +8,7 @@ import {
   VersionHistoryApi,
 } from "./api";
 import {
+  AiAnswer,
   CommentMeta,
   LinkPreview,
   PageDoc,
@@ -342,6 +344,67 @@ const mockApi: DataApi = {
         reader.readAsDataURL(file);
       });
     }, []);
+  },
+
+  useAi(): AiApi {
+    // Deterministic stubs, like useLinkPreview above: the AI e2e specs
+    // exercise the menus and the apply/discard flow without a network call
+    // or an API key, and demo mode gets something coherent to show.
+    return useMemo<AiApi>(
+      () => ({
+        available: true,
+        transform: async ({ text, kind, option }) => {
+          switch (kind) {
+            case "fix":
+              return text;
+            case "shorter":
+              return text.split(/\s+/).slice(0, 8).join(" ");
+            case "longer":
+              return `${text} ${text}`;
+            case "summarize":
+              return `Summary: ${text.slice(0, 60)}`;
+            case "bullets":
+              return text
+                .split(/(?<=[.!?])\s+/)
+                .filter(Boolean)
+                .map((s) => `- ${s.trim()}`)
+                .join("\n");
+            case "tone":
+              return `(${option ?? "professional"}) ${text}`;
+            case "translate":
+              return `(${option ?? "English"}) ${text}`;
+            case "continue":
+              return " …and so the note continues.";
+            case "custom":
+              return `(${option ?? "edited"}) ${text}`;
+            case "improve":
+            default:
+              return text.replace(/\s+/g, " ").trim();
+          }
+        },
+        fillProperty: async ({ kind, prompt }) => {
+          switch (kind) {
+            case "summary":
+              return "A short generated summary.";
+            case "keyTopics":
+              return "planning, design";
+            case "sentiment":
+              return "Neutral";
+            case "actionItems":
+              return "Review the draft";
+            case "custom":
+            default:
+              return prompt?.trim() ? `Result for: ${prompt.trim()}` : "Generated";
+          }
+        },
+        ask: async (question): Promise<AiAnswer> => ({
+          answer: `Demo answer for "${question}". Connect a workspace to ask for real.`,
+          sources: [],
+          model: "demo",
+        }),
+      }),
+      [],
+    );
   },
 };
 

@@ -26,6 +26,7 @@ import {
   Bookmark,
   Sigma,
   Play,
+  Sparkles,
 } from "lucide-react";
 import { PageDoc } from "../lib/types";
 import { extractText } from "../lib/blocks";
@@ -44,6 +45,8 @@ import BlockAnchorOverlay from "./BlockAnchorOverlay";
 import { clearActiveEditor, setActiveEditor } from "../lib/editorRegistry";
 import CodeCopyOverlay from "./CodeCopyOverlay";
 import { isVaultPage } from "../lib/vaultSession";
+import AiMenu from "./AiMenu";
+import { useAi } from "../data";
 
 export const schema = BlockNoteSchema.create({
   blockSpecs: {
@@ -73,6 +76,9 @@ export const schema = BlockNoteSchema.create({
  */
 const MENU_MIN_HEIGHT = 220;
 const MENU_MAX_HEIGHT = 420;
+
+/** How much preceding text "Continue writing" gets to work from. */
+const AI_CONTEXT_CHARS = 2000;
 const suggestionMenuFloatingOptions = {
   useFloatingOptions: {
     middleware: [
@@ -109,6 +115,12 @@ export default function PageEditor({ page }: EditorProps) {
   const mutations = useMutations();
   const upload = useFileUpload();
   const linkPreview = useLinkPreview();
+  const ai = useAi();
+  const [aiState, setAiState] = useState<{
+    selection: string;
+    context: string;
+    position: { top: number; left: number };
+  } | null>(null);
 
   const pageIdRef = useRef(page._id);
   pageIdRef.current = page._id;
@@ -196,6 +208,100 @@ export default function PageEditor({ page }: EditorProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page._id, editor]);
 
+  /* ---------------- AI writing assistant ---------------- */
+
+  // The vault's whole point is that its plaintext never leaves the device,
+  // so the AI affordances are absent there rather than disabled — and the
+  // server refuses vault pages independently (convex/ai.ts).
+  const aiAllowed = ai.available && !isVaultPage(page._id) && !page.locked;
+
+  /** Document text up to and including the caret's block. */
+  const precedingText = () => {
+    const blocks = editor.document;
+    const caretId = editor.getTextCursorPosition().block.id;
+    const idx = blocks.findIndex((b) => b.id === caretId);
+    const upTo = idx === -1 ? blocks : blocks.slice(0, idx + 1);
+    // extractText walks plain JSON, and `document` holds live editor objects.
+    return extractText(JSON.parse(JSON.stringify(upTo)));
+  };
+
+  const openAiMenu = () => {
+    if (!aiAllowed || !wrapEl) return;
+    const box = editor.getSelectionBoundingBox();
+    const wrapRect = wrapEl.getBoundingClientRect();
+    // No selection (opened from the slash menu): anchor to the caret's block
+    // instead, so the menu still appears somewhere sensible.
+    const anchorRect =
+      box ??
+      document
+        .querySelector(`[data-id="${editor.getTextCursorPosition().block.id}"]`)
+        ?.getBoundingClientRect();
+    setAiState({
+      selection: editor.getSelectedText(),
+      // "Continue writing" on a blank line has nothing to continue unless we
+      // hand it what came before. Everything up to and including the caret's
+      // block, tail-capped — the end is what matters for continuation.
+      context: precedingText().slice(-AI_CONTEXT_CHARS),
+      position: {
+        top: (anchorRect ? anchorRect.bottom - wrapRect.top : 0) + 8,
+        left: Math.max(0, (anchorRect?.left ?? wrapRect.left) - wrapRect.left),
+      },
+    });
+  };
+
+  /** Markdown → blocks, so a bulleted or multi-paragraph result lands as
+   *  real blocks rather than one paragraph of literal "- " lines. */
+  const parseToBlocks = async (text: string) => {
+    const parsed = await editor.tryParseMarkdownToBlocks(text);
+    return (parsed.length > 0
+      ? parsed
+      : [{ type: "paragraph", content: text }]) as never;
+  };
+
+  const applyReplace = (text: string) => {
+    void (async () => {
+      const blocks = await parseToBlocks(text);
+      const selected = editor.getSelection()?.blocks;
+      const targets =
+        selected && selected.length > 0
+          ? selected.map((b) => b.id)
+          : [editor.getTextCursorPosition().block.id];
+      editor.replaceBlocks(targets, blocks);
+      scheduleSave();
+    })();
+  };
+
+  const applyInsertBelow = (text: string) => {
+    void (async () => {
+      const blocks = await parseToBlocks(text);
+      const selected = editor.getSelection()?.blocks;
+      const anchor =
+        selected && selected.length > 0
+          ? selected[selected.length - 1].id
+          : editor.getTextCursorPosition().block.id;
+      editor.insertBlocks(blocks, anchor, "after");
+      scheduleSave();
+    })();
+  };
+
+  // Cmd/Ctrl+J over a selection — Notion's own shortcut for "Ask AI".
+  useEffect(() => {
+    if (!aiAllowed) return;
+    const onKey = (e: KeyboardEvent) => {
+      // `!e.shiftKey` matters: "J".toLowerCase() is "j", so without it ⌘⇧J
+      // would open this menu *and* bubble to App.tsx's window listener,
+      // firing the workspace Q&A modal at the same time.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        openAiMenu();
+      }
+    };
+    const el = wrapEl;
+    el?.addEventListener("keydown", onKey);
+    return () => el?.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiAllowed, wrapEl, editor]);
+
   const insertPageLink = (pageId: string) => {
     insertOrUpdateBlockForSlashMenu(
       editor as unknown as BlockNoteEditor,
@@ -258,6 +364,14 @@ export default function PageEditor({ page }: EditorProps) {
   ): Promise<DefaultReactSuggestionItem[]> => {
     const defaults = getDefaultReactSlashMenuItems(editor);
     const custom: DefaultReactSuggestionItem[] = [
+      {
+        title: "Ask AI",
+        subtext: "Write, edit or summarize with AI (⌘J)",
+        aliases: ["ai", "ask", "write", "gpt", "assistant", "summarize"],
+        group: "Vellum",
+        icon: <Sparkles size={18} />,
+        onItemClick: openAiMenu,
+      },
       {
         title: "Link to page",
         subtext: "Link an existing page (or type @)",
@@ -399,9 +513,13 @@ export default function PageEditor({ page }: EditorProps) {
     };
     // Inside the Vault: no inline databases (unsupported there) and no
     // "Link to page" (mentions across the vault boundary are blocked).
-    const custom2 = isVaultPage(page._id)
-      ? custom.filter((c) => c.title !== "Database" && c.title !== "Link to page")
-      : custom;
+    const custom2 = (
+      isVaultPage(page._id)
+        ? custom.filter(
+            (c) => c.title !== "Database" && c.title !== "Link to page",
+          )
+        : custom
+    ).filter((c) => c.title !== "Ask AI" || aiAllowed);
     return filterSuggestionItems([...defaults, ...custom2], query).sort(
       (a, b) => rank(a.title) - rank(b.title),
     );
@@ -429,6 +547,17 @@ export default function PageEditor({ page }: EditorProps) {
       </BlockNoteView>
       <CodeCopyOverlay container={wrapEl} />
       <BlockAnchorOverlay container={wrapEl} pageId={page._id} />
+      {aiState && (
+        <AiMenu
+          container={wrapEl}
+          selection={aiState.selection}
+          context={aiState.context}
+          position={aiState.position}
+          onClose={() => setAiState(null)}
+          onReplace={applyReplace}
+          onInsertBelow={applyInsertBelow}
+        />
+      )}
     </div>
   );
 }

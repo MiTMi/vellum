@@ -3,6 +3,7 @@ import {
   IS_DIRECT,
   IS_MOCK,
   AccountApi,
+  AiApi,
   DataApi,
   Mutations,
   VersionHistoryApi,
@@ -153,6 +154,16 @@ export function usePublish(): PublishApi {
 export function useAccount(): AccountApi {
   return impl.useAccount();
 }
+export function useAi(): AiApi {
+  return impl.useAi();
+}
 
 export { IS_MOCK, IS_DIRECT };
-export type { Mutations, VersionHistoryApi, CommentsApi, PublishApi, AccountApi };
+export type {
+  Mutations,
+  VersionHistoryApi,
+  CommentsApi,
+  PublishApi,
+  AccountApi,
+  AiApi,
+};

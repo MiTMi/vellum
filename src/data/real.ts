@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useQuery, useMutation, useAction, useConvex } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import {
+  AiApi,
   CommentsApi,
   DataApi,
   Mutations,
@@ -10,6 +11,7 @@ import {
   VersionHistoryApi,
 } from "./api";
 import {
+  AiAnswer,
   BacklinkMeta,
   CommentMeta,
   LinkPreview,
@@ -206,6 +208,22 @@ const realApi: DataApi = {
         return url;
       },
       [generateUploadUrl, getFileUrl],
+    );
+  },
+
+  useAi(): AiApi {
+    const transform = useAction(api.ai.transform);
+    const fillProperty = useAction(api.ai.fillProperty);
+    const ask = useAction(api.ai.ask);
+    return useMemo<AiApi>(
+      () => ({
+        available: true,
+        transform: (args) => transform(args) as Promise<string>,
+        fillProperty: (args) =>
+          fillProperty({ ...args, pageId: args.pageId as Id<"pages"> }) as Promise<string>,
+        ask: (question) => ask({ question }) as Promise<AiAnswer>,
+      }),
+      [transform, fillProperty, ask],
     );
   },
 };

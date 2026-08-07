@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, Search } from "lucide-react";
+import { ExternalLink, Loader2, Search, Sparkles } from "lucide-react";
 import { DbProp, PageId, PageMeta, SelectOption, childrenKey } from "../../lib/types";
-import { useMutations } from "../../data";
+import { useAi, useMutations } from "../../data";
 import { usePagesIndex } from "../../hooks/usePagesIndex";
 import {
   computeFormula,
@@ -103,6 +103,9 @@ export default function Cell({
 
     case "formula":
       return <FormulaCell row={row} prop={prop} dbProps={dbProps} cls={cls} />;
+
+    case "ai":
+      return <AiCell row={row} prop={prop} cls={cls} onSet={set} />;
 
     case "checkbox":
       return (
@@ -278,6 +281,86 @@ export default function Cell({
         </div>
       );
   }
+}
+
+/**
+ * Notion's AI property: a column whose value the model writes from the row's
+ * own page content.
+ *
+ * Unlike rollup/formula this value *is* stored. Generation costs a network
+ * round-trip and money, so it must never re-run on render — the user asks for
+ * it explicitly, and the result persists through the normal `setRowProp`
+ * mutation (which means it syncs through the offline outbox like any edit).
+ */
+function AiCell({
+  row,
+  prop,
+  cls,
+  onSet,
+}: {
+  row: CellRow;
+  prop: DbProp;
+  cls: string;
+  onSet: (v: unknown) => void;
+}) {
+  const ai = useAi();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const value = row.props?.[prop.id];
+  const text = typeof value === "string" ? value : "";
+
+  const generate = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await ai.fillProperty({
+        pageId: row._id,
+        kind: prop.aiKind ?? "summary",
+        prompt: prop.aiPrompt,
+      });
+      onSet(result);
+    } catch (err) {
+      const data = (err as { data?: unknown }).data;
+      setError(
+        typeof data === "string"
+          ? data
+          : err instanceof Error
+            ? err.message
+            : "Generation failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={cls} title={error ?? undefined}>
+      <div className="ai-cell">
+        {text && <span className="ai-cell-value">{text}</span>}
+        {ai.available && (
+          <button
+            className="ai-cell-generate"
+            disabled={busy}
+            onClick={() => void generate()}
+            // The button sits inside a row that navigates on click.
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {busy ? (
+              <Loader2 size={12} className="ai-spin" />
+            ) : (
+              <Sparkles size={12} />
+            )}
+            {busy ? "Generating…" : text ? "Regenerate" : "Generate"}
+          </button>
+        )}
+        {error && !busy && (
+          <span className="cell-formula-error" title={error}>
+            Failed
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**

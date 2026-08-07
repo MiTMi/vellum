@@ -1,4 +1,7 @@
 import {
+  AiAnswer,
+  AiPropKind,
+  AiTransformKind,
   BacklinkMeta,
   CommentMeta,
   DbProp,
@@ -43,6 +46,31 @@ export interface DataApi {
   usePublish(): PublishApi;
   /** Account management (Settings) — server-only, single-owner. */
   useAccount(): AccountApi;
+  /** Notion-style AI. Server-only: the model key lives in Convex env. */
+  useAi(): AiApi;
+}
+
+export interface AiApi {
+  /**
+   * False while offline and in mock mode — every call is a live model
+   * round-trip, so the AI affordances hide themselves rather than failing.
+   */
+  available: boolean;
+  /** Rewrite/summarize/translate a text selection. Returns the new text. */
+  transform(args: {
+    text: string;
+    kind: AiTransformKind;
+    /** Target tone, target language, or a free-form instruction. */
+    option?: string;
+  }): Promise<string>;
+  /** Generate one AI-column value for one database row. */
+  fillProperty(args: {
+    pageId: PageId;
+    kind: AiPropKind;
+    prompt?: string;
+  }): Promise<string>;
+  /** Answer a question from the workspace, with page citations. */
+  ask(question: string): Promise<AiAnswer>;
 }
 
 export interface AccountApi {

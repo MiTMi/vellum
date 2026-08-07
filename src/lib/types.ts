@@ -32,7 +32,8 @@ export type PropType =
   | "createdTime"
   | "lastEditedTime"
   | "rollup"
-  | "formula";
+  | "formula"
+  | "ai";
 
 /** Aggregations a rollup property can apply to the related rows. */
 export type RollupCalc =
@@ -82,6 +83,10 @@ export interface DbProp {
   rollupCalc?: RollupCalc | string;
   /** formula props: expression source, evaluated at render */
   formula?: string;
+  /** ai props: what to generate for each row */
+  aiKind?: AiPropKind;
+  /** ai props: the instruction, when `aiKind` is "custom" */
+  aiPrompt?: string;
 }
 
 export interface PagesIndex {
@@ -160,6 +165,41 @@ export interface LinkPreview {
   title: string;
   description: string;
   image: string;
+}
+
+/** Writing-assistant operations (convex/ai.ts `transform`). */
+export type AiTransformKind =
+  | "improve"
+  | "fix"
+  | "shorter"
+  | "longer"
+  | "summarize"
+  | "bullets"
+  | "tone"
+  | "translate"
+  | "continue"
+  | "custom";
+
+/** What an AI database column generates for each row. */
+export type AiPropKind =
+  | "summary"
+  | "keyTopics"
+  | "sentiment"
+  | "actionItems"
+  | "custom";
+
+/** A page the Q&A answer drew on, rendered as a clickable citation. */
+export interface AiSource {
+  pageId: PageId;
+  title: string;
+  icon: string | null;
+}
+
+export interface AiAnswer {
+  answer: string;
+  sources: AiSource[];
+  /** Echoed back so the UI can show which model produced the answer. */
+  model: string;
 }
 
 export interface TrashedMeta {
