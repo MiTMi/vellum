@@ -4557,3 +4557,56 @@ tbody.db-group + tbody.db-group .group-row td {
   color: var(--text-faint);
   cursor: default;
 }
+
+/* --- floating AI launcher (AiLauncher.tsx) ---
+   Notion's bottom-right bubble: the one entry point that doesn't require
+   knowing a shortcut. Sits above page content but below the panel and any
+   modal, and steps aside for the composer bar on narrow windows. */
+
+.ai-launcher {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow:
+    0 2px 6px rgba(15, 15, 15, 0.12),
+    0 6px 20px rgba(15, 15, 15, 0.14);
+  transition:
+    transform 0.13s ease,
+    box-shadow 0.13s ease;
+}
+.ai-launcher:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 3px 8px rgba(15, 15, 15, 0.16),
+    0 10px 26px rgba(15, 15, 15, 0.18);
+}
+.ai-launcher:active {
+  transform: translateY(0);
+}
+
+[data-theme="dark"] .ai-launcher {
+  background: var(--bg-secondary);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.4),
+    0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+@media (max-width: 640px) {
+  .ai-launcher {
+    right: 14px;
+    bottom: 14px;
+    width: 42px;
+    height: 42px;
+  }
+}

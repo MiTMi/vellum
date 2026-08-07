@@ -178,7 +178,37 @@ try {
     }
   }
 
-  /* ---------------- 4. docked AI chat panel ---------------- */
+  /* ---------------- 4. floating launcher + chat panel ---------------- */
+
+  // The bubble is the discoverable entry point — it must be visible before
+  // anything is opened, and must open the panel on click.
+  const launcher = page.locator(".ai-launcher");
+  check("the floating AI button shows bottom-right", await launcher.isVisible());
+  if (await launcher.isVisible()) {
+    const box = await launcher.boundingBox();
+    const vw = page.viewportSize().width;
+    const vh = page.viewportSize().height;
+    check(
+      "the button really is in the bottom-right corner",
+      box.x + box.width > vw - 90 && box.y + box.height > vh - 90,
+      `x=${Math.round(box.x)} y=${Math.round(box.y)} of ${vw}x${vh}`,
+    );
+    await launcher.click();
+    const viaButton = await page
+      .waitForSelector(".ai-panel", { timeout: 4000 })
+      .then(() => true)
+      .catch(() => false);
+    check("clicking the button opens the panel", viaButton);
+    check(
+      "the button hides while the panel is open",
+      !(await launcher.isVisible()),
+    );
+    await page.screenshot({ path: `${SHOTS}/09-launcher.png` });
+    // Close again so the shortcut check below starts from a known state.
+    await page.click(".ai-panel-head-actions .icon-btn[title='Close']");
+    await page.waitForTimeout(300);
+    check("the button returns after closing", await launcher.isVisible());
+  }
 
   await page.keyboard.press(`${mod}+Shift+J`);
   const panelOpened = await page
@@ -247,10 +277,10 @@ try {
     check("the panel closes", !(await page.locator(".ai-panel").isVisible()));
   }
 
-  // The sidebar entry point should be present in mock mode (available: true).
+  // The sidebar no longer carries an AI row — the bubble replaced it.
   check(
-    "the sidebar advertises Ask AI",
-    await page.locator(".sidebar-item:has-text('Ask AI')").isVisible(),
+    "no stray AI row is left in the sidebar",
+    (await page.locator(".sidebar-item:has-text('Ask AI')").count()) === 0,
   );
 } catch (err) {
   check(`threw: ${err.message}`, false);

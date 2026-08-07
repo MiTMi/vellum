@@ -715,8 +715,10 @@ retrying just burns the minute budget).
   every write, needs no backfill, and a personal workspace is small enough
   that keyword recall suffices. Swapping in a vector index only changes
   `_retrieve`.
-- `converse` + `deckOutline` — the docked chat panel (`AiChatPanel.tsx`,
-  ⌘⇧J or the sidebar). `converse` is multi-turn and optionally grounded in
+- `converse` + `deckOutline` — the docked chat panel (`AiChatPanel.tsx`),
+  opened by the floating bottom-right bubble (`AiLauncher.tsx`) or ⌘⇧J.
+  The bubble is the *discoverable* entry point and hides while the panel is
+  open; there is deliberately no sidebar row, matching Notion. `converse` is multi-turn and optionally grounded in
   the open page (the composer's context chip) and/or workspace retrieval.
   History is folded into one labelled transcript because the provider takes
   a flat message list. `deckOutline` returns Markdown the panel maps onto

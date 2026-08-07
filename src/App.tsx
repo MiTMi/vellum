@@ -14,6 +14,7 @@ import TabBar from "./components/TabBar";
 import PageView from "./components/PageView";
 import QuickSwitcher from "./components/QuickSwitcher";
 import AiChatPanel from "./components/AiChatPanel";
+import AiLauncher from "./components/AiLauncher";
 import TrashModal from "./components/TrashModal";
 import SettingsModal from "./components/SettingsModal";
 import PeekModal from "./components/PeekModal";
@@ -156,7 +157,6 @@ function Workspace() {
         <Sidebar
           index={index}
           onOpenSearch={() => setSearchOpen(true)}
-          onOpenAskAi={() => setAiPanelOpen(true)}
           onOpenTrash={() => setTrashOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onCollapse={() => setSidebarCollapsed(true)}
@@ -184,6 +184,7 @@ function Workspace() {
           )}
         </main>
       </div>
+      <AiLauncher open={aiPanelOpen} onOpen={() => setAiPanelOpen(true)} />
       {aiPanelOpen && (
         <AiChatPanel
           page={(pageId && index.byId.get(pageId)) || null}
