@@ -664,7 +664,7 @@ in `<mark>` client-side rather than accepting HTML from the server.
 (new page/database, theme toggle, open trash, new-from-template). Actions are
 plain rows with a `run()` callback.
 
-### AI (2026-08-07)
+### AI (2026-08-07, model + chat panel 2026-08-08)
 
 Three Notion-AI-style features over one model provider (OpenRouter).
 
@@ -693,13 +693,27 @@ run` overhead), against **26-40s** on `nemotron-3-super:free`. The free tier's
 queue, not model size, was the bottleneck all along — swapping Ultra for Super
 on the free tier changed nothing.
 
-**Guardrail PII redaction will corrupt documents.** OpenRouter guardrails have
-a *Sensitive Info* section that redacts PII **before the request reaches the
-model**, rewriting real names to `[PERSON_NAME]`. For a notes app that is
-silent data corruption — "Michael sent it to Sarah" comes back as
-"[PERSON_NAME] sent it to [PERSON_NAME]". The `person-name` preset (and the
-rest of that section) must stay **off**. It is not a model or provider
-behaviour and no code change can work around it.
+**Guardrail PII redaction rewrites text before the model ever sees it.**
+OpenRouter guardrails have a *Sensitive Info* section that redacts matched
+spans **on the way in**, replacing them with placeholders. It is not a model
+or provider behaviour — verified across both Google endpoints — so no code
+change can work around it.
+
+- **`person-name` must stay off.** With it on, "Michael sent it to Sarah"
+  comes back as "[PERSON_NAME] sent it to [PERSON_NAME]". In a notes app,
+  whose content *is* largely names, that is silent data corruption.
+- **`us-ssn` and `credit-card` are deliberately left on** (decided
+  2026-08-08). Those genuinely should not reach a third-party model, and
+  they are rare in prose.
+
+The cost of keeping those two: a rewrite of text containing one comes back
+carrying the placeholder — "card 4111 1111 1111 1111" → "card
+[CREDIT_CARD]" — so accepting **Replace selection** would overwrite the real
+number. `AiMenu`'s preview card shows the result before anything is applied,
+so it is visible rather than silent, but it is the one destructive path.
+Generating paths (AI columns, chat) only ever *create* values, so nothing is
+lost there. A guard that disables Replace when the result gains a
+placeholder the input didn't have was offered and not (yet) built.
 
 `OPENROUTER_PROVIDER` optionally pins upstream providers (comma-separated,
 `allow_fallbacks: false`). Unset by default. It exists because OpenRouter
@@ -774,10 +788,13 @@ and ⌘⇧J (chat panel, `App.tsx`) — the editor handler *must* test `!e.shift
 because `"J".toLowerCase() === "j"` and `preventDefault()` doesn't stop
 propagation, so ⌘⇧J would otherwise open both surfaces at once.
 
-**Tests.** `tests/ai.test.ts` stubs `fetch` and covers the guards (auth,
-vault, empty/oversized input, error translation, model pinning, that only
-`content` is returned). `scripts/e2e-ai.mjs` clicks all three features in
-mock mode:
+**Tests.** `tests/ai.test.ts` (18) stubs `fetch` and covers the guards —
+auth, the vault, empty/oversized input, error translation, env-driven model
+selection, and that only `content` is ever returned. `scripts/e2e-ai.mjs`
+(29 checks) clicks every surface in mock mode: the selection menu, writing
+from a blank line, AI database columns, the floating launcher's position and
+show/hide, and the panel's multi-turn history, context chip and persona
+persistence.
 `VITE_MOCK_CONVEX=1 npx vite --port 5241 & E2E_URL=http://localhost:5241 node scripts/e2e-ai.mjs`
 
 ## Commands
