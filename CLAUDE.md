@@ -677,20 +677,42 @@ npx convex env set OPENROUTER_API_KEY "sk-or-v1-…"          # dev
 npx convex env set OPENROUTER_API_KEY "sk-or-v1-…" --prod   # live
 ```
 
-**The model is pinned and enforced twice.** `AI_MODEL` in
-`convex/lib/openrouter.ts` is `nvidia/nemotron-3-super-120b-a12b:free`, and
-the key carries an OpenRouter *guardrail* allowlisting exactly that slug.
-Changing the constant alone breaks every call with a 404 — the guardrail
-must be widened in the OpenRouter dashboard too. The `:free` suffix is part
-of the identity; the paid variant is a different slug and is not allowlisted.
+**The model is an env var, and the guardrail must agree.** `OPENROUTER_MODEL`
+(Convex env) selects the slug; `DEFAULT_MODEL` in `convex/lib/openrouter.ts`
+is only the fallback. The key also carries an OpenRouter **guardrail** with a
+model allowlist, and **the two are a matched pair** — asking for a slug the
+guardrail doesn't permit 404s every call. This took AI down twice while the
+slug lived in code, which is why it moved to an env var: switching models is
+now `npx convex env set OPENROUTER_MODEL <slug> --prod`, no deploy. A `:free`
+suffix is part of the slug's identity; free and paid variants are separately
+allowlisted strings.
 
-Nemotron is a **reasoning** model: responses carry `reasoning` /
-`reasoning_details` beside `content`, and reasoning tokens dominate the
-completion count on short answers. `chat()` returns `content` only — the
-scratchpad must never reach the UI. It can also spend its whole budget
-thinking and return empty content, which `chat()` reports rather than retries.
+Current: `google/gemini-2.5-flash-lite`. Measured against prod on 2026-08-08,
+a short grammar fix took **~2.5-5s end-to-end** (~2s of that is `npx convex
+run` overhead), against **26-40s** on `nemotron-3-super:free`. The free tier's
+queue, not model size, was the bottleneck all along — swapping Ultra for Super
+on the free tier changed nothing.
 
-Free-tier limits are 20 req/min and 1,000/day. `chat()` retries 429 and 5xx
+**Guardrail PII redaction will corrupt documents.** OpenRouter guardrails have
+a *Sensitive Info* section that redacts PII **before the request reaches the
+model**, rewriting real names to `[PERSON_NAME]`. For a notes app that is
+silent data corruption — "Michael sent it to Sarah" comes back as
+"[PERSON_NAME] sent it to [PERSON_NAME]". The `person-name` preset (and the
+rest of that section) must stay **off**. It is not a model or provider
+behaviour and no code change can work around it.
+
+`OPENROUTER_PROVIDER` optionally pins upstream providers (comma-separated,
+`allow_fallbacks: false`). Unset by default. It exists because OpenRouter
+load-balances one model across providers that need not behave identically —
+it was added while chasing the redaction above, which turned out to be the
+guardrail rather than a provider.
+
+Gemini is not a reasoning model by default, unlike Nemotron, so responses no
+longer spend most of their token budget deliberating. `chat()` still returns
+only `content` and ignores any `reasoning` fields, which keeps a future
+reasoning model from leaking its scratchpad into the UI.
+
+Free-tier limits were 20 req/min and 1,000/day. `chat()` retries 429 and 5xx
 three times with exponential backoff, honours `Retry-After`, and does *not*
 retry other 4xx (a bad key or a guardrail miss will never succeed, and
 retrying just burns the minute budget).

@@ -100,14 +100,22 @@ test("transform returns only `content`, never the reasoning scratchpad", async (
   expect(out).not.toMatch(/secret|scratchpad|reasoning/i);
 });
 
-test("transform pins the guardrailed model and its :free suffix", async () => {
+test("the model comes from OPENROUTER_MODEL, falling back to the default", async () => {
+  // Whatever this resolves to must be on the key's guardrail allowlist —
+  // the two are a matched pair and a mismatch 404s every call.
   fetchMock.mockResolvedValue(ok("x"));
   await t().action(api.ai.transform, { text: "y", kind: "fix" });
-  const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-  // Must match the slug allowlisted on the key's OpenRouter guardrail —
-  // if this assertion is updated, the dashboard has to be updated too.
-  expect(body.model).toBe("nvidia/nemotron-3-super-120b-a12b:free");
-  expect(body.model).toMatch(/:free$/);
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe(
+    "google/gemini-2.5-flash-lite",
+  );
+
+  fetchMock.mockClear();
+  process.env.OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b";
+  await t().action(api.ai.transform, { text: "y", kind: "fix" });
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe(
+    "nvidia/nemotron-3-super-120b-a12b",
+  );
+  delete process.env.OPENROUTER_MODEL;
 });
 
 test("transform rejects empty rewrites and oversized selections without calling out", async () => {

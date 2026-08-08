@@ -11,21 +11,45 @@ import { ConvexError } from "convex/values";
  */
 
 /**
- * The workspace key is guardrail-locked to this exact slug on OpenRouter:
- * any other model comes back 404 "No endpoints available matching your
- * guardrail restrictions". The `:free` suffix is part of the identity.
+ * The model, and the OpenRouter **guardrail** on the key that permits it,
+ * are a matched pair: ask for a slug the guardrail doesn't allow and every
+ * call 404s with "No endpoints available matching your guardrail
+ * restrictions". A `:free` suffix is part of the slug's identity — the free
+ * and paid variants of one model are two different, separately-allowlisted
+ * strings.
  *
- * **Changing this constant alone breaks every call.** The guardrail on the
- * key must be widened to the new slug first, in the OpenRouter dashboard —
- * the two are a matched pair.
- *
- * Super (120B total / 12B active) replaced Ultra (550B / 55B) on
- * 2026-08-08, trading some headroom for latency: both are reasoning models
- * on the free tier, but Super activates a fifth of the parameters per
- * token. Context drops 1M -> 262K, still far above anything sent here
- * (the largest request is ~16K characters of retrieval).
+ * That pairing has taken AI down twice, because the allowlist changes in a
+ * dashboard while the slug lived in code, so a model switch needed a deploy
+ * to stay in step. It is an environment variable now: changing models is
+ * `npx convex env set OPENROUTER_MODEL <slug> --prod`, with no code change
+ * and no deploy. `DEFAULT_MODEL` is only the fallback when it is unset.
  */
-export const AI_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
+const DEFAULT_MODEL = "google/gemini-2.5-flash-lite";
+
+export function aiModel(): string {
+  return process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
+}
+
+/**
+ * Optional provider pin, comma-separated, e.g. "Google AI Studio".
+ *
+ * OpenRouter load-balances one model across several upstream providers, and
+ * they are *not* interchangeable: some apply PII de-identification that
+ * rewrites real names to "[PERSON_NAME]" mid-document. In a notes app that
+ * silently corrupts what the user wrote, so the provider has to be
+ * pinnable. Unset means OpenRouter picks, which is fine for models whose
+ * providers all behave.
+ */
+function providerRouting(): Record<string, unknown> | undefined {
+  const pin = process.env.OPENROUTER_PROVIDER?.trim();
+  if (!pin) return undefined;
+  return {
+    order: pin.split(",").map((s) => s.trim()).filter(Boolean),
+    // Pinning is a correctness constraint here, not a preference: falling
+    // back to a redacting provider is worse than failing loudly.
+    allow_fallbacks: false,
+  };
+}
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -84,8 +108,9 @@ async function describeFailure(res: Response): Promise<string> {
   }
   if (res.status === 404 && /guardrail|data policy/i.test(detail)) {
     return (
-      `The API key's guardrail does not allow "${AI_MODEL}". Add that exact ` +
-      "slug (including the :free suffix) to the key's model allowlist."
+      `The API key's guardrail does not allow "${aiModel()}". Either add ` +
+      "that exact slug (suffix included) to the key's model allowlist, or " +
+      "point OPENROUTER_MODEL at a slug the guardrail already permits."
     );
   }
   if (res.status === 429) {
@@ -125,10 +150,11 @@ export async function chat(
           "X-Title": "Vellum",
         },
         body: JSON.stringify({
-          model: AI_MODEL,
+          model: aiModel(),
           messages,
           max_tokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS,
           temperature: 0.3,
+          ...(providerRouting() ? { provider: providerRouting() } : {}),
         }),
       });
 

@@ -2,7 +2,7 @@ import { action, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { requireUser } from "./lib/auth";
-import { chat, AI_MODEL } from "./lib/openrouter";
+import { chat, aiModel } from "./lib/openrouter";
 import { Doc } from "./_generated/dataModel";
 
 /**
@@ -317,7 +317,7 @@ export const ask = action({
         answer:
           "I couldn't find anything in your workspace about that. Try different wording, or check that the pages you mean aren't in the Trash or the Vault.",
         sources: [],
-        model: AI_MODEL,
+        model: aiModel(),
       };
     }
 
@@ -345,7 +345,7 @@ export const ask = action({
     return {
       answer,
       sources: docs.map(({ pageId, title, icon }) => ({ pageId, title, icon })),
-      model: AI_MODEL,
+      model: aiModel(),
     };
   },
 });
@@ -463,7 +463,7 @@ export const converse = action({
       { role: "user", content: transcript },
     ]);
 
-    return { answer, sources, model: AI_MODEL };
+    return { answer, sources, model: aiModel() };
   },
 });
 
