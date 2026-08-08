@@ -185,6 +185,22 @@ try {
   /* ------------------------------------------------------------ recents */
   check("sidebar has a Recents list", await page.isVisible(".sidebar-heading:has-text('Recents')"));
 
+  /* ------------------------------------------------------------ library */
+  check("sidebar has a Library entry", await page.isVisible(".sidebar-item:has-text('Library')"));
+  await page.click(".sidebar-item:has-text('Library')");
+  await page.waitForTimeout(600);
+  check("Library opens a table of the workspace", await page.isVisible(".library-table"));
+  const libTabs = await page.textContent(".library-tabs");
+  check("Library offers Recents/Favorites/Private/Templates tabs",
+    ["Recents", "Favorites", "Private", "Templates"].every((t) => libTabs.includes(t)));
+  const libHead = await page.textContent(".library-table thead");
+  check("Library columns include Source and Last visited",
+    libHead.includes("Source") && libHead.includes("Last visited"));
+  await page.click(".library-table tbody tr:has-text('Gamma')");
+  await page.waitForTimeout(600);
+  check("clicking a Library row opens the page",
+    (await page.inputValue(".page-title")) === "Gamma");
+
   /* ------------------------------------------- favorites add and remove */
   await page.click(".topbar-right .icon-btn[title='Add to favorites']");
   await page.waitForTimeout(600);

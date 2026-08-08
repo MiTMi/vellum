@@ -9,11 +9,13 @@ import {
   ChevronsLeft,
   History,
   LayoutTemplate,
+  Library as LibraryIcon,
   Lock,
   LockOpen,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { PageId, PagesIndex } from "../lib/types";
+import { isLibraryId, LIBRARY_ID } from "../lib/library";
 import { IS_DIRECT, IS_MOCK, useMutations } from "../data";
 import { useSyncStatus } from "../offline/runtime";
 import { useNav } from "../state";
@@ -51,7 +53,7 @@ export default function Sidebar({
   width,
   setWidth,
 }: SidebarProps) {
-  const { navigate } = useNav();
+  const { navigate, pageId } = useNav();
   const mutations = useMutations();
   const [expanded, setExpanded] = useState<Set<string>>(loadExpanded);
   const [dragId, setDragId] = useState<PageId | null>(null);
@@ -132,6 +134,13 @@ export default function Sidebar({
           <Search size={15} />
           <span>Search</span>
           <kbd className="kbd">⌘K</kbd>
+        </button>
+        <button
+          className={`sidebar-item ${isLibraryId(pageId) ? "active" : ""}`}
+          onClick={() => navigate(LIBRARY_ID)}
+        >
+          <LibraryIcon size={15} />
+          <span>Library</span>
         </button>
       </div>
 

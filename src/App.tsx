@@ -12,6 +12,9 @@ import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import TabBar from "./components/TabBar";
 import PageView from "./components/PageView";
+import LibraryView from "./components/LibraryView";
+import { isLibraryId } from "./lib/library";
+import { recordVisit } from "./lib/visits";
 import QuickSwitcher from "./components/QuickSwitcher";
 import AiChatPanel from "./components/AiChatPanel";
 import AiLauncher from "./components/AiLauncher";
@@ -109,12 +112,25 @@ function Workspace() {
     }
   }, [index.loading, index.all.length, mutations, navigate]);
 
-  // If the current page disappeared (trashed / deleted), fall back gracefully.
+  // If the current page disappeared (trashed / deleted), fall back
+  // gracefully. The Library sentinel is never in the index — skip it.
   useEffect(() => {
-    if (!index.loading && pageId && !index.byId.has(pageId)) {
+    if (!index.loading && pageId && !isLibraryId(pageId) && !index.byId.has(pageId)) {
       navigate(null);
     }
   }, [index, pageId, navigate]);
+
+  // "Last visited" for the Library — per device, real pages only. Recorded
+  // on arrival AND on departure (cleanup), so the page you just left ranks
+  // above rows that were edited while you were sitting on it.
+  useEffect(() => {
+    if (!pageId || isLibraryId(pageId)) return;
+    recordVisit(pageId);
+    return () => recordVisit(pageId);
+  }, [pageId]);
+  useEffect(() => {
+    if (peekId) recordVisit(peekId);
+  }, [peekId]);
 
   // Global shortcuts.
   useEffect(() => {
@@ -129,7 +145,7 @@ function Workspace() {
       } else if (mod && e.key.toLowerCase() === "t") {
         e.preventDefault();
         newTab();
-      } else if (mod && e.key.toLowerCase() === "d" && pageId) {
+      } else if (mod && e.key.toLowerCase() === "d" && pageId && !isLibraryId(pageId)) {
         e.preventDefault();
         void mutations.duplicate({ id: pageId }).then((id) => {
           if (id) navigate(id);
@@ -172,7 +188,9 @@ function Workspace() {
         />
         <TopBar index={index} />
         <main className="main-content">
-          {pageId && index.byId.has(pageId) ? (
+          {isLibraryId(pageId) ? (
+            <LibraryView index={index} />
+          ) : pageId && index.byId.has(pageId) ? (
             <PageView pageId={pageId} index={index} />
           ) : (
             <EmptyState

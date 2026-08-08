@@ -244,6 +244,11 @@ body.resizing {
   background: var(--bg-hover);
 }
 
+.sidebar-item.active {
+  background: var(--bg-active);
+  color: var(--text);
+}
+
 .sidebar-item .kbd {
   margin-left: auto;
 }
@@ -4764,5 +4769,163 @@ tbody.db-group + tbody.db-group .group-row td {
     bottom: 14px;
     width: 42px;
     height: 42px;
+  }
+}
+
+/* ============================================================
+   Library (workspace index page)
+   ============================================================ */
+
+.library-view {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 48px 48px 80px;
+}
+
+.library-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.library-header h1 {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.library-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.library-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.library-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.library-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.library-tab.active {
+  background: var(--bg-active);
+  color: var(--text);
+}
+
+.library-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.library-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.library-table th svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+.library-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.library-table tbody tr {
+  cursor: pointer;
+}
+.library-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.lib-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+}
+.lib-name span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+.lib-icon.dim {
+  color: var(--text-faint);
+}
+
+.lib-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  padding: 2px 4px;
+  max-width: 240px;
+}
+.lib-source-link:hover {
+  background: var(--bg-active);
+  text-decoration: underline;
+}
+.lib-source-link span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-source-private {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.lib-time {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.library-empty {
+  padding: 48px 10px;
+  color: var(--text-faint);
+  text-align: center;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
+@media (max-width: 900px) {
+  .library-view {
+    padding: 28px 18px 60px;
+  }
+  .library-table th:nth-child(3),
+  .library-table td:nth-child(3) {
+    display: none;
   }
 }

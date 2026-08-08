@@ -683,6 +683,30 @@ in `<mark>` client-side rather than accepting HTML from the server.
 (new page/database, theme toggle, open trash, new-from-template). Actions are
 plain rows with a `run()` callback.
 
+### Library (2026-08-08)
+
+Notion-style workspace index at the sidebar's "Library" entry
+(`LibraryView.tsx`, `src/lib/library.ts`): tabs Recents / Favorites /
+Private / Templates over one table (name, source = parent or "Private",
+last edited, last visited). Vault pages (root included) never appear.
+
+- Routes through the ordinary nav with the **sentinel id `__library`**
+  (`LIBRARY_ID`), so tabs/history/⌘-nav work unchanged. Anything treating
+  `pageId` as a real page must check `isLibraryId` — App.tsx guards the
+  disappeared-page fallback and ⌘D; TabBar/TopBar special-case the title.
+- **"Last visited" is per-device** (`src/lib/visits.ts`, localStorage,
+  capped): recorded on arrival *and on departure* via the App effect's
+  cleanup — arrival-only made rows edited while you sat on the page
+  outrank the page itself. LibraryView re-snapshots the map in a mount
+  effect because that cleanup runs *after* the view's first render.
+  `visits.ts` subscribes to `vellum:id-remapped` (the store.remapId
+  invariant: temp ids hide everywhere).
+- Recents falls back to `updatedAt` for never-visited pages so a fresh
+  device isn't empty; unvisited rows show "—".
+- Tested by `scripts/e2e-library.mjs`, the library block in
+  `e2e-guide-organizing.mjs` (the organizing guide documents it), and
+  `tests/library.test.ts`.
+
 ### AI (2026-08-07, model + chat panel 2026-08-08)
 
 Three Notion-AI-style features over one model provider (OpenRouter).

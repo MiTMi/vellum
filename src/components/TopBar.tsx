@@ -17,8 +17,10 @@ import {
   Globe,
   Check,
   ExternalLink,
+  Library as LibraryIcon,
 } from "lucide-react";
 import { PagesIndex, PageMeta, childrenKey } from "../lib/types";
+import { isLibraryId, LIBRARY_ID } from "../lib/library";
 import { pathTo } from "../hooks/usePagesIndex";
 import { useMutations, usePage, usePublish } from "../data";
 import { useNav } from "../state";
@@ -75,6 +77,14 @@ export default function TopBar({ index }: TopBarProps) {
           <ChevronRight size={17} />
         </button>
         <nav className="breadcrumbs">
+          {isLibraryId(pageId) && (
+            <button className="crumb" onClick={() => navigate(LIBRARY_ID)}>
+              <span className="crumb-icon">
+                <LibraryIcon size={14} />
+              </span>
+              <span>Library</span>
+            </button>
+          )}
           {crumbs.map((c, i) =>
             c === null ? (
               <span key="ellipsis" className="crumb-sep">

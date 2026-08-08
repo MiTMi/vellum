@@ -1,6 +1,15 @@
 import React from "react";
-import { Plus, X, FileText, Database, ChevronsRight, Layout } from "lucide-react";
+import {
+  Plus,
+  X,
+  FileText,
+  Database,
+  ChevronsRight,
+  Layout,
+  Library as LibraryIcon,
+} from "lucide-react";
 import { PagesIndex } from "../lib/types";
+import { isLibraryId } from "../lib/library";
 import { useNav } from "../state";
 
 interface TabBarProps {
@@ -29,10 +38,13 @@ export default function TabBar({
       )}
       <div className="tab-strip no-drag">
         {tabs.map((tab) => {
+          const isLibrary = isLibraryId(tab.pageId);
           const page = tab.pageId ? index.byId.get(tab.pageId) : undefined;
-          const title = tab.pageId
-            ? page?.title || "Untitled"
-            : "New tab";
+          const title = isLibrary
+            ? "Library"
+            : tab.pageId
+              ? page?.title || "Untitled"
+              : "New tab";
           return (
             <div
               key={tab.id}
@@ -44,7 +56,9 @@ export default function TabBar({
               title={title}
             >
               <span className="tab-icon">
-                {page?.icon ? (
+                {isLibrary ? (
+                  <LibraryIcon size={13} />
+                ) : page?.icon ? (
                   page.icon
                 ) : page?.type === "database" ? (
                   <Database size={13} />
