@@ -678,7 +678,7 @@ npx convex env set OPENROUTER_API_KEY "sk-or-v1-…" --prod   # live
 ```
 
 **The model is pinned and enforced twice.** `AI_MODEL` in
-`convex/lib/openrouter.ts` is `nvidia/nemotron-3-ultra-550b-a55b:free`, and
+`convex/lib/openrouter.ts` is `nvidia/nemotron-3-super-120b-a12b:free`, and
 the key carries an OpenRouter *guardrail* allowlisting exactly that slug.
 Changing the constant alone breaks every call with a 404 — the guardrail
 must be widened in the OpenRouter dashboard too. The `:free` suffix is part

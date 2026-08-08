@@ -13,14 +13,23 @@ import { ConvexError } from "convex/values";
 /**
  * The workspace key is guardrail-locked to this exact slug on OpenRouter:
  * any other model comes back 404 "No endpoints available matching your
- * guardrail restrictions". The `:free` suffix is part of the identity —
- * the paid variant is a different slug and is *not* on the allowlist.
+ * guardrail restrictions". The `:free` suffix is part of the identity.
+ *
+ * **Changing this constant alone breaks every call.** The guardrail on the
+ * key must be widened to the new slug first, in the OpenRouter dashboard —
+ * the two are a matched pair.
+ *
+ * Super (120B total / 12B active) replaced Ultra (550B / 55B) on
+ * 2026-08-08, trading some headroom for latency: both are reasoning models
+ * on the free tier, but Super activates a fifth of the parameters per
+ * token. Context drops 1M -> 262K, still far above anything sent here
+ * (the largest request is ~16K characters of retrieval).
  */
-export const AI_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free";
+export const AI_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
-/** One request's ceiling. The free tier is generous on context (1M) but
+/** One request's ceiling. Context is generous (262K) but the free tier is
  *  slow, and a runaway generation would sit on the action's time budget. */
 const MAX_OUTPUT_TOKENS = 2000;
 const REQUEST_TIMEOUT_MS = 60_000;
@@ -88,7 +97,7 @@ async function describeFailure(res: Response): Promise<string> {
 /**
  * Send a chat completion and return the assistant's text.
  *
- * Nemotron 3 Ultra is a reasoning model: responses carry `reasoning` and
+ * Nemotron is a reasoning model: responses carry `reasoning` and
  * `reasoning_details` alongside `content`, and reasoning tokens dominate the
  * completion count on short answers. Only `content` is returned here — the
  * scratchpad must never reach the UI.

@@ -104,7 +104,10 @@ test("transform pins the guardrailed model and its :free suffix", async () => {
   fetchMock.mockResolvedValue(ok("x"));
   await t().action(api.ai.transform, { text: "y", kind: "fix" });
   const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-  expect(body.model).toBe("nvidia/nemotron-3-ultra-550b-a55b:free");
+  // Must match the slug allowlisted on the key's OpenRouter guardrail —
+  // if this assertion is updated, the dashboard has to be updated too.
+  expect(body.model).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+  expect(body.model).toMatch(/:free$/);
 });
 
 test("transform rejects empty rewrites and oversized selections without calling out", async () => {
