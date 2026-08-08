@@ -73,6 +73,7 @@ const realApi: DataApi = {
     const updateDbProps = useMutation(api.pages.updateDbProps);
     const setRowProp = useMutation(api.pages.setRowProp);
     const setView = useMutation(api.pages.setView);
+    const setViews = useMutation(api.pages.setViews);
     const bootstrap = useMutation(api.pages.bootstrap);
 
     return useMemo<Mutations>(
@@ -94,12 +95,13 @@ const realApi: DataApi = {
         updateDbProps: (args) => updateDbProps(args as never) as unknown as Promise<void>,
         setRowProp: (args) => setRowProp(args) as unknown as Promise<void>,
         setView: (args) => setView(args) as unknown as Promise<void>,
+        setViews: (args) => setViews(args as never) as unknown as Promise<void>,
         bootstrap: () => bootstrap() as Promise<PageId | null>,
       }),
       [
         create, rename, updateContent, setIcon, setCover, toggleFavorite,
         setTemplate, setPageOptions, move, duplicate, trash, restore,
-        deleteForever, emptyTrash, updateDbProps, setRowProp, setView,
+        deleteForever, emptyTrash, updateDbProps, setRowProp, setView, setViews,
         bootstrap,
       ],
     );

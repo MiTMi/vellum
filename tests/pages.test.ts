@@ -208,6 +208,45 @@ test("database defaults, row props, views", async () => {
   expect(updated?.dbProps?.map((p) => p.name)).toEqual(["Stage", "Estimate"]);
 });
 
+test("setViews stores saved views (filters, sorts, nested group) and bumps updatedAt", async () => {
+  const ctx = t();
+  const db = await ctx.mutation(api.pages.create, { type: "database", title: "Tasks" });
+  const before = (await ctx.query(api.pages.get, { id: db }))!;
+  expect(before.views).toBeUndefined();
+
+  const views = [
+    {
+      id: "v1",
+      name: "Open tasks",
+      kind: "table" as const,
+      filter: {
+        logic: "and" as const,
+        conditions: [
+          { propId: "status", op: "anyOf", value: ["todo"] },
+          {
+            logic: "or" as const,
+            conditions: [
+              { propId: "num", op: "gt", value: 5 },
+              { propId: "__title", op: "contains", value: "urgent" },
+            ],
+          },
+        ],
+      },
+      sorts: [{ key: "__title", dir: "asc" as const }],
+      groupBy: "status",
+    },
+    { id: "v2", name: "Board", kind: "board" as const, boardGroupBy: "status" },
+  ];
+  await ctx.mutation(api.pages.setViews, { id: db, views });
+  const after = (await ctx.query(api.pages.get, { id: db }))!;
+  expect(after.views).toEqual(views);
+  expect(after.updatedAt).toBeGreaterThanOrEqual(before.updatedAt);
+
+  // Absolute-valued: the whole array is replaced, not merged.
+  await ctx.mutation(api.pages.setViews, { id: db, views: [views[1]] });
+  expect((await ctx.query(api.pages.get, { id: db }))!.views).toHaveLength(1);
+});
+
 test("backlinks lists linking pages, excluding trashed and self", async () => {
   const ctx = t();
   const target = await ctx.mutation(api.pages.create, { type: "doc", title: "Target" });

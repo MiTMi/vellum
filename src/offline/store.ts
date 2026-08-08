@@ -1,5 +1,5 @@
 import { PAGE_REF_TYPES } from "../../convex/lib/pageLinks";
-import { DbProp, PageDoc, PageId, ViewKind } from "../lib/types";
+import { DbProp, DbView, PageDoc, PageId, ViewKind } from "../lib/types";
 
 /**
  * The local page replica: a Map of full page docs plus every mutation the
@@ -166,6 +166,10 @@ export interface PageStore {
       boardGroupBy?: string;
       calendarBy?: string;
     },
+    now: number,
+  ): PageDoc | undefined;
+  setViews(
+    args: { id: PageId; views: DbView[] },
     now: number,
   ): PageDoc | undefined;
   bootstrap(id: PageId, now: number): PageDoc | null;
@@ -481,6 +485,15 @@ export function createPageStore(): PageStore {
       if (activeView !== undefined) p.activeView = activeView;
       if (boardGroupBy !== undefined) p.boardGroupBy = boardGroupBy;
       if (calendarBy !== undefined) p.calendarBy = calendarBy;
+      p.updatedAt = now;
+      commit([id]);
+      return p;
+    },
+
+    setViews({ id, views }, now) {
+      const p = map.get(id);
+      if (!p) return undefined;
+      p.views = views;
       p.updatedAt = now;
       commit([id]);
       return p;

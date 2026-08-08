@@ -697,11 +697,13 @@
           <article class="guide" id="views">
             <h1>Views, filters &amp; sorting</h1>
             <p class="guide-lead">
-              The same rows, five ways of looking at them. Switch with the tabs
-              at the top of a database; the choice sticks with the database.
+              The same rows, as many ways of looking at them as you like. Every
+              database starts with one tab per layout; each tab is a
+              <strong>saved view</strong> carrying its own filters, sorts and
+              grouping, synced with the workspace.
             </p>
 
-            <h2><span class="pilcrow" aria-hidden="true">&para;</span>The five views</h2>
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>The five layouts</h2>
             <div class="table-scroll">
               <table>
                 <thead><tr><th>View</th><th>Good for</th></tr></thead>
@@ -718,26 +720,40 @@
               When a database has more than one select column, Board gets a
               menu for choosing which one makes the columns. Calendar and
               Timeline get the same menu for choosing which date column they
-              follow.
+              follow &mdash; each view remembers its own choice.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Managing views</h2>
+            <p>
+              Click the <strong>+</strong> at the end of the tab strip to add a
+              view, picking its layout. Click the <em>active</em> tab to open its
+              menu: rename it, switch its layout, duplicate it (filters and
+              sorts come along), or delete it. Which tab you&rsquo;re on is
+              remembered per device; the views themselves sync everywhere.
             </p>
 
             <h2><span class="pilcrow" aria-hidden="true">&para;</span>Filtering</h2>
             <ol class="steps">
               <li>Click the <strong>filter</strong> icon in the toolbar.</li>
-              <li>Pick a column &mdash; select, multi-select and checkbox columns can be filtered.</li>
-              <li>Tick the values you want to keep. Tick several to mean &ldquo;any of these&rdquo;.</li>
+              <li>Pick a column &mdash; every property can be filtered, Name included.</li>
+              <li>Choose an operator suited to the column&rsquo;s type &mdash; <em>contains</em> for text, <em>&gt;</em> for numbers, <em>is before</em> for dates, <em>is any of</em> for selects &mdash; and give it a value.</li>
             </ol>
             <p>
-              Active filters show as chips under the toolbar with a count like
-              <em>1 of 3</em>. Click a chip&rsquo;s <strong>×</strong> to drop it.
+              <strong>Add filter</strong> stacks more rules, joined by one
+              <em>And</em>/<em>Or</em> choice. <strong>Add group</strong> nests a
+              second set with its own And/Or, so &ldquo;done <em>and</em> (urgent
+              <em>or</em> overdue)&rdquo; is expressible. A chip under the toolbar
+              counts the active rules next to a count like <em>1 of 3</em>;
+              its <strong>×</strong> clears them all.
             </p>
 
             <h2><span class="pilcrow" aria-hidden="true">&para;</span>Sorting</h2>
             <p>
               The <strong>sort</strong> icon lists Name plus every property.
-              Clicking one cycles ascending &rarr; descending &rarr; off. You can
-              also sort from a column&rsquo;s own menu, and clear it from the chip
-              or the table&rsquo;s footer.
+              Clicking one cycles ascending &rarr; descending &rarr; off, and you
+              can stack several &mdash; the first rule wins, later ones break
+              ties. Each active sort shows as its own chip. You can also sort
+              from a column&rsquo;s own menu.
             </p>
 
             <h2><span class="pilcrow" aria-hidden="true">&para;</span>Grouping (Table)</h2>
@@ -758,11 +774,11 @@
             <div class="note">
               <span class="note-mark" aria-hidden="true">&para;</span>
               <p>
-                <strong>Filters, sorts, grouping and the in-database search are
-                yours alone.</strong> They&rsquo;re stored on the device you set
-                them on, not in the workspace &mdash; so a filter you apply on
-                your laptop won&rsquo;t rearrange the database on your phone. Which
-                view a database opens in <em>is</em> saved for everyone.
+                <strong>Views sync; your vantage point doesn&rsquo;t.</strong>
+                Filters, sorts and grouping belong to the view and follow it to
+                every device. Which tab you&rsquo;re looking at, which groups
+                you&rsquo;ve folded away and the in-database search stay with the
+                device you set them on.
               </p>
             </div>
           </article>

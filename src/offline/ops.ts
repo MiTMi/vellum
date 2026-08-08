@@ -1,4 +1,4 @@
-import { DbProp, PageDoc, PageId, ViewKind } from "../lib/types";
+import { DbProp, DbView, PageDoc, PageId, ViewKind } from "../lib/types";
 
 /**
  * Outbox operations — the durable record of every local write made while
@@ -73,7 +73,8 @@ export type OutboxOp =
       activeView?: ViewKind;
       boardGroupBy?: string;
       calendarBy?: string;
-    };
+    }
+  | { kind: "setViews"; id: string; views: DbView[] };
 
 export interface StoredOp {
   seq: number;
@@ -97,6 +98,7 @@ export function coalesceKey(op: OutboxOp): string | null {
     case "move":
     case "updateDbProps":
     case "setView":
+    case "setViews":
       return `${op.kind}:${op.id}`;
     case "setRowProp":
       return `setRowProp:${op.id}:${op.propId}`;

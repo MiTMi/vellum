@@ -1,4 +1,14 @@
-import { DbProp, PageMeta, RollupCalc } from "./types";
+import {
+  DbProp,
+  DbView,
+  FilterCondition,
+  FilterGroup,
+  FilterOp,
+  PageMeta,
+  RollupCalc,
+  SortRule,
+  ViewKind,
+} from "./types";
 import { evalFormula, FormulaResult, FormulaValue } from "./formula";
 
 /* ------------------------------------------------------------------ */
@@ -250,22 +260,26 @@ export function sortValue(
   }
 }
 
-export function applySort(
+/** Multi-key sort: earlier rules win, later ones break ties. */
+export function applySorts(
   rows: PageMeta[],
-  sort: Sort,
+  sorts: SortRule[],
   dbProps: DbProp[],
   byId?: RowIndex,
 ): PageMeta[] {
-  if (!sort) return rows;
+  if (!sorts.length) return rows;
   const copy = [...rows];
   copy.sort((a, b) => {
-    const va = sortValue(a, sort.key, dbProps, byId);
-    const vb = sortValue(b, sort.key, dbProps, byId);
-    const cmp =
-      typeof va === "number" && typeof vb === "number"
-        ? va - vb
-        : String(va).localeCompare(String(vb));
-    return sort.dir === "asc" ? cmp : -cmp;
+    for (const rule of sorts) {
+      const va = sortValue(a, rule.key, dbProps, byId);
+      const vb = sortValue(b, rule.key, dbProps, byId);
+      const cmp =
+        typeof va === "number" && typeof vb === "number"
+          ? va - vb
+          : String(va).localeCompare(String(vb));
+      if (cmp !== 0) return rule.dir === "asc" ? cmp : -cmp;
+    }
+    return 0;
   });
   return copy;
 }
@@ -274,35 +288,233 @@ export function applySort(
 /* Filtering                                                           */
 /* ------------------------------------------------------------------ */
 
-/** Active filters: propId → allowed option ids (select/multiSelect) or
-    ["__checked"|"__unchecked"] for checkboxes. Filters are ANDed. */
+/** Legacy per-database filter shape (pre-saved-views, localStorage only):
+    propId → allowed option ids, or ["__checked"|"__unchecked"]. Kept solely
+    so old persisted state can seed a derived view's FilterGroup. */
 export type Filters = Record<string, string[]>;
 
-export function applyFilters(
-  rows: PageMeta[],
-  filters: Filters,
+export function isFilterGroup(
+  node: FilterCondition | FilterGroup,
+): node is FilterGroup {
+  return "logic" in node;
+}
+
+/** Operator sets per property type. Relation is deliberately presence-only —
+    a "contains page X" op would put page ids inside `views`, which the
+    offline layer's temp-id remap doesn't walk. */
+const TEXT_OPS: FilterOp[] = ["is", "isNot", "contains", "notContains", "startsWith", "endsWith", "isEmpty", "isNotEmpty"];
+const NUMBER_OPS: FilterOp[] = ["eq", "neq", "gt", "gte", "lt", "lte", "isEmpty", "isNotEmpty"];
+const DATE_OPS: FilterOp[] = ["dateIs", "dateBefore", "dateAfter", "dateOnOrBefore", "dateOnOrAfter", "isEmpty", "isNotEmpty"];
+const SELECT_OPS: FilterOp[] = ["anyOf", "noneOf", "isEmpty", "isNotEmpty"];
+const CHECKBOX_OPS: FilterOp[] = ["checked", "unchecked"];
+const PRESENCE_OPS: FilterOp[] = ["isEmpty", "isNotEmpty"];
+// Computed values (formula/rollup) can be text or numbers; offer both.
+const VALUE_OPS: FilterOp[] = ["is", "contains", "gt", "lt", "isEmpty", "isNotEmpty"];
+
+export function operatorsFor(prop: DbProp | "__title"): FilterOp[] {
+  if (prop === "__title") return TEXT_OPS;
+  switch (prop.type) {
+    case "text":
+    case "url":
+    case "ai":
+      return TEXT_OPS;
+    case "number":
+      return NUMBER_OPS;
+    case "date":
+    case "createdTime":
+    case "lastEditedTime":
+      return DATE_OPS;
+    case "select":
+    case "multiSelect":
+      return SELECT_OPS;
+    case "checkbox":
+      return CHECKBOX_OPS;
+    case "relation":
+      return PRESENCE_OPS;
+    case "formula":
+    case "rollup":
+      return VALUE_OPS;
+  }
+}
+
+export const FILTER_OP_LABELS: Record<FilterOp, string> = {
+  is: "is",
+  isNot: "is not",
+  contains: "contains",
+  notContains: "does not contain",
+  startsWith: "starts with",
+  endsWith: "ends with",
+  eq: "=",
+  neq: "≠",
+  gt: ">",
+  gte: "≥",
+  lt: "<",
+  lte: "≤",
+  dateIs: "is",
+  dateBefore: "is before",
+  dateAfter: "is after",
+  dateOnOrBefore: "is on or before",
+  dateOnOrAfter: "is on or after",
+  anyOf: "is any of",
+  noneOf: "is none of",
+  checked: "is checked",
+  unchecked: "is unchecked",
+  isEmpty: "is empty",
+  isNotEmpty: "is not empty",
+};
+
+/** Ops that need no operand — a rule with one is always evaluable. */
+const NO_VALUE_OPS: FilterOp[] = ["checked", "unchecked", "isEmpty", "isNotEmpty"];
+
+export function opNeedsValue(op: FilterOp): boolean {
+  return !NO_VALUE_OPS.includes(op);
+}
+
+/** The raw comparable value of one cell (title included via "__title"). */
+function cellValue(
+  row: PageMeta,
+  propId: string,
   dbProps: DbProp[],
+  byId?: RowIndex,
+): unknown {
+  if (propId === "__title") return row.title;
+  const prop = dbProps.find((p) => p.id === propId);
+  if (!prop) return undefined;
+  if (prop.type === "createdTime") return toDateKey(new Date(row._creationTime));
+  if (prop.type === "lastEditedTime") return toDateKey(new Date(row.updatedAt));
+  if (prop.type === "rollup") {
+    return computeRollup(row, prop, dbProps, byId).sortVal;
+  }
+  if (prop.type === "formula") {
+    return computeFormula(row, prop, dbProps, byId).value;
+  }
+  return row.props?.[propId];
+}
+
+function isEmptyValue(raw: unknown): boolean {
+  if (raw === undefined || raw === null || raw === "") return true;
+  if (Array.isArray(raw)) return raw.length === 0;
+  if (raw === false) return true; // an unchecked checkbox counts as empty
+  return false;
+}
+
+function matchCondition(
+  row: PageMeta,
+  cond: FilterCondition,
+  dbProps: DbProp[],
+  byId?: RowIndex,
+): boolean {
+  const raw = cellValue(row, cond.propId, dbProps, byId);
+
+  switch (cond.op) {
+    case "isEmpty":
+      return isEmptyValue(raw);
+    case "isNotEmpty":
+      return !isEmptyValue(raw);
+    case "checked":
+      return raw === true;
+    case "unchecked":
+      return raw !== true;
+    default:
+      break;
+  }
+
+  // A rule whose operand hasn't been filled in yet matches everything —
+  // adding a filter must never blank the view before a value is chosen.
+  const v = cond.value;
+  if (v === undefined || v === "" || (Array.isArray(v) && v.length === 0)) {
+    return true;
+  }
+
+  switch (cond.op) {
+    case "anyOf":
+    case "noneOf": {
+      const wanted = Array.isArray(v) ? v : [String(v)];
+      const have = Array.isArray(raw)
+        ? (raw as string[])
+        : typeof raw === "string" && raw
+          ? [raw]
+          : [];
+      const hit = have.some((id) => wanted.includes(id));
+      return cond.op === "anyOf" ? hit : !hit;
+    }
+    case "eq":
+    case "neq":
+    case "gt":
+    case "gte":
+    case "lt":
+    case "lte": {
+      const n = typeof raw === "number" ? raw : Number(raw);
+      const w = typeof v === "number" ? v : Number(v);
+      if (Number.isNaN(n) || Number.isNaN(w)) return cond.op === "neq";
+      if (cond.op === "eq") return n === w;
+      if (cond.op === "neq") return n !== w;
+      if (cond.op === "gt") return n > w;
+      if (cond.op === "gte") return n >= w;
+      if (cond.op === "lt") return n < w;
+      return n <= w;
+    }
+    case "dateIs":
+    case "dateBefore":
+    case "dateAfter":
+    case "dateOnOrBefore":
+    case "dateOnOrAfter": {
+      // Dates compare as ISO "YYYY-MM-DD" strings; ranges compare by start.
+      const d = parseDateValue(raw)?.start;
+      const w = String(v);
+      if (!d) return false;
+      if (cond.op === "dateIs") return d === w;
+      if (cond.op === "dateBefore") return d < w;
+      if (cond.op === "dateAfter") return d > w;
+      if (cond.op === "dateOnOrBefore") return d <= w;
+      return d >= w;
+    }
+    default: {
+      // Text family. Numbers/formula results compare via their string form.
+      const s = (raw ?? "").toString().toLowerCase();
+      const w = String(v).toLowerCase();
+      // gt/lt reached via VALUE_OPS on a non-numeric formula: string compare.
+      if (cond.op === "is") return s === w;
+      if (cond.op === "isNot") return s !== w;
+      if (cond.op === "contains") return s.includes(w);
+      if (cond.op === "notContains") return !s.includes(w);
+      if (cond.op === "startsWith") return s.startsWith(w);
+      return s.endsWith(w);
+    }
+  }
+}
+
+export function matchFilterGroup(
+  row: PageMeta,
+  group: FilterGroup,
+  dbProps: DbProp[],
+  byId?: RowIndex,
+): boolean {
+  if (!group.conditions.length) return true;
+  const results = group.conditions.map((node) =>
+    isFilterGroup(node)
+      ? matchFilterGroup(row, node, dbProps, byId)
+      : matchCondition(row, node, dbProps, byId),
+  );
+  return group.logic === "and" ? results.every(Boolean) : results.some(Boolean);
+}
+
+export function applyFilterGroup(
+  rows: PageMeta[],
+  filter: FilterGroup | undefined,
+  dbProps: DbProp[],
+  byId?: RowIndex,
 ): PageMeta[] {
-  const entries = Object.entries(filters).filter(([, v]) => v.length > 0);
-  if (!entries.length) return rows;
-  return rows.filter((row) =>
-    entries.every(([propId, allowed]) => {
-      const prop = dbProps.find((p) => p.id === propId);
-      if (!prop) return true;
-      const raw = row.props?.[propId];
-      if (prop.type === "checkbox") {
-        const checked = raw === true;
-        return allowed.includes(checked ? "__checked" : "__unchecked");
-      }
-      if (prop.type === "select") {
-        return typeof raw === "string" && allowed.includes(raw);
-      }
-      if (prop.type === "multiSelect") {
-        const ids = Array.isArray(raw) ? (raw as string[]) : [];
-        return ids.some((id) => allowed.includes(id));
-      }
-      return true;
-    }),
+  if (!filter || !filter.conditions.length) return rows;
+  return rows.filter((row) => matchFilterGroup(row, filter, dbProps, byId));
+}
+
+/** Count the individual rules in a filter (for toolbar badges). */
+export function countFilterRules(filter: FilterGroup | undefined): number {
+  if (!filter) return 0;
+  return filter.conditions.reduce<number>(
+    (n, node) => n + (isFilterGroup(node) ? countFilterRules(node) : 1),
+    0,
   );
 }
 
@@ -319,15 +531,21 @@ export function applySearch(rows: PageMeta[], term: string): PageMeta[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Per-database view state persisted locally (filters, sort, search)   */
+/* Per-database local state (active tab, collapsed groups)             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * What stays per-device after saved views: the selected tab and collapsed
+ * table groups. `sort`/`filters`/`groupBy` are the pre-saved-views shape,
+ * still read (never written) so old local state can seed derived views.
+ */
 export interface LocalViewState {
   sort: Sort;
   filters: Filters;
-  /** Table-view grouping — local, like sort/filter. */
   groupBy: string | null;
   collapsedGroups: string[];
+  /** Selected view tab — per-device, like Notion's last-used view. */
+  activeViewId: string | null;
 }
 
 export function loadViewState(dbId: string): LocalViewState {
@@ -335,18 +553,116 @@ export function loadViewState(dbId: string): LocalViewState {
     const raw = localStorage.getItem(`vellum:dbview:${dbId}`);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<LocalViewState>;
-      // State persisted before grouping existed has neither key.
+      // State persisted by an older build won't have newer keys.
       return {
         sort: parsed.sort ?? null,
         filters: parsed.filters ?? {},
         groupBy: parsed.groupBy ?? null,
         collapsedGroups: parsed.collapsedGroups ?? [],
+        activeViewId: parsed.activeViewId ?? null,
       };
     }
   } catch {
     /* ignore */
   }
-  return { sort: null, filters: {}, groupBy: null, collapsedGroups: [] };
+  return {
+    sort: null,
+    filters: {},
+    groupBy: null,
+    collapsedGroups: [],
+    activeViewId: null,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Saved views — derivation & migration                                */
+/* ------------------------------------------------------------------ */
+
+export const VIEW_KINDS: ViewKind[] = [
+  "table",
+  "board",
+  "calendar",
+  "gallery",
+  "timeline",
+];
+
+export const VIEW_KIND_LABELS: Record<ViewKind, string> = {
+  table: "Table",
+  board: "Board",
+  calendar: "Calendar",
+  gallery: "Gallery",
+  timeline: "Timeline",
+};
+
+export function newViewId(): string {
+  return `v_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Convert the legacy localStorage filter map into a FilterGroup. */
+export function legacyFiltersToGroup(
+  filters: Filters,
+  dbProps: DbProp[],
+): FilterGroup | undefined {
+  const conditions: FilterCondition[] = [];
+  for (const [propId, values] of Object.entries(filters)) {
+    if (!values.length) continue;
+    const prop = dbProps.find((p) => p.id === propId);
+    if (!prop) continue;
+    if (prop.type === "checkbox") {
+      // Both boxes ticked meant "everything" — no rule at all.
+      if (values.length === 1) {
+        conditions.push({
+          propId,
+          op: values[0] === "__checked" ? "checked" : "unchecked",
+        });
+      }
+    } else {
+      conditions.push({ propId, op: "anyOf", value: values });
+    }
+  }
+  return conditions.length ? { logic: "and", conditions } : undefined;
+}
+
+/**
+ * The views of a database that predates saved views: one per kind, named
+ * like the old fixed tabs, seeded from the legacy synced fields and any
+ * legacy local filter/sort state so nothing visibly changes on upgrade.
+ * Ids are stable (`__table`…) so the per-device active tab survives until
+ * the array is first materialized by `setViews`.
+ */
+export function derivedViews(
+  page: {
+    boardGroupBy?: string;
+    calendarBy?: string;
+  },
+  dbProps: DbProp[],
+  legacy: LocalViewState,
+): DbView[] {
+  const filter = legacyFiltersToGroup(legacy.filters, dbProps);
+  const sorts: SortRule[] | undefined = legacy.sort ? [legacy.sort] : undefined;
+  return VIEW_KINDS.map((kind) => ({
+    id: `__${kind}`,
+    name: VIEW_KIND_LABELS[kind],
+    kind,
+    filter,
+    sorts,
+    groupBy: kind === "table" ? (legacy.groupBy ?? undefined) : undefined,
+    boardGroupBy: kind === "board" ? page.boardGroupBy : undefined,
+    calendarBy:
+      kind === "calendar" || kind === "timeline" ? page.calendarBy : undefined,
+  }));
+}
+
+/** The views to render: saved ones, or the derived legacy set. */
+export function viewsOf(
+  page: { views?: DbView[]; boardGroupBy?: string; calendarBy?: string },
+  dbProps: DbProp[],
+  legacy: LocalViewState,
+): { views: DbView[]; derived: boolean } {
+  if (page.views && page.views.length) {
+    return { views: page.views, derived: false };
+  }
+  return { views: derivedViews(page, dbProps, legacy), derived: true };
 }
 
 /* ------------------------------------------------------------------ */

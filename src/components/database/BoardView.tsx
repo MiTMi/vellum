@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Plus, ArrowUpRight } from "lucide-react";
-import { DbProp, PageDoc, PageMeta, PageId } from "../../lib/types";
+import { DbProp, DbView, PageDoc, PageMeta, PageId } from "../../lib/types";
 import { useMutations } from "../../data";
 import { usePagesIndex } from "../../hooks/usePagesIndex";
 import { requestPeek, useNav } from "../../state";
@@ -8,11 +8,13 @@ import CardProps from "./CardProps";
 
 interface BoardViewProps {
   page: PageDoc;
+  /** The saved view being rendered — grouping config lives on it. */
+  view: DbView;
   rows: PageMeta[];
   locked?: boolean;
 }
 
-export default function BoardView({ page, rows, locked }: BoardViewProps) {
+export default function BoardView({ page, view, rows, locked }: BoardViewProps) {
   const mutations = useMutations();
   const index = usePagesIndex();
   const { navigate } = useNav();
@@ -21,7 +23,7 @@ export default function BoardView({ page, rows, locked }: BoardViewProps) {
   const [overCol, setOverCol] = useState<string | null>(null);
 
   const groupProp: DbProp | undefined =
-    dbProps.find((p) => p.id === page.boardGroupBy && p.type === "select") ??
+    dbProps.find((p) => p.id === view.boardGroupBy && p.type === "select") ??
     dbProps.find((p) => p.type === "select");
 
   const columns = useMemo(() => {

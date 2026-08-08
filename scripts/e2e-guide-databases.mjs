@@ -182,16 +182,17 @@ try {
 
   await page.click(".db-toolbar-right .icon-btn[title='Filter']");
   await page.waitForTimeout(400);
-  check("filter menu offers select/checkbox columns", await page.isVisible(".menu-item:has-text('Status')"));
+  check("filter builder offers every column", await page.isVisible(".menu-item:has-text('Status')"));
   await page.click(".menu-item:has-text('Status')");
   await page.waitForTimeout(300);
-  await page.click(".menu-item:has-text('Done')");
+  check("picking a column creates a rule row", await page.isVisible(".filter-rule"));
+  await page.click(".filter-option:has-text('Done')");
   await page.waitForTimeout(400);
   await page.keyboard.press("Escape");
   await page.waitForTimeout(400);
   check("filter narrows the rows", (await page.locator(".db-table tbody tr").count()) === 1);
   check("filter chip shows the count", (await page.textContent(".db-count")).includes("1 of 3"));
-  await page.click(".db-chip:has-text('Status') button");
+  await page.click(".db-chip:has-text('filter') button");
   await page.waitForTimeout(400);
   check("clearing the chip restores every row", (await page.locator(".db-table tbody tr").count()) === 3);
 
@@ -252,6 +253,32 @@ try {
 
   await page.click(".db-tab:has-text('Table')");
   await page.waitForTimeout(600);
+
+  /* ---------------------------------------------------- managing views */
+  await page.click(".db-add-view");
+  await page.waitForTimeout(300);
+  await page.click(".menu-item:has-text('Board')");
+  await page.waitForTimeout(600);
+  check("+ adds a view with the picked layout", await page.isVisible(".db-tab.active:has-text('Board 2')"));
+  await page.click(".db-tab.active");
+  await page.waitForTimeout(300);
+  check("clicking the active tab opens its menu", await page.isVisible(".view-menu-name"));
+  await page.fill(".view-menu-name", "Sprint");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(500);
+  check("views can be renamed", await page.isVisible(".db-tab.active:has-text('Sprint')"));
+  await page.click(".db-tab.active");
+  await page.waitForTimeout(300);
+  await page.click(".menu-item:has-text('Duplicate view')");
+  await page.waitForTimeout(500);
+  check("duplicate makes a copy", await page.isVisible(".db-tab.active:has-text('Sprint 2')"));
+  await page.click(".db-tab.active");
+  await page.waitForTimeout(300);
+  await page.click(".menu-item:has-text('Delete view')");
+  await page.waitForTimeout(500);
+  check("delete removes the view", (await page.locator(".db-tab:has-text('Sprint 2')").count()) === 0);
+  await page.click(".db-tab:text-is('Table')");
+  await page.waitForTimeout(500);
 
   /* ----------------------------------------- second database + relation */
   await page.click(".sidebar-footer .icon-btn[title='New database']");

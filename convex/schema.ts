@@ -74,6 +74,46 @@ export const activeView = v.union(
   v.literal("timeline"),
 );
 
+const filterLogic = v.union(v.literal("and"), v.literal("or"));
+// `op` and `value` are interpreted client-side (src/lib/dbviews.ts); the
+// value never holds page ids — relation filters are presence-only, which is
+// what keeps offline temp ids out of saved views.
+const filterCondition = v.object({
+  propId: v.string(),
+  op: v.string(),
+  value: v.optional(v.any()),
+});
+// Validators can't recurse, so nesting is one explicit level deep — the
+// same cap the filter-builder UI enforces.
+const filterGroup = v.object({
+  logic: filterLogic,
+  conditions: v.array(
+    v.union(
+      filterCondition,
+      v.object({ logic: filterLogic, conditions: v.array(filterCondition) }),
+    ),
+  ),
+});
+
+/** One saved database view: layout plus its filter/sort/group config. */
+export const dbView = v.object({
+  id: v.string(),
+  name: v.string(),
+  kind: activeView,
+  filter: v.optional(filterGroup),
+  sorts: v.optional(
+    v.array(
+      v.object({
+        key: v.string(),
+        dir: v.union(v.literal("asc"), v.literal("desc")),
+      }),
+    ),
+  ),
+  groupBy: v.optional(v.string()),
+  boardGroupBy: v.optional(v.string()),
+  calendarBy: v.optional(v.string()),
+});
+
 export default defineSchema({
   // Convex Auth's account/session/user tables. The whole workspace is
   // single-tenant: functions gate on "is the owner signed in" (see
@@ -110,6 +150,9 @@ export default defineSchema({
     trashRoot: v.optional(v.boolean()), // true only on the page the user trashed
     trashedAt: v.optional(v.number()),
     dbProps: v.optional(v.array(dbProp)),
+    // Saved views. Once set, activeView/boardGroupBy/calendarBy become a
+    // read-only fallback used to derive the initial set (see lib/dbviews.ts).
+    views: v.optional(v.array(dbView)),
     activeView: v.optional(activeView),
     boardGroupBy: v.optional(v.string()),
     calendarBy: v.optional(v.string()),

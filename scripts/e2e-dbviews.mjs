@@ -78,20 +78,21 @@ try {
   // ---------- toolbar: filter ----------
   await page.click(".icon-btn[title='Filter']");
   await page.waitForSelector(".popover");
+  // Picking a column creates the first rule; option chips toggle its values.
   await page.click(".popover .menu-item:has-text('Status')");
-  await page.click(".popover .menu-item:has-text('Done')");
+  await page.click(".popover .filter-option:has-text('Done')");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(300);
   const visibleRows = await page.locator(".db-table tbody tr").count();
   check("filter narrows to Done rows", visibleRows === 1, `rows=${visibleRows}`);
   check(
     "filter chip + count shown",
-    (await page.locator(".db-chip:has-text('Status')").count()) > 0 &&
+    (await page.locator(".db-chip:has-text('filter')").count()) > 0 &&
       ((await page.textContent(".db-count")) ?? "").includes("1 of 3"),
   );
   await page.screenshot({ path: `${SHOTS}/20-filter.png` });
   // clear filter
-  await page.click(".db-chip:has-text('Status') button");
+  await page.click(".db-chip:has-text('filter') button");
   await page.waitForTimeout(300);
   check("filter clears", (await page.locator(".db-table tbody tr").count()) === 3);
 

@@ -204,6 +204,9 @@ const mutations: Mutations = {
   async setView(args) {
     store.setView(args, Date.now());
   },
+  async setViews(args) {
+    store.setViews(args, Date.now());
+  },
   async bootstrap() {
     return store.bootstrap(newId(), Date.now())?._id ?? null;
   },

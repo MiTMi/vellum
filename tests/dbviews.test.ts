@@ -1,11 +1,19 @@
 import { expect, test } from "vitest";
 import {
+  applyFilterGroup,
+  applySorts,
   computeRollup,
+  countFilterRules,
+  derivedViews,
   groupRows,
+  legacyFiltersToGroup,
+  matchFilterGroup,
+  operatorsFor,
   RowIndex,
   sortValue,
+  viewsOf,
 } from "../src/lib/dbviews";
-import { DbProp, PageId, PageMeta } from "../src/lib/types";
+import { DbProp, FilterGroup, PageId, PageMeta } from "../src/lib/types";
 
 function row(
   id: string,
@@ -196,4 +204,200 @@ test("groupRows returns null when grouping is off or the prop can't group", () =
   expect(groupRows([], null, [STATUS])).toBeNull();
   expect(groupRows([], "missing", [STATUS])).toBeNull();
   expect(groupRows([], "t", [{ id: "t", name: "T", type: "text" }])).toBeNull();
+});
+
+/* --------------------------- filtering --------------------------- */
+
+const FILTER_PROPS: DbProp[] = [
+  STATUS,
+  { id: "txt", name: "Notes", type: "text" },
+  { id: "num", name: "Points", type: "number" },
+  { id: "due", name: "Due", type: "date" },
+  { id: "ok", name: "Done", type: "checkbox" },
+  { id: "rel", name: "Links", type: "relation", targetId: "db2" },
+];
+
+const and = (...conditions: FilterGroup["conditions"]): FilterGroup => ({
+  logic: "and",
+  conditions,
+});
+const or = (...conditions: FilterGroup["conditions"]): FilterGroup => ({
+  logic: "or",
+  conditions,
+});
+
+test("text operators", () => {
+  const r = row("a", "Alpha", { txt: "Hello World" });
+  const m = (op: string, value?: string) =>
+    matchFilterGroup(r, and({ propId: "txt", op: op as never, value }), FILTER_PROPS);
+  expect(m("is", "hello world")).toBe(true); // case-insensitive
+  expect(m("isNot", "hello world")).toBe(false);
+  expect(m("contains", "lo wo")).toBe(true);
+  expect(m("notContains", "xyz")).toBe(true);
+  expect(m("startsWith", "hell")).toBe(true);
+  expect(m("endsWith", "world")).toBe(true);
+  expect(m("isEmpty")).toBe(false);
+  expect(m("isNotEmpty")).toBe(true);
+});
+
+test("title filters via the __title sentinel", () => {
+  const r = row("a", "Meeting notes");
+  expect(
+    matchFilterGroup(r, and({ propId: "__title", op: "contains", value: "meet" }), []),
+  ).toBe(true);
+});
+
+test("number operators", () => {
+  const r = row("a", "A", { num: 5 });
+  const m = (op: string, value: number) =>
+    matchFilterGroup(r, and({ propId: "num", op: op as never, value }), FILTER_PROPS);
+  expect(m("eq", 5)).toBe(true);
+  expect(m("neq", 5)).toBe(false);
+  expect(m("gt", 4)).toBe(true);
+  expect(m("gte", 5)).toBe(true);
+  expect(m("lt", 5)).toBe(false);
+  expect(m("lte", 5)).toBe(true);
+});
+
+test("date operators compare by start, both stored shapes", () => {
+  const bare = row("a", "A", { due: "2026-08-10" });
+  const range = row("b", "B", { due: { start: "2026-08-10", end: "2026-08-12" } });
+  for (const r of [bare, range]) {
+    const m = (op: string, value: string) =>
+      matchFilterGroup(r, and({ propId: "due", op: op as never, value }), FILTER_PROPS);
+    expect(m("dateIs", "2026-08-10")).toBe(true);
+    expect(m("dateBefore", "2026-08-11")).toBe(true);
+    expect(m("dateAfter", "2026-08-09")).toBe(true);
+    expect(m("dateOnOrBefore", "2026-08-10")).toBe(true);
+    expect(m("dateOnOrAfter", "2026-08-11")).toBe(false);
+  }
+});
+
+test("select / multiSelect anyOf & noneOf; checkbox; relation presence", () => {
+  const r = row("a", "A", { status: "todo", ok: true, rel: ["x"] });
+  const g = (propId: string, op: string, value?: string[]) =>
+    matchFilterGroup(r, and({ propId, op: op as never, value }), FILTER_PROPS);
+  expect(g("status", "anyOf", ["todo", "done"])).toBe(true);
+  expect(g("status", "noneOf", ["done"])).toBe(true);
+  expect(g("status", "noneOf", ["todo"])).toBe(false);
+  expect(g("ok", "checked")).toBe(true);
+  expect(g("ok", "unchecked")).toBe(false);
+  expect(g("rel", "isNotEmpty")).toBe(true);
+  expect(g("rel", "isEmpty")).toBe(false);
+});
+
+test("a rule with no operand yet matches everything", () => {
+  const r = row("a", "A", { txt: "x" });
+  expect(
+    matchFilterGroup(r, and({ propId: "txt", op: "is", value: undefined }), FILTER_PROPS),
+  ).toBe(true);
+  expect(
+    matchFilterGroup(r, and({ propId: "status", op: "anyOf", value: [] }), FILTER_PROPS),
+  ).toBe(true);
+});
+
+test("compound and/or plus one nested group", () => {
+  const rows = [
+    row("a", "A", { status: "todo", num: 1 }),
+    row("b", "B", { status: "done", num: 9 }),
+    row("c", "C", { status: "done", num: 1 }),
+  ];
+  // done AND (num > 5 OR title is "C")
+  const filter = and(
+    { propId: "status", op: "anyOf", value: ["done"] },
+    or(
+      { propId: "num", op: "gt", value: 5 },
+      { propId: "__title", op: "is", value: "c" },
+    ),
+  );
+  const out = applyFilterGroup(rows, filter, FILTER_PROPS);
+  expect(out.map((r) => r._id)).toEqual(["b", "c"]);
+  expect(countFilterRules(filter)).toBe(3);
+});
+
+test("filters on formula and computed-timestamp values", () => {
+  const props: DbProp[] = [
+    { id: "num", name: "Points", type: "number" },
+    { id: "f", name: "Double", type: "formula", formula: 'prop("Points") * 2' },
+    { id: "c", name: "Created", type: "createdTime" },
+  ];
+  const r = row("a", "A", { num: 4 }, { created: Date.parse("2026-08-05T12:00:00") });
+  expect(matchFilterGroup(r, and({ propId: "f", op: "gt", value: 5 }), props)).toBe(true);
+  expect(
+    matchFilterGroup(r, and({ propId: "c", op: "dateIs", value: "2026-08-05" }), props),
+  ).toBe(true);
+});
+
+test("operatorsFor keeps relation presence-only (temp-id invariant)", () => {
+  const rel: DbProp = { id: "r", name: "R", type: "relation" };
+  expect(operatorsFor(rel)).toEqual(["isEmpty", "isNotEmpty"]);
+});
+
+/* -------------------------- multi-sort --------------------------- */
+
+test("applySorts: later rules break ties, direction respected", () => {
+  const props: DbProp[] = [{ id: "num", name: "N", type: "number" }];
+  const rows = [
+    row("a", "Zed", { num: 1 }),
+    row("b", "Ann", { num: 2 }),
+    row("c", "Bob", { num: 1 }),
+  ];
+  const out = applySorts(
+    rows,
+    [
+      { key: "num", dir: "asc" },
+      { key: "__title", dir: "desc" },
+    ],
+    props,
+  );
+  expect(out.map((r) => r._id)).toEqual(["a", "c", "b"]);
+  expect(applySorts(rows, [], props)).toBe(rows);
+});
+
+/* ------------------- saved views: derivation --------------------- */
+
+const LEGACY = {
+  sort: { key: "__title", dir: "asc" as const },
+  filters: { status: ["todo"], ok: ["__checked"] },
+  groupBy: "status",
+  collapsedGroups: [],
+  activeViewId: null,
+};
+
+test("legacyFiltersToGroup converts the old localStorage shape", () => {
+  const g = legacyFiltersToGroup(LEGACY.filters, FILTER_PROPS)!;
+  expect(g.logic).toBe("and");
+  expect(g.conditions).toContainEqual({ propId: "status", op: "anyOf", value: ["todo"] });
+  expect(g.conditions).toContainEqual({ propId: "ok", op: "checked" });
+  // Empty map → no filter at all.
+  expect(legacyFiltersToGroup({}, FILTER_PROPS)).toBeUndefined();
+});
+
+test("derivedViews: one per kind, seeded from legacy fields", () => {
+  const views = derivedViews(
+    { boardGroupBy: "status", calendarBy: "due" },
+    FILTER_PROPS,
+    LEGACY,
+  );
+  expect(views.map((v) => v.kind)).toEqual([
+    "table",
+    "board",
+    "calendar",
+    "gallery",
+    "timeline",
+  ]);
+  expect(views[0].name).toBe("Table");
+  expect(views[0].groupBy).toBe("status");
+  expect(views[0].sorts).toEqual([LEGACY.sort]);
+  expect(views[0].filter).toBeDefined();
+  expect(views[1].boardGroupBy).toBe("status");
+  expect(views[2].calendarBy).toBe("due");
+  expect(views[4].calendarBy).toBe("due");
+});
+
+test("viewsOf prefers saved views over derivation", () => {
+  const saved = [{ id: "v1", name: "Mine", kind: "table" as const }];
+  expect(viewsOf({ views: saved }, FILTER_PROPS, LEGACY).views).toBe(saved);
+  expect(viewsOf({ views: saved }, FILTER_PROPS, LEGACY).derived).toBe(false);
+  expect(viewsOf({}, FILTER_PROPS, LEGACY).derived).toBe(true);
 });

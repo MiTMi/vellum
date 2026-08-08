@@ -1,25 +1,27 @@
 import React, { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { DbProp, PageDoc, PageMeta } from "../../lib/types";
+import { DbProp, DbView, PageDoc, PageMeta } from "../../lib/types";
 import { useMutations } from "../../data";
 import { requestPeek, useNav } from "../../state";
 import { parseDateValue, toDateKey } from "../../lib/dbviews";
 
 interface CalendarViewProps {
   page: PageDoc;
+  /** The saved view being rendered — its calendarBy picks the date column. */
+  view: DbView;
   rows: PageMeta[];
   locked?: boolean;
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export default function CalendarView({ page, rows, locked }: CalendarViewProps) {
+export default function CalendarView({ page, view, rows, locked }: CalendarViewProps) {
   const mutations = useMutations();
   const { navigate } = useNav();
   const dbProps = page.dbProps ?? [];
 
   const dateProp: DbProp | undefined =
-    dbProps.find((p) => p.id === page.calendarBy && p.type === "date") ??
+    dbProps.find((p) => p.id === view.calendarBy && p.type === "date") ??
     dbProps.find((p) => p.type === "date");
 
   const [cursor, setCursor] = useState(() => {

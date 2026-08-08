@@ -488,6 +488,8 @@ function rawMutationCall(
           calendarBy: op.calendarBy,
         },
       ];
+    case "setViews":
+      return [api.pages.setViews, { id: op.id, views: op.views }];
   }
 }
 

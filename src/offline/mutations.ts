@@ -148,6 +148,12 @@ export function createOfflineMutations(deps: OfflineMutationDeps): Mutations {
       if (store.setView(args, Date.now())) enqueue({ kind: "setView", ...args });
     },
 
+    async setViews(args) {
+      if (store.setViews(args, Date.now())) {
+        enqueue({ kind: "setViews", ...args });
+      }
+    },
+
     async bootstrap() {
       // Never seed until we've seen the server at least once — an existing
       // workspace must not get a duplicate welcome page from a fresh device.

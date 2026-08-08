@@ -6,7 +6,7 @@ import {
 } from "./_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
-import { activeView, dbProp } from "./schema";
+import { activeView, dbProp, dbView } from "./schema";
 import { requireUser } from "./lib/auth";
 import { extractPageLinks } from "./lib/pageLinks";
 import { makeSnippet } from "./lib/snippet";
@@ -289,6 +289,7 @@ export const createWithDoc = mutation({
     trashRoot: v.optional(v.boolean()),
     trashedAt: v.optional(v.number()),
     dbProps: v.optional(v.array(dbProp)),
+    views: v.optional(v.array(dbView)),
     activeView: v.optional(activeView),
     boardGroupBy: v.optional(v.string()),
     calendarBy: v.optional(v.string()),
@@ -760,6 +761,24 @@ export const setView = mutation({
     if (args.boardGroupBy !== undefined) patch.boardGroupBy = args.boardGroupBy;
     if (args.calendarBy !== undefined) patch.calendarBy = args.calendarBy;
     await ctx.db.patch("pages", args.id, patch);
+  },
+});
+
+/**
+ * Replace a database's saved views wholesale. Absolute-valued on purpose:
+ * offline replays coalesce consecutive calls per page and the last array
+ * wins, exactly like updateDbProps.
+ */
+export const setViews = mutation({
+  args: { id: v.id("pages"), views: v.array(dbView) },
+  handler: async (ctx, args) => {
+    await requireUser(ctx);
+    const page = await ctx.db.get("pages", args.id);
+    if (!page) return;
+    await ctx.db.patch("pages", args.id, {
+      views: args.views,
+      updatedAt: Date.now(),
+    });
   },
 });
 

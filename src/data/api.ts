@@ -6,6 +6,7 @@ import {
   BacklinkMeta,
   CommentMeta,
   DbProp,
+  DbView,
   LinkPreview,
   PageDoc,
   PageId,
@@ -167,6 +168,8 @@ export interface Mutations {
     boardGroupBy?: string;
     calendarBy?: string;
   }): Promise<void>;
+  /** Replace a database's saved views (whole array — see convex setViews). */
+  setViews(args: { id: PageId; views: DbView[] }): Promise<void>;
   bootstrap(): Promise<PageId | null>;
 }
 

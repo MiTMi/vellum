@@ -61,6 +61,75 @@ export type ViewKind =
   | "gallery"
   | "timeline";
 
+/* ---- Saved database views (synced; see lib/dbviews.ts) ---- */
+
+export type FilterOp =
+  // text / url / ai (and formula/rollup values compared loosely)
+  | "is"
+  | "isNot"
+  | "contains"
+  | "notContains"
+  | "startsWith"
+  | "endsWith"
+  // number
+  | "eq"
+  | "neq"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  // date (also createdTime / lastEditedTime)
+  | "dateIs"
+  | "dateBefore"
+  | "dateAfter"
+  | "dateOnOrBefore"
+  | "dateOnOrAfter"
+  // select / multiSelect (value: option ids)
+  | "anyOf"
+  | "noneOf"
+  // checkbox
+  | "checked"
+  | "unchecked"
+  // any type
+  | "isEmpty"
+  | "isNotEmpty";
+
+export interface FilterCondition {
+  /** Property id, or "__title" for the title column. */
+  propId: string;
+  op: FilterOp;
+  /**
+   * Comparison operand; shape depends on `op`. Never a page id — relation
+   * props only support isEmpty/isNotEmpty, which is what keeps unsynced
+   * temp ids out of `views` (store.remapId doesn't walk it).
+   */
+  value?: string | number | string[];
+}
+
+export interface FilterGroup {
+  logic: "and" | "or";
+  /** Conditions plus at most one level of nested groups (validator + UI cap). */
+  conditions: (FilterCondition | FilterGroup)[];
+}
+
+export interface SortRule {
+  key: string; // property id or "__title"
+  dir: "asc" | "desc";
+}
+
+/** One saved view of a database. The whole array syncs via `setViews`. */
+export interface DbView {
+  id: string;
+  name: string;
+  kind: ViewKind;
+  filter?: FilterGroup;
+  sorts?: SortRule[];
+  /** Table-view grouping property. */
+  groupBy?: string;
+  boardGroupBy?: string;
+  calendarBy?: string;
+}
+
 export interface SelectOption {
   id: string;
   name: string;
@@ -130,6 +199,11 @@ export interface PageDoc {
   trashRoot?: boolean;
   trashedAt?: number;
   dbProps?: DbProp[];
+  /**
+   * Saved views. Once present, the legacy trio below is a read-only
+   * fallback for deriving the initial set — never dual-write them.
+   */
+  views?: DbView[];
   activeView?: ViewKind;
   boardGroupBy?: string;
   calendarBy?: string;

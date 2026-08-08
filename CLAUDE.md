@@ -364,13 +364,32 @@ flashes it. See `src/lib/anchors.ts`.
 
 ### Databases (`src/components/database/`)
 
-Five views off one `activeView` field: table, board, calendar, gallery and
-timeline (see below).
-`BoardView`/`GalleryView` share card rendering via `CardProps.tsx`. Filters,
-sorts, search, **and table grouping** are local-only (`lib/dbviews.ts` +
-localStorage) — grouping therefore touches no backend and no outbox. Note
-`loadViewState` must default any newly added key: state persisted by an
-older build won't have it.
+**Saved views** (2026-08-08): a database carries `views: DbView[]` — each
+view is a named tab with its own layout (`kind`: table/board/calendar/
+gallery/timeline), compound filter, multi-sort, and grouping config. The
+whole array syncs via the absolute-valued `setViews` mutation (coalesces in
+the outbox like `updateDbProps`). `BoardView`/`GalleryView` share card
+rendering via `CardProps.tsx`.
+
+- **Legacy derivation:** a database with no `views` renders five derived
+  tabs (ids `__table`…) seeded from `activeView`/`boardGroupBy`/`calendarBy`
+  and any pre-saved-views localStorage filter/sort (`derivedViews` in
+  `lib/dbviews.ts`). The first view-config edit materializes the array;
+  after that the legacy trio is a **read-only fallback — never dual-write
+  it**. Mock-mode seeds still use `activeView` and need no migration.
+- **Filters** are compound: one `FilterGroup` per view — a single And/Or
+  over rules plus at most **one** level of nested groups, the cap the
+  schema validator enforces (Convex validators can't recurse). Every
+  property type filters; evaluation is client-side (`matchFilterGroup`).
+  **Relation filters are presence-only on purpose**: page ids inside
+  `views` would need temp-id remapping (`store.remapId` doesn't walk it).
+  A rule with an unfilled operand matches everything, so adding a filter
+  never blanks the view. Text/number operands commit on blur/Enter — every
+  commit is a synced mutation.
+- **Per-device, not synced:** the selected tab (`activeViewId`),
+  collapsed table groups, and the in-database search term
+  (`loadViewState`, which must default any newly added key: state
+  persisted by an older build won't have it).
 
 `relation` properties store an **array of row page-ids** in `props`, with the
 target database on `dbProp.targetId`. `targetId` is `v.string()`, not
@@ -396,9 +415,9 @@ migration was needed. `makeDateValue` deliberately stores the narrower
 string when there is no end date.
 
 The **timeline** view (`TimelineView.tsx`) is a Gantt chart over that
-property; it shares `page.calendarBy` with the calendar rather than adding a
-second "which date column" field. Undated rows are listed under the chart
-instead of being dropped.
+property; it reads the view's `calendarBy` (same field the calendar layout
+uses) rather than adding a second "which date column" field. Undated rows
+are listed under the chart instead of being dropped.
 
 **Formula** properties (`formula` on `dbProp`) are computed at render like
 rollups — never stored. The language lives in `src/lib/formula.ts`: a

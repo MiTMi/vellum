@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { DbProp, PageDoc, PageId, PageMeta } from "../../lib/types";
+import { DbProp, DbView, PageDoc, PageId, PageMeta } from "../../lib/types";
 import { requestPeek, useNav } from "../../state";
 import { parseDateValue, toDateKey } from "../../lib/dbviews";
 
@@ -8,13 +8,14 @@ import { parseDateValue, toDateKey } from "../../lib/dbviews";
  * property. A row with a plain date gets a single-day bar; a row with a
  * range spans start → end (see `parseDateValue` — both shapes are stored).
  *
- * Which property drives it is `page.calendarBy`, shared with the calendar
- * view: both answer "which date column is this database about", and sharing
- * it means picking one in either view carries over to the other.
+ * Which property drives it is the view's `calendarBy` — per saved view,
+ * defaulting to the first date column.
  */
 
 interface TimelineViewProps {
   page: PageDoc;
+  /** The saved view being rendered — its calendarBy picks the date column. */
+  view: DbView;
   rows: PageMeta[];
   locked?: boolean;
 }
@@ -33,13 +34,13 @@ const MONTH_FMT = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
 });
 
-export default function TimelineView({ page, rows, locked }: TimelineViewProps) {
+export default function TimelineView({ page, view, rows, locked }: TimelineViewProps) {
   const { navigate } = useNav();
   const dbProps = page.dbProps ?? [];
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const dateProp: DbProp | undefined =
-    dbProps.find((p) => p.id === page.calendarBy && p.type === "date") ??
+    dbProps.find((p) => p.id === view.calendarBy && p.type === "date") ??
     dbProps.find((p) => p.type === "date");
 
   const { bars, undated } = useMemo(() => {

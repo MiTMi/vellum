@@ -11,7 +11,8 @@ import {
   Search,
   Plus,
   X,
-  ChevronLeft,
+  Copy,
+  Trash2,
 } from "lucide-react";
 import {
   PageDoc,
@@ -19,21 +20,26 @@ import {
   childrenKey,
   PagesIndex,
   DbProp,
+  DbView,
+  SortRule,
   ViewKind,
 } from "../../lib/types";
 import { useMutations } from "../../data";
-import { requestPeek, useNav } from "../../state";
+import { requestPeek } from "../../state";
 import {
-  applyFilters,
+  applyFilterGroup,
   applySearch,
-  applySort,
-  Filters,
+  applySorts,
+  countFilterRules,
   groupRows,
   LocalViewState,
   loadViewState,
+  newViewId,
   saveViewState,
-  Sort,
   toDateKey,
+  VIEW_KIND_LABELS,
+  VIEW_KINDS,
+  viewsOf,
 } from "../../lib/dbviews";
 import TableView from "./TableView";
 import BoardView from "./BoardView";
@@ -42,7 +48,7 @@ import GalleryView from "./GalleryView";
 import TimelineView from "./TimelineView";
 import Menu from "../ui/Menu";
 import Popover from "../ui/Popover";
-import { PROP_TYPE_META } from "./PropertyMenu";
+import FilterBuilder from "./FilterBuilder";
 
 interface DatabaseViewProps {
   page: PageDoc;
@@ -50,18 +56,67 @@ interface DatabaseViewProps {
   locked?: boolean;
 }
 
+const KIND_ICONS: Record<ViewKind, React.ReactNode> = {
+  table: <Table2 size={15} />,
+  board: <Kanban size={15} />,
+  calendar: <CalendarIcon size={15} />,
+  gallery: <LayoutGrid size={15} />,
+  timeline: <GanttChart size={15} />,
+};
+
 export default function DatabaseView({ page, index, locked }: DatabaseViewProps) {
   const mutations = useMutations();
-  const { navigate } = useNav();
   const dbProps = useMemo(() => page.dbProps ?? [], [page.dbProps]);
   const allRows: PageMeta[] = index.children.get(childrenKey(page._id)) ?? [];
-  const view = page.activeView ?? "table";
 
-  const [state, setState] = useState(() => loadViewState(page._id));
-  useEffect(() => setState(loadViewState(page._id)), [page._id]);
-  const update = (next: LocalViewState) => {
-    setState(next);
+  // Per-device state: selected tab + collapsed groups. The legacy
+  // filter/sort keys ride along untouched — they seed derived views.
+  const [local, setLocal] = useState(() => loadViewState(page._id));
+  useEffect(() => setLocal(loadViewState(page._id)), [page._id]);
+  const saveLocal = (next: LocalViewState) => {
+    setLocal(next);
     saveViewState(page._id, next);
+  };
+
+  const { views, derived } = useMemo(
+    () => viewsOf(page, dbProps, local),
+    [page, dbProps, local],
+  );
+  const view =
+    views.find((v) => v.id === local.activeViewId) ??
+    (derived
+      ? (views.find((v) => v.kind === (page.activeView ?? "table")) ?? views[0])
+      : views[0]);
+
+  /** Persist the whole view array — materializes derived views on first edit. */
+  const commitViews = (next: DbView[]) =>
+    void mutations.setViews({ id: page._id, views: next });
+  const updateView = (patch: Partial<DbView>) =>
+    commitViews(views.map((v) => (v.id === view.id ? { ...v, ...patch } : v)));
+
+  const selectTab = (v: DbView) => {
+    saveLocal({ ...local, activeViewId: v.id, collapsedGroups: [] });
+    // Pre-materialization the old synced field still drives other devices'
+    // default tab; once `views` exists it's a read-only fallback.
+    if (derived) void mutations.setView({ id: page._id, activeView: v.kind });
+  };
+
+  const uniqueName = (base: string) => {
+    let name = base;
+    for (let n = 2; views.some((v) => v.name === name); n++) {
+      name = `${base} ${n}`;
+    }
+    return name;
+  };
+
+  const addView = (kind: ViewKind) => {
+    const next: DbView = {
+      id: newViewId(),
+      name: uniqueName(VIEW_KIND_LABELS[kind]),
+      kind,
+    };
+    commitViews([...views, next]);
+    saveLocal({ ...local, activeViewId: next.id, collapsedGroups: [] });
   };
 
   const [searchOpen, setSearchOpen] = useState(false);
@@ -72,13 +127,18 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
   const [tableGroupAnchor, setTableGroupAnchor] = useState<HTMLElement | null>(
     null,
   );
+  const [viewMenuAnchor, setViewMenuAnchor] = useState<HTMLElement | null>(null);
+  const [addViewAnchor, setAddViewAnchor] = useState<HTMLElement | null>(null);
+
+  const sorts = view.sorts ?? [];
+  const filterCount = countFilterRules(view.filter);
 
   const rows = useMemo(() => {
-    let r = applyFilters(allRows, state.filters, dbProps);
+    let r = applyFilterGroup(allRows, view.filter, dbProps, index.byId);
     r = applySearch(r, term);
     // byId lets rollup columns resolve their related rows while sorting.
-    return applySort(r, state.sort, dbProps, index.byId);
-  }, [allRows, state, term, dbProps, index.byId]);
+    return applySorts(r, view.sorts ?? [], dbProps, index.byId);
+  }, [allRows, view.filter, view.sorts, term, dbProps, index.byId]);
 
   const selectProps = dbProps.filter((p) => p.type === "select");
   const dateProps = dbProps.filter((p) => p.type === "date");
@@ -86,19 +146,16 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
     ["select", "multiSelect", "checkbox"].includes(p.type),
   );
   const groups = useMemo(
-    () => (view === "table" ? groupRows(rows, state.groupBy, dbProps) : null),
-    [view, rows, state.groupBy, dbProps],
+    () =>
+      view.kind === "table"
+        ? groupRows(rows, view.groupBy ?? null, dbProps)
+        : null,
+    [view.kind, rows, view.groupBy, dbProps],
   );
-  const activeFilterEntries = Object.entries(state.filters).filter(
-    ([, v]) => v.length > 0,
-  );
-
-  const setView = (activeView: ViewKind) =>
-    void mutations.setView({ id: page._id, activeView });
 
   const newRow = async () => {
     const props: Record<string, unknown> = {};
-    if (view === "calendar" && dateProps[0]) {
+    if (view.kind === "calendar" && dateProps[0]) {
       props[dateProps[0].id] = toDateKey(new Date());
     }
     const id = await mutations.create({
@@ -107,98 +164,72 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
       props: Object.keys(props).length ? props : undefined,
     });
     // Table gets an inline title editor; the other views open the new row.
-    if (view !== "table") requestPeek(id);
+    if (view.kind !== "table") requestPeek(id);
   };
 
-  const filterLabel = (propId: string, values: string[]): string => {
-    const prop = dbProps.find((p) => p.id === propId);
-    if (!prop) return "";
-    if (prop.type === "checkbox") {
-      return values.map((v) => (v === "__checked" ? "Checked" : "Unchecked")).join(", ");
-    }
-    return values
-      .map((v) => prop.options?.find((o) => o.id === v)?.name ?? "")
-      .filter(Boolean)
-      .join(", ");
-  };
+  const sortName = (key: string) =>
+    key === "__title" ? "Name" : (dbProps.find((p) => p.id === key)?.name ?? "—");
 
   return (
     <div className="database-view">
       <div className="db-toolbar">
         <div className="db-tabs">
+          {views.map((v) => (
+            <button
+              key={v.id}
+              className={`db-tab ${v.id === view.id ? "active" : ""}`}
+              onClick={(e) => {
+                if (v.id === view.id) setViewMenuAnchor(e.currentTarget);
+                else selectTab(v);
+              }}
+            >
+              {KIND_ICONS[v.kind]} {v.name}
+            </button>
+          ))}
           <button
-            className={`db-tab ${view === "table" ? "active" : ""}`}
-            onClick={() => setView("table")}
+            className="db-tab db-add-view"
+            title="Add view"
+            onClick={(e) => setAddViewAnchor(e.currentTarget)}
           >
-            <Table2 size={15} /> Table
-          </button>
-          <button
-            className={`db-tab ${view === "board" ? "active" : ""}`}
-            onClick={() => setView("board")}
-          >
-            <Kanban size={15} /> Board
-          </button>
-          <button
-            className={`db-tab ${view === "calendar" ? "active" : ""}`}
-            onClick={() => setView("calendar")}
-          >
-            <CalendarIcon size={15} /> Calendar
-          </button>
-          <button
-            className={`db-tab ${view === "gallery" ? "active" : ""}`}
-            onClick={() => setView("gallery")}
-          >
-            <LayoutGrid size={15} /> Gallery
-          </button>
-          <button
-            className={`db-tab ${view === "timeline" ? "active" : ""}`}
-            onClick={() => setView("timeline")}
-          >
-            <GanttChart size={15} /> Timeline
+            <Plus size={15} />
           </button>
         </div>
         <div className="db-toolbar-right">
-          {view === "board" && selectProps.length > 1 && (
+          {view.kind === "board" && selectProps.length > 1 && (
             <button className="btn subtle" onClick={(e) => setGroupAnchor(e.currentTarget)}>
-              {dbProps.find((p) => p.id === page.boardGroupBy)?.name ??
+              {dbProps.find((p) => p.id === view.boardGroupBy)?.name ??
                 selectProps[0]?.name}
               <ChevronDown size={13} />
             </button>
           )}
-          {view === "table" && groupableProps.length > 0 && (
+          {view.kind === "table" && groupableProps.length > 0 && (
             <button
-              className={`btn subtle ${state.groupBy ? "accent" : ""}`}
+              className={`btn subtle ${view.groupBy ? "accent" : ""}`}
               onClick={(e) => setTableGroupAnchor(e.currentTarget)}
             >
-              {state.groupBy
-                ? `Group: ${dbProps.find((p) => p.id === state.groupBy)?.name ?? "—"}`
+              {view.groupBy
+                ? `Group: ${dbProps.find((p) => p.id === view.groupBy)?.name ?? "—"}`
                 : "Group"}
               <ChevronDown size={13} />
             </button>
           )}
-          {view === "timeline" && dateProps.length > 1 && (
-            <button className="btn subtle" onClick={(e) => setGroupAnchor(e.currentTarget)}>
-              {dbProps.find((p) => p.id === page.calendarBy && p.type === "date")?.name ??
-                dateProps[0]?.name}
-              <ChevronDown size={13} />
-            </button>
-          )}
-          {view === "calendar" && dateProps.length > 1 && (
-            <button className="btn subtle" onClick={(e) => setGroupAnchor(e.currentTarget)}>
-              {dbProps.find((p) => p.id === page.calendarBy && p.type === "date")?.name ??
-                dateProps[0]?.name}
-              <ChevronDown size={13} />
-            </button>
-          )}
+          {(view.kind === "timeline" || view.kind === "calendar") &&
+            dateProps.length > 1 && (
+              <button className="btn subtle" onClick={(e) => setGroupAnchor(e.currentTarget)}>
+                {dbProps.find((p) => p.id === view.calendarBy && p.type === "date")
+                  ?.name ?? dateProps[0]?.name}
+                <ChevronDown size={13} />
+              </button>
+            )}
           <button
-            className={`icon-btn ${activeFilterEntries.length ? "accent" : ""}`}
+            className={`icon-btn ${filterCount ? "accent" : ""}`}
             title="Filter"
             onClick={(e) => setFilterAnchor(e.currentTarget)}
           >
             <ListFilter size={16} />
           </button>
           <button
-            className={`icon-btn ${state.sort ? "accent" : ""}`}
+            className={`icon-btn ${sorts.length ? "accent" : ""}`}
             title="Sort"
             onClick={(e) => setSortAnchor(e.currentTarget)}
           >
@@ -246,94 +277,87 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
         </div>
       </div>
 
-      {(activeFilterEntries.length > 0 || state.sort) && (
+      {(filterCount > 0 || sorts.length > 0) && (
         <div className="db-active-bar">
-          {state.sort && (
-            <span className="db-chip">
+          {sorts.map((rule) => (
+            <span key={rule.key} className="db-chip">
               <ArrowUpDown size={12} />
-              {state.sort.key === "__title"
-                ? "Name"
-                : dbProps.find((p) => p.id === state.sort!.key)?.name}
-              {state.sort.dir === "asc" ? " ↑" : " ↓"}
-              <button onClick={() => update({ ...state, sort: null })}>
-                <X size={12} />
-              </button>
-            </span>
-          )}
-          {activeFilterEntries.map(([propId, values]) => (
-            <span key={propId} className="db-chip">
-              <ListFilter size={12} />
-              {dbProps.find((p) => p.id === propId)?.name}: {filterLabel(propId, values)}
+              {sortName(rule.key)}
+              {rule.dir === "asc" ? " ↑" : " ↓"}
               <button
                 onClick={() =>
-                  update({
-                    ...state,
-                    filters: { ...state.filters, [propId]: [] },
-                  })
+                  updateView({ sorts: sorts.filter((s) => s.key !== rule.key) })
                 }
               >
                 <X size={12} />
               </button>
             </span>
           ))}
+          {filterCount > 0 && (
+            <span className="db-chip">
+              <ListFilter size={12} />
+              {filterCount === 1 ? "1 filter" : `${filterCount} filters`}
+              <button onClick={() => updateView({ filter: undefined })}>
+                <X size={12} />
+              </button>
+            </span>
+          )}
           <span className="db-count">
             {rows.length} of {allRows.length}
           </span>
         </div>
       )}
 
-      {view === "table" && (
+      {view.kind === "table" && (
         <TableView
           page={page}
           rows={rows}
           groups={groups}
-          groupBy={state.groupBy}
-          collapsedGroups={state.collapsedGroups}
+          groupBy={view.groupBy ?? null}
+          collapsedGroups={local.collapsedGroups}
           toggleGroup={(key) =>
-            update({
-              ...state,
-              collapsedGroups: state.collapsedGroups.includes(key)
-                ? state.collapsedGroups.filter((k) => k !== key)
-                : [...state.collapsedGroups, key],
+            saveLocal({
+              ...local,
+              collapsedGroups: local.collapsedGroups.includes(key)
+                ? local.collapsedGroups.filter((k) => k !== key)
+                : [...local.collapsedGroups, key],
             })
           }
-          sort={state.sort}
-          setSort={(sort) => update({ ...state, sort })}
+          sort={sorts[0] ?? null}
+          setSort={(sort) => updateView({ sorts: sort ? [sort] : [] })}
           locked={locked}
         />
       )}
-      {view === "board" && <BoardView page={page} rows={rows} locked={locked} />}
-      {view === "calendar" && <CalendarView page={page} rows={rows} locked={locked} />}
-      {view === "gallery" && <GalleryView page={page} rows={rows} locked={locked} />}
-      {view === "timeline" && <TimelineView page={page} rows={rows} locked={locked} />}
+      {view.kind === "board" && (
+        <BoardView page={page} view={view} rows={rows} locked={locked} />
+      )}
+      {view.kind === "calendar" && (
+        <CalendarView page={page} view={view} rows={rows} locked={locked} />
+      )}
+      {view.kind === "gallery" && (
+        <GalleryView page={page} rows={rows} locked={locked} />
+      )}
+      {view.kind === "timeline" && (
+        <TimelineView page={page} view={view} rows={rows} locked={locked} />
+      )}
 
-      {groupAnchor && view === "board" && (
+      {groupAnchor && view.kind === "board" && (
         <Menu
           anchor={groupAnchor}
           onClose={() => setGroupAnchor(null)}
           items={selectProps.map((p) => ({
             label: p.name,
-            onClick: () => void mutations.setView({ id: page._id, boardGroupBy: p.id }),
+            onClick: () => updateView({ boardGroupBy: p.id }),
           }))}
         />
       )}
-      {groupAnchor && view === "timeline" && (
+      {groupAnchor && (view.kind === "timeline" || view.kind === "calendar") && (
         <Menu
           anchor={groupAnchor}
           onClose={() => setGroupAnchor(null)}
           items={dateProps.map((p) => ({
             label: p.name,
-            onClick: () => void mutations.setView({ id: page._id, calendarBy: p.id }),
-          }))}
-        />
-      )}
-      {groupAnchor && view === "calendar" && (
-        <Menu
-          anchor={groupAnchor}
-          onClose={() => setGroupAnchor(null)}
-          items={dateProps.map((p) => ({
-            label: p.name,
-            onClick: () => void mutations.setView({ id: page._id, calendarBy: p.id }),
+            onClick: () => updateView({ calendarBy: p.id }),
           }))}
         />
       )}
@@ -344,24 +368,28 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
           items={[
             ...groupableProps.map((p) => ({
               label: p.name,
-              onClick: () =>
-                update({ ...state, groupBy: p.id, collapsedGroups: [] }),
+              onClick: () => {
+                updateView({ groupBy: p.id });
+                saveLocal({ ...local, collapsedGroups: [] });
+              },
             })),
             {
               label: "No grouping",
-              onClick: () =>
-                update({ ...state, groupBy: null, collapsedGroups: [] }),
+              onClick: () => {
+                updateView({ groupBy: undefined });
+                saveLocal({ ...local, collapsedGroups: [] });
+              },
             },
           ]}
         />
       )}
       {filterAnchor && (
-        <FilterMenu
+        <FilterBuilder
           anchor={filterAnchor}
           onClose={() => setFilterAnchor(null)}
           dbProps={dbProps}
-          filters={state.filters}
-          setFilters={(filters) => update({ ...state, filters })}
+          filter={view.filter}
+          setFilter={(filter) => updateView({ filter })}
         />
       )}
       {sortAnchor && (
@@ -369,8 +397,47 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
           anchor={sortAnchor}
           onClose={() => setSortAnchor(null)}
           dbProps={dbProps}
-          sort={state.sort}
-          setSort={(sort) => update({ ...state, sort })}
+          sorts={sorts}
+          setSorts={(next) => updateView({ sorts: next })}
+        />
+      )}
+      {viewMenuAnchor && (
+        <ViewMenu
+          anchor={viewMenuAnchor}
+          onClose={() => setViewMenuAnchor(null)}
+          view={view}
+          canDelete={views.length > 1}
+          rename={(name) => updateView({ name })}
+          setKind={(kind) => updateView({ kind })}
+          duplicate={() => {
+            const copy: DbView = {
+              ...view,
+              id: newViewId(),
+              name: uniqueName(view.name),
+            };
+            const i = views.findIndex((v) => v.id === view.id);
+            commitViews([...views.slice(0, i + 1), copy, ...views.slice(i + 1)]);
+            saveLocal({ ...local, activeViewId: copy.id });
+          }}
+          remove={() => {
+            const rest = views.filter((v) => v.id !== view.id);
+            commitViews(rest);
+            saveLocal({
+              ...local,
+              activeViewId: rest[0]?.id ?? null,
+              collapsedGroups: [],
+            });
+          }}
+        />
+      )}
+      {addViewAnchor && (
+        <Menu
+          anchor={addViewAnchor}
+          onClose={() => setAddViewAnchor(null)}
+          items={VIEW_KINDS.map((kind) => ({
+            label: VIEW_KIND_LABELS[kind],
+            onClick: () => addView(kind),
+          }))}
         />
       )}
     </div>
@@ -379,130 +446,146 @@ export default function DatabaseView({ page, index, locked }: DatabaseViewProps)
 
 /* ------------------------------------------------------------------ */
 
-function FilterMenu({
+/** Settings for the active view: rename, layout, duplicate, delete. */
+function ViewMenu({
   anchor,
   onClose,
-  dbProps,
-  filters,
-  setFilters,
+  view,
+  canDelete,
+  rename,
+  setKind,
+  duplicate,
+  remove,
 }: {
   anchor: HTMLElement;
   onClose: () => void;
-  dbProps: DbProp[];
-  filters: Filters;
-  setFilters: (f: Filters) => void;
+  view: DbView;
+  canDelete: boolean;
+  rename: (name: string) => void;
+  setKind: (kind: ViewKind) => void;
+  duplicate: () => void;
+  remove: () => void;
 }) {
-  const [picked, setPicked] = useState<string | null>(null);
-  const filterable = dbProps.filter((p) =>
-    ["select", "multiSelect", "checkbox"].includes(p.type),
-  );
-  const prop = filterable.find((p) => p.id === picked);
-
-  const toggle = (propId: string, value: string) => {
-    const current = filters[propId] ?? [];
-    const next = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    setFilters({ ...filters, [propId]: next });
+  const [name, setName] = useState(view.name);
+  const commitName = () => {
+    const trimmed = name.trim();
+    if (trimmed && trimmed !== view.name) rename(trimmed);
   };
-
   return (
-    <Popover anchor={anchor} onClose={onClose} width={250} align="right" className="menu">
-      {!prop ? (
-        <>
-          <div className="prop-menu-label">Filter by</div>
-          {filterable.map((p) => (
-            <button key={p.id} className="menu-item" onClick={() => setPicked(p.id)}>
-              <span className="menu-icon">{PROP_TYPE_META[p.type].icon}</span>
-              <span>{p.name}</span>
-              {(filters[p.id]?.length ?? 0) > 0 && (
-                <span className="menu-badge">{filters[p.id].length}</span>
-              )}
-            </button>
-          ))}
-          {filterable.length === 0 && (
-            <div className="select-empty">Add a select or checkbox property to filter.</div>
-          )}
-        </>
-      ) : (
-        <>
-          <button className="menu-item" onClick={() => setPicked(null)}>
-            <span className="menu-icon">
-              <ChevronLeft size={15} />
-            </span>
-            <span>{prop.name}</span>
+    <Popover anchor={anchor} onClose={onClose} width={240} className="menu view-menu">
+      <input
+        className="view-menu-name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={commitName}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            commitName();
+            onClose();
+          }
+        }}
+      />
+      <div className="prop-menu-label">Layout</div>
+      <div className="view-menu-kinds">
+        {VIEW_KINDS.map((kind) => (
+          <button
+            key={kind}
+            className={`view-kind ${view.kind === kind ? "active" : ""}`}
+            title={VIEW_KIND_LABELS[kind]}
+            onClick={() => setKind(kind)}
+          >
+            {KIND_ICONS[kind]}
+            <span>{VIEW_KIND_LABELS[kind]}</span>
           </button>
-          <div className="menu-divider" />
-          {prop.type === "checkbox" ? (
-            <>
-              {["__checked", "__unchecked"].map((v) => (
-                <button key={v} className="menu-item" onClick={() => toggle(prop.id, v)}>
-                  <input type="checkbox" readOnly checked={(filters[prop.id] ?? []).includes(v)} />
-                  <span>{v === "__checked" ? "Checked" : "Unchecked"}</span>
-                </button>
-              ))}
-            </>
-          ) : (
-            (prop.options ?? []).map((o) => (
-              <button key={o.id} className="menu-item" onClick={() => toggle(prop.id, o.id)}>
-                <input type="checkbox" readOnly checked={(filters[prop.id] ?? []).includes(o.id)} />
-                <span className={`chip chip-${o.color}`}>{o.name}</span>
-              </button>
-            ))
-          )}
-        </>
+        ))}
+      </div>
+      <div className="menu-divider" />
+      <button
+        className="menu-item"
+        onClick={() => {
+          duplicate();
+          onClose();
+        }}
+      >
+        <span className="menu-icon">
+          <Copy size={15} />
+        </span>
+        <span>Duplicate view</span>
+      </button>
+      {canDelete && (
+        <button
+          className="menu-item danger"
+          onClick={() => {
+            remove();
+            onClose();
+          }}
+        >
+          <span className="menu-icon">
+            <Trash2 size={15} />
+          </span>
+          <span>Delete view</span>
+        </button>
       )}
     </Popover>
   );
 }
 
+/** Multi-sort: click cycles asc → desc → off; order of addition wins. */
 function SortMenu({
   anchor,
   onClose,
   dbProps,
-  sort,
-  setSort,
+  sorts,
+  setSorts,
 }: {
   anchor: HTMLElement;
   onClose: () => void;
   dbProps: DbProp[];
-  sort: Sort;
-  setSort: (s: Sort) => void;
+  sorts: SortRule[];
+  setSorts: (s: SortRule[]) => void;
 }) {
   const entries: { key: string; name: string }[] = [
     { key: "__title", name: "Name" },
     ...dbProps.map((p) => ({ key: p.id, name: p.name })),
   ];
   const cycle = (key: string) => {
-    if (sort?.key !== key) setSort({ key, dir: "asc" });
-    else if (sort.dir === "asc") setSort({ key, dir: "desc" });
-    else setSort(null);
+    const i = sorts.findIndex((s) => s.key === key);
+    if (i === -1) setSorts([...sorts, { key, dir: "asc" }]);
+    else if (sorts[i].dir === "asc") {
+      setSorts(sorts.map((s, j) => (j === i ? { ...s, dir: "desc" } : s)));
+    } else setSorts(sorts.filter((_, j) => j !== i));
   };
   return (
     <Popover anchor={anchor} onClose={onClose} width={230} align="right" className="menu">
       <div className="prop-menu-label">Sort by</div>
-      {entries.map((e) => (
-        <button key={e.key} className="menu-item" onClick={() => cycle(e.key)}>
-          <span>{e.name}</span>
-          {sort?.key === e.key && (
-            <span className="menu-badge">{sort.dir === "asc" ? "↑ A→Z" : "↓ Z→A"}</span>
-          )}
-        </button>
-      ))}
-      {sort && (
+      {entries.map((e) => {
+        const i = sorts.findIndex((s) => s.key === e.key);
+        return (
+          <button key={e.key} className="menu-item" onClick={() => cycle(e.key)}>
+            <span>{e.name}</span>
+            {i !== -1 && (
+              <span className="menu-badge">
+                {sorts.length > 1 ? `${i + 1} · ` : ""}
+                {sorts[i].dir === "asc" ? "↑ A→Z" : "↓ Z→A"}
+              </span>
+            )}
+          </button>
+        );
+      })}
+      {sorts.length > 0 && (
         <>
           <div className="menu-divider" />
           <button
             className="menu-item"
             onClick={() => {
-              setSort(null);
+              setSorts([]);
               onClose();
             }}
           >
             <span className="menu-icon">
               <X size={15} />
             </span>
-            <span>Clear sort</span>
+            <span>Clear sorts</span>
           </button>
         </>
       )}
