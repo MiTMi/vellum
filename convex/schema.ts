@@ -149,11 +149,7 @@ export default defineSchema({
     createdAt: v.number(),
     redeemedBy: v.optional(v.id("users")),
     redeemedAt: v.optional(v.number()),
-  })
-    .index("by_code", ["code"])
-    // Throwaway: exists only to prove the Vercel deploy key can create
-    // indexes (deployment:data:view). Removed in the next commit.
-    .index("by_createdAt_keytest", ["createdAt"]),
+  }).index("by_code", ["code"]),
 
   /**
    * Uploaded files, attributed to their uploader for the 50 MB quota
