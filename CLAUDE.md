@@ -108,15 +108,15 @@ variable is used, it must be Vercel's stable alias, never a per-deployment URL.
 - **`CONVEX_DEPLOY_KEY`** is set on the **Production environment only**. This
   is a security boundary, not tidiness: a preview branch holding a production
   key would push its functions and schema straight into prod.
-- **The deploy key lacks `deployment:data:view`** (discovered 2026-08-09):
-  a deploy that must **create indexes** reads data to backfill them and
-  fails on Vercel with "You do not have permission (deployment:data:view)".
-  Field-only schema changes and function pushes are unaffected. Workaround
-  used for the multi-tenancy migration: `npx convex deploy` from the local
-  CLI (full admin; needs the `expect` TTY wrapper), then `npx vercel
-  redeploy <dpl>` — with indexes already in place, Vercel's deploy passes.
-  Permanent fix: generate a production deploy key with full permissions in
-  the Convex dashboard and update the Vercel env var.
+- **Deploy keys need index-creation rights** (learned 2026-08-09): the
+  original key lacked `deployment:data:view`, so any deploy that had to
+  **create an index** (which reads data to backfill it) failed on Vercel,
+  while field-only schema changes and function pushes sailed through — the
+  multi-tenancy migration was completed via a local `npx convex deploy`
+  (full admin; `expect` TTY wrapper) + `npx vercel redeploy`. **Fixed
+  2026-08-09**: Michael rotated in a full-permission production key and an
+  index-creating deploy was proven green end-to-end. If this error ever
+  reappears, the key was likely regenerated too narrow again.
 - **Preview builds therefore fail** at the `convex deploy` step — no key, and
   no `.env.local` in CI to fall back on. That is the safe failure. Give Preview
   its own *preview* deploy key if you want them green; Convex spins up throwaway
