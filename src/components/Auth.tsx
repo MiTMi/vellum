@@ -258,6 +258,19 @@ function LoginScreen() {
                   );
                 })}
               </ul>
+              <label className="login-label" htmlFor="login-invite">
+                Invite code
+              </label>
+              <input
+                id="login-invite"
+                className="login-input"
+                type="text"
+                name="inviteCode"
+                placeholder="From the person who invited you"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+              />
               <label className="login-label" htmlFor="login-confirm">
                 Repeat password
               </label>

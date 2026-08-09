@@ -220,11 +220,66 @@ smaller); GIFs/SVGs/non-images and already-small files pass through, and
 any failure falls back to the original file. Decision helpers are pure and
 unit-tested; the end-to-end path is covered by `e2e-vault.mjs` (paste).
 
+### Multi-tenancy (Phase 1, 2026-08-09 — docs/multi-user-plan.md)
+
+Every workspace row (`pages`, `pageVersions`, `comments`) carries an
+`ownerId`, and **every function scopes to the signed-in user** through the
+choke points in `convex/lib/auth.ts`:
+
+- `readOwnedPage` — null for missing AND foreign (reads can't probe ids);
+  `writeOwnedPage` — null for missing, **throws "Not authorized"** for
+  foreign (isolation tests assert loudly; the outbox drops the op);
+  `pagesOf` — the `by_owner` index behind every list-shaped query.
+- **Parent-ownership invariant:** create/createWithDoc/move/duplicate all
+  reject foreign parents, so a subtree is single-owner and the `by_parent`
+  walks need no per-row checks. `tests/isolation.test.ts` pins all of this
+  — two users, every function attacked with the other's ids. Keep it green
+  before anything ships.
+- Search (and AI `_retrieve`) filter via the search index's
+  `filterFields: ["ownerId"]`. Internal functions taking client-supplied
+  ids (`_rowForFill`, `_retrieve`) take and enforce `userId`.
+- `ownerId` is stamped server-side only; `createWithDoc` accepts-and-drops
+  a client-sent one (same treatment as `publicSlug`).
+
+**Quotas** (`convex/lib/quotas.ts`; the OWNER_EMAIL account is exempt):
+50 MB files per user (enforced in `files.getFileUrl`, which returns a
+`{url, error}` object rather than throwing — **a throwing mutation would
+roll back the `storage.delete` reclaiming the refused file**); 2,000
+pages; AI $0.10/user/month + $0.85/month non-owner pool, metered in
+`ai.meteredChat` from OpenRouter's `usage.cost` (requested via
+`usage: {include: true}`; conservative estimate + console.warn when
+absent). Known v1 limitation: `files` rows are never reclaimed when pages
+are deleted — quota counts lifetime uploads.
+
+**Owner CLI tools** (`convex/admin.ts`, all internal — unreachable from
+clients): `mintInvite`, `listInvites`, `usageOverview`,
+`backfillOwnerBatch` (migration; loop until `{done: true}`),
+`migrationGate` (all-zeros before minting invites), `ownerUserId`.
+
+**CLI impersonation changed:** `--identity '{"subject":"owner|cli"}'` now
+reads as a user with no pages. Resolve the real id first
+(`npx convex run admin:ownerUserId '{}' --prod`) and use
+`'{"subject":"<thatId>|cli"}'`. `scripts/e2e-offline.mjs` does exactly
+this.
+
+**Tests** use real `users` rows (`tests/helpers.ts`): identities are
+`${userId}|session` because functions compare `Id<"users">` — a made-up
+subject fails id validation. `process.env.OWNER_EMAIL` is set by helpers.
+
 ### Auth
 
-Convex Auth with a single Password provider (`convex/auth.ts`), restricted
-to the deployment's `OWNER_EMAIL` env var — a single-user lock, not
-multi-user auth.
+Convex Auth with a single Password provider (`convex/auth.ts`). Sign-up
+is **invite-code gated** (Phase 1): the code rides the sign-up form as a
+transient `inviteCode` user field (declared on the overridden `users`
+table) and is validated + redeemed in `callbacks.afterUserCreatedOrUpdated`
+— transactional with user creation, so a bad code aborts the sign-up and a
+raced code admits exactly one account. The logic lives in
+`convex/lib/invites.ts` (the callback isn't reachable from convex-test).
+`OWNER_EMAIL` no longer gates sign-in; it now marks the account that is
+quota-exempt, invite-exempt, and admin. Password policy runs in
+`authorize` *before* any write, so a weak password can't burn a code.
+Account deletion (`account.wipeUser`) erases one user's data; the owner is
+refused while other accounts exist, and factory-resets when alone.
 
 `OWNER_EMAIL`, `SITE_URL`, `JWT_PRIVATE_KEY` and `JWKS` are **per-deployment**
 env vars, so a new deployment needs all four before anyone can sign in. The dev

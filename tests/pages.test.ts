@@ -5,23 +5,13 @@ import { expect, test } from "vitest";
 import { api, internal } from "../convex/_generated/api";
 import schema from "../convex/schema";
 
-const modules = import.meta.glob([
-  "../convex/pages.ts",
-  "../convex/account.ts",
-  "../convex/files.ts",
-  "../convex/versions.ts",
-  "../convex/comments.ts",
-  "../convex/migrate.ts",
-  "../convex/schema.ts",
-  "../convex/lib/*.ts",
-  "../convex/_generated/*.js",
-]);
+import { modules, OWNER_EMAIL, ownerBackend } from "./helpers";
 
-// Every function requires a signed-in user (see convex/lib/auth.ts), so the
-// default accessor carries the owner's identity. `subject` mimics Convex
-// Auth's "<userId>|<sessionId>" shape.
-function t() {
-  return convexTest(schema, modules).withIdentity({ subject: "owner|test" });
+// Every function requires a signed-in user backed by a real `users` row
+// (functions stamp and compare Id<"users">). The default accessor is the
+// owner of a fresh backend; see tests/helpers.ts.
+async function t() {
+  return (await ownerBackend()).as;
 }
 
 test("unauthenticated calls are rejected", async () => {
@@ -35,7 +25,7 @@ test("unauthenticated calls are rejected", async () => {
 });
 
 test("bootstrap seeds a welcome page exactly once", async () => {
-  const ctx = t();
+  const ctx = await t();
   const first = await ctx.mutation(api.pages.bootstrap, {});
   expect(first).not.toBeNull();
   const again = await ctx.mutation(api.pages.bootstrap, {});
@@ -46,7 +36,7 @@ test("bootstrap seeds a welcome page exactly once", async () => {
 });
 
 test("create page / nested pages / list tree fields", async () => {
-  const ctx = t();
+  const ctx = await t();
   const parent = await ctx.mutation(api.pages.create, { type: "doc", title: "Parent" });
   const child = await ctx.mutation(api.pages.create, {
     type: "doc",
@@ -60,7 +50,7 @@ test("create page / nested pages / list tree fields", async () => {
 });
 
 test("rename updates searchText and search finds it", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Alpha" });
   await ctx.mutation(api.pages.rename, { id, title: "Quarterly Roadmap" });
   const hits = await ctx.query(api.pages.search, { term: "Quarterly" });
@@ -68,7 +58,7 @@ test("rename updates searchText and search finds it", async () => {
 });
 
 test("updateContent persists blocks and indexes body text", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
   const blocks = [
     { type: "paragraph", content: [{ type: "text", text: "flamingo migration", styles: {} }] },
@@ -85,7 +75,7 @@ test("updateContent persists blocks and indexes body text", async () => {
 });
 
 test("icon and cover set/clear", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc" });
   await ctx.mutation(api.pages.setIcon, { id, icon: "🔥" });
   await ctx.mutation(api.pages.setCover, { id, cover: "gradient:2" });
@@ -100,7 +90,7 @@ test("icon and cover set/clear", async () => {
 });
 
 test("move prevents cycles", async () => {
-  const ctx = t();
+  const ctx = await t();
   const a = await ctx.mutation(api.pages.create, { type: "doc", title: "A" });
   const b = await ctx.mutation(api.pages.create, { type: "doc", title: "B", parentId: a });
   // Try to move A under B (its own descendant) — must be a no-op.
@@ -116,7 +106,7 @@ test("move prevents cycles", async () => {
 });
 
 test("trash hides subtree, restore brings it back", async () => {
-  const ctx = t();
+  const ctx = await t();
   const a = await ctx.mutation(api.pages.create, { type: "doc", title: "A" });
   const b = await ctx.mutation(api.pages.create, { type: "doc", title: "B", parentId: a });
   await ctx.mutation(api.pages.trash, { id: a });
@@ -133,7 +123,7 @@ test("trash hides subtree, restore brings it back", async () => {
 });
 
 test("restoring a child of a trashed parent moves it to root", async () => {
-  const ctx = t();
+  const ctx = await t();
   const a = await ctx.mutation(api.pages.create, { type: "doc", title: "A" });
   const b = await ctx.mutation(api.pages.create, { type: "doc", title: "B", parentId: a });
   await ctx.mutation(api.pages.trash, { id: b });
@@ -145,7 +135,7 @@ test("restoring a child of a trashed parent moves it to root", async () => {
 });
 
 test("deleteForever removes subtree permanently; emptyTrash clears all", async () => {
-  const ctx = t();
+  const ctx = await t();
   const a = await ctx.mutation(api.pages.create, { type: "doc", title: "A" });
   await ctx.mutation(api.pages.create, { type: "doc", title: "B", parentId: a });
   const c = await ctx.mutation(api.pages.create, { type: "doc", title: "C" });
@@ -159,7 +149,7 @@ test("deleteForever removes subtree permanently; emptyTrash clears all", async (
 });
 
 test("duplicate clones subtree with ' (copy)' suffix", async () => {
-  const ctx = t();
+  const ctx = await t();
   const a = await ctx.mutation(api.pages.create, { type: "doc", title: "Notes" });
   await ctx.mutation(api.pages.create, { type: "doc", title: "Inner", parentId: a });
   const copyId = await ctx.mutation(api.pages.duplicate, { id: a });
@@ -173,7 +163,7 @@ test("duplicate clones subtree with ' (copy)' suffix", async () => {
 });
 
 test("database defaults, row props, views", async () => {
-  const ctx = t();
+  const ctx = await t();
   const db = await ctx.mutation(api.pages.create, { type: "database", title: "Tasks" });
   const doc = await ctx.query(api.pages.get, { id: db });
   expect(doc?.dbProps?.length).toBe(3);
@@ -209,7 +199,7 @@ test("database defaults, row props, views", async () => {
 });
 
 test("setViews stores saved views (filters, sorts, nested group) and bumps updatedAt", async () => {
-  const ctx = t();
+  const ctx = await t();
   const db = await ctx.mutation(api.pages.create, { type: "database", title: "Tasks" });
   const before = (await ctx.query(api.pages.get, { id: db }))!;
   expect(before.views).toBeUndefined();
@@ -248,7 +238,7 @@ test("setViews stores saved views (filters, sorts, nested group) and bumps updat
 });
 
 test("backlinks lists linking pages, excluding trashed and self", async () => {
-  const ctx = t();
+  const ctx = await t();
   const target = await ctx.mutation(api.pages.create, { type: "doc", title: "Target" });
   const src1 = await ctx.mutation(api.pages.create, { type: "doc", title: "Src1" });
   const src2 = await ctx.mutation(api.pages.create, { type: "doc", title: "Src2" });
@@ -279,7 +269,7 @@ test("backlinks lists linking pages, excluding trashed and self", async () => {
 /* ------------------------------------------------------------------ */
 
 test("syncIndex lists every page including trashed, drops deleted", async () => {
-  const ctx = t();
+  const ctx = await t();
   const a = await ctx.mutation(api.pages.create, { type: "doc", title: "A" });
   const b = await ctx.mutation(api.pages.create, { type: "doc", title: "B" });
   await ctx.mutation(api.pages.trash, { id: a });
@@ -291,7 +281,7 @@ test("syncIndex lists every page including trashed, drops deleted", async () => 
 });
 
 test("getMany returns full docs and skips missing ids", async () => {
-  const ctx = t();
+  const ctx = await t();
   const a = await ctx.mutation(api.pages.create, { type: "doc", title: "A" });
   const b = await ctx.mutation(api.pages.create, { type: "doc", title: "B" });
   await ctx.mutation(api.pages.trash, { id: b });
@@ -303,7 +293,7 @@ test("getMany returns full docs and skips missing ids", async () => {
 });
 
 test("every page-patching mutation bumps updatedAt", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "X" });
   const stamp = async () =>
     (await ctx.query(api.pages.get, { id }))!.updatedAt;
@@ -326,7 +316,7 @@ test("every page-patching mutation bumps updatedAt", async () => {
 });
 
 test("patch mutations no-op on deleted pages instead of throwing", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Gone" });
   await ctx.mutation(api.pages.trash, { id });
   await ctx.mutation(api.pages.deleteForever, { id });
@@ -341,7 +331,7 @@ test("patch mutations no-op on deleted pages instead of throwing", async () => {
 });
 
 test("createWithDoc is idempotent via clientKey", async () => {
-  const ctx = t();
+  const ctx = await t();
   const args = {
     clientKey: "local_abc123",
     title: "Offline page",
@@ -357,7 +347,7 @@ test("createWithDoc is idempotent via clientKey", async () => {
 });
 
 test("duplicate does not copy clientKey", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.createWithDoc, {
     clientKey: "local_dup",
     title: "Src",
@@ -380,7 +370,7 @@ test("duplicate does not copy clientKey", async () => {
 });
 
 test("updateContent/rename LWW: older replayed edit loses, newer wins", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
   await ctx.mutation(api.pages.updateContent, {
     id,
@@ -408,7 +398,7 @@ test("updateContent/rename LWW: older replayed edit loses, newer wins", async ()
 });
 
 test("favorites toggle and clear on trash", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Fav" });
   await ctx.mutation(api.pages.toggleFavorite, { id });
   let meta = (await ctx.query(api.pages.list, {})).find((p) => p._id === id)!;
@@ -424,7 +414,7 @@ test("favorites toggle and clear on trash", async () => {
 /* ------------------------------------------------------------------ */
 
 test("setTemplate is absolute and surfaces in list", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Meeting" });
   let meta = (await ctx.query(api.pages.list, {})).find((p) => p._id === id)!;
   expect(meta.isTemplate).toBe(false);
@@ -444,7 +434,7 @@ test("setTemplate is absolute and surfaces in list", async () => {
 });
 
 test("duplicate asInstance clears the template flag and reparents", async () => {
-  const ctx = t();
+  const ctx = await t();
   const tpl = await ctx.mutation(api.pages.create, { type: "doc", title: "Weekly" });
   await ctx.mutation(api.pages.create, {
     type: "doc",
@@ -471,7 +461,7 @@ test("duplicate asInstance clears the template flag and reparents", async () => 
 });
 
 test("plain duplicate still copies alongside with a suffix", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Notes" });
   const copy = (await ctx.mutation(api.pages.duplicate, { id }))!;
   const meta = (await ctx.query(api.pages.list, {})).find((p) => p._id === copy)!;
@@ -479,7 +469,7 @@ test("plain duplicate still copies alongside with a suffix", async () => {
 });
 
 test("createWithDoc accepts isTemplate and gallery view", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.createWithDoc, {
     clientKey: "local_tpl",
     title: "Offline template",
@@ -499,7 +489,7 @@ test("createWithDoc accepts isTemplate and gallery view", async () => {
 /* ------------------------------------------------------------------ */
 
 test("relation props round-trip through updateDbProps and setRowProp", async () => {
-  const ctx = t();
+  const ctx = await t();
   const projects = await ctx.mutation(api.pages.create, {
     type: "database",
     title: "Projects",
@@ -544,7 +534,7 @@ const para = (text: string) => [
 ];
 
 test("updateContent snapshots the previous content, throttled", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
 
   // First write has no previous content — nothing to snapshot.
@@ -578,7 +568,7 @@ test("updateContent snapshots the previous content, throttled", async () => {
 });
 
 test("a write past the throttle window captures another snapshot", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
   // clientUpdatedAt drives `now`. It must stay monotonically ahead of the
   // first write's wall-clock stamp or last-writer-wins discards it.
@@ -603,7 +593,7 @@ test("a write past the throttle window captures another snapshot", async () => {
 });
 
 test("deleteForever removes a page's history", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
   await ctx.mutation(api.pages.updateContent, { id, content: para("a"), text: "a" });
   await ctx.mutation(api.pages.updateContent, { id, content: para("b"), text: "b" });
@@ -619,7 +609,7 @@ test("deleteForever removes a page's history", async () => {
 /* ------------------------------------------------------------------ */
 
 test("search returns a body snippet, or null when only the title matched", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Zoology",
@@ -642,7 +632,7 @@ test("search returns a body snippet, or null when only the title matched", async
 /* ------------------------------------------------------------------ */
 
 test("comments add / list / resolve (absolute) / remove", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
 
   await ctx.mutation(api.comments.add, { pageId: id, text: "  fix this  " });
@@ -663,7 +653,7 @@ test("comments add / list / resolve (absolute) / remove", async () => {
 });
 
 test("comments ignore empty text and never bump the page's updatedAt", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
   const before = (await ctx.query(api.pages.get, { id }))!.updatedAt;
 
@@ -677,7 +667,7 @@ test("comments ignore empty text and never bump the page's updatedAt", async () 
 });
 
 test("deleteForever and emptyTrash cascade to comments", async () => {
-  const ctx = t();
+  const ctx = await t();
   const a = await ctx.mutation(api.pages.create, { type: "doc", title: "A" });
   const b = await ctx.mutation(api.pages.create, { type: "doc", title: "B" });
   await ctx.mutation(api.comments.add, { pageId: a, text: "on a" });
@@ -698,7 +688,7 @@ test("deleteForever and emptyTrash cascade to comments", async () => {
 /* ------------------------------------------------------------------ */
 
 test("rollup and timestamp property configs persist through updateDbProps", async () => {
-  const ctx = t();
+  const ctx = await t();
   const db = await ctx.mutation(api.pages.create, {
     type: "database",
     title: "Tasks",
@@ -744,7 +734,7 @@ function imageDoc(url: string) {
 }
 
 test("rewriteHostBatch swaps the deployment host and bumps both timestamps", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Shot" });
   await ctx.mutation(api.pages.updateContent, {
     id,
@@ -784,7 +774,7 @@ test("rewriteHostBatch swaps the deployment host and bumps both timestamps", asy
 });
 
 test("rewriteHostBatch leaves untouched pages alone and paginates", async () => {
-  const ctx = t();
+  const ctx = await t();
   const clean = await ctx.mutation(api.pages.create, { type: "doc", title: "Clean" });
   await ctx.mutation(api.pages.updateContent, {
     id: clean,
@@ -821,7 +811,7 @@ test("rewriteHostBatch leaves untouched pages alone and paginates", async () => 
 });
 
 test("rewriteVersionHostBatch sweeps history snapshots", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Hist" });
   // First write seeds content; the second snapshots it into pageVersions.
   await ctx.mutation(api.pages.updateContent, {
@@ -854,7 +844,7 @@ test("rewriteVersionHostBatch sweeps history snapshots", async () => {
 /* ------------------------------------------------------------------ vault */
 
 test("vault: children inherit the flag through create and createWithDoc", async () => {
-  const ctx = t();
+  const ctx = await t();
   const root = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Vault",
@@ -886,7 +876,7 @@ test("vault: children inherit the flag through create and createWithDoc", async 
 });
 
 test("vault: rename and updateContent keep search fields empty", async () => {
-  const ctx = t();
+  const ctx = await t();
   const root = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Vault",
@@ -911,7 +901,7 @@ test("vault: rename and updateContent keep search fields empty", async () => {
 });
 
 test("vault: pages cannot be published", async () => {
-  const ctx = t();
+  const ctx = await t();
   const root = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Vault",
@@ -927,7 +917,7 @@ test("vault: pages cannot be published", async () => {
 });
 
 test("vault: no databases inside", async () => {
-  const ctx = t();
+  const ctx = await t();
   const root = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Vault",
@@ -939,7 +929,7 @@ test("vault: no databases inside", async () => {
 });
 
 test("vault: moves across the boundary are rejected, root stays movable", async () => {
-  const ctx = t();
+  const ctx = await t();
   const root = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Vault",
@@ -966,7 +956,7 @@ test("vault: moves across the boundary are rejected, root stays movable", async 
 });
 
 test("vault: duplication is fenced and never copies a slug", async () => {
-  const ctx = t();
+  const ctx = await t();
   const root = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Vault",
@@ -1006,7 +996,7 @@ test("vault: duplication is fenced and never copies a slug", async () => {
 /* ---------------------------------------------------------------- account */
 
 test("wipeEverything erases pages, sidecars, and auth state", async () => {
-  const ctx = t();
+  const ctx = await t();
   const pageId = await ctx.mutation(api.pages.create, { type: "doc", title: "Doomed" });
   await ctx.mutation(api.pages.updateContent, {
     id: pageId,
@@ -1039,10 +1029,9 @@ test("wipeEverything erases pages, sidecars, and auth state", async () => {
   });
 });
 
-test("account.me requires auth and reports the owner email", async () => {
+test("account.me requires auth and reports the signed-in user's own email", async () => {
   const anon = convexTest(schema, modules);
   await expect(anon.query(api.account.me, {})).rejects.toThrow(/Not authenticated/);
-  process.env.OWNER_EMAIL = "owner@example.com";
-  const ctx = t();
-  expect((await ctx.query(api.account.me, {})).email).toBe("owner@example.com");
+  const ctx = await t();
+  expect((await ctx.query(api.account.me, {})).email).toBe(OWNER_EMAIL);
 });

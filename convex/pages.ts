@@ -7,7 +7,13 @@ import {
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
 import { activeView, dbProp, dbView } from "./schema";
-import { requireUser } from "./lib/auth";
+import {
+  pagesOf,
+  readOwnedPage,
+  requireUser,
+  writeOwnedPage,
+} from "./lib/auth";
+import { assertPageQuota } from "./lib/quotas";
 import { extractPageLinks } from "./lib/pageLinks";
 import { makeSnippet } from "./lib/snippet";
 import {
@@ -77,8 +83,8 @@ async function forSubtree(
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireUser(ctx);
-    const pages = await ctx.db.query("pages").collect();
+    const userId = await requireUser(ctx);
+    const pages = await pagesOf(ctx, userId);
     return pages
       .filter((p) => !p.inTrash)
       .map((p) => ({
@@ -103,16 +109,17 @@ export const list = query({
 export const get = query({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    return await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    // Null for missing AND foreign alike — reads can't probe existence.
+    return await readOwnedPage(ctx, userId, args.id);
   },
 });
 
 export const trashed = query({
   args: {},
   handler: async (ctx) => {
-    await requireUser(ctx);
-    const pages = await ctx.db.query("pages").collect();
+    const userId = await requireUser(ctx);
+    const pages = await pagesOf(ctx, userId);
     return pages
       .filter((p) => p.inTrash && p.trashRoot)
       .sort((a, b) => (b.trashedAt ?? 0) - (a.trashedAt ?? 0))
@@ -135,8 +142,8 @@ export const trashed = query({
 export const syncIndex = query({
   args: {},
   handler: async (ctx) => {
-    await requireUser(ctx);
-    const pages = await ctx.db.query("pages").collect();
+    const userId = await requireUser(ctx);
+    const pages = await pagesOf(ctx, userId);
     return pages.map((p) => ({ _id: p._id, updatedAt: p.updatedAt }));
   },
 });
@@ -145,10 +152,12 @@ export const syncIndex = query({
 export const getMany = query({
   args: { ids: v.array(v.id("pages")) },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
     const docs: Doc<"pages">[] = [];
     for (const id of args.ids) {
-      const doc = await ctx.db.get("pages", id);
+      // Foreign ids silently drop out, like deleted ones — the sync engine
+      // treats absence as "permanently gone", which is the right outcome.
+      const doc = await readOwnedPage(ctx, userId, id);
       if (doc) docs.push(doc);
     }
     return docs;
@@ -159,8 +168,8 @@ export const getMany = query({
 export const backlinks = query({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const pages = await ctx.db.query("pages").collect();
+    const userId = await requireUser(ctx);
+    const pages = await pagesOf(ctx, userId);
     return pages
       .filter(
         (p) =>
@@ -181,11 +190,13 @@ export const backlinks = query({
 export const search = query({
   args: { term: v.string() },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
     if (!args.term.trim()) return [];
     const results = await ctx.db
       .query("pages")
-      .withSearchIndex("search", (q) => q.search("searchText", args.term))
+      .withSearchIndex("search", (q) =>
+        q.search("searchText", args.term).eq("ownerId", userId),
+      )
       .take(20);
     return results
       // Vault pages are excluded defensively: their searchText is written
@@ -218,10 +229,15 @@ export const create = mutation({
     vault: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
+    // A foreign parent throws — this is one of the writes upholding the
+    // parent-ownership invariant (see lib/auth.ts).
+    const parent = args.parentId
+      ? await writeOwnedPage(ctx, userId, args.parentId)
+      : null;
+    await assertPageQuota(ctx, userId);
     // Vault membership is inherited server-side so a buggy client can't
     // create a plaintext-indexed page inside the encrypted subtree.
-    const parent = args.parentId ? await ctx.db.get("pages", args.parentId) : null;
     const vault = args.vault || parent?.vault ? true : undefined;
     if (vault && args.type === "database") {
       throw new Error("Databases inside the Vault are not supported yet");
@@ -229,6 +245,7 @@ export const create = mutation({
     const rank = await nextRank(ctx, args.parentId);
     const now = Date.now();
     const id = await ctx.db.insert("pages", {
+      ownerId: userId,
       title: args.title ?? "",
       type: args.type,
       parentId: args.parentId,
@@ -297,24 +314,33 @@ export const createWithDoc = mutation({
     // Accepted so a stray value can't make the validator reject the whole
     // replay forever (see the createWithDoc invariant in CLAUDE.md), but
     // dropped below: publishing is server-authoritative and a page created
-    // offline is never already public.
+    // offline is never already public. Ownership is likewise always stamped
+    // server-side — a replica doc may carry the server-written ownerId.
     publicSlug: v.optional(v.string()),
     publishedAt: v.optional(v.number()),
+    ownerId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
     const existing = await ctx.db
       .query("pages")
       .withIndex("by_clientKey", (q) => q.eq("clientKey", args.clientKey))
       .unique();
-    if (existing) return existing._id;
-    const { clientKey, publicSlug, publishedAt, ...doc } = args;
+    // clientKeys are client-generated UUIDs; a cross-user collision is not
+    // a replay, so only the creator's own row makes the call idempotent.
+    if (existing && existing.ownerId === userId) return existing._id;
+    const { clientKey, publicSlug, publishedAt, ownerId: _dropped, ...doc } = args;
+    // Foreign parents throw (parent-ownership invariant, lib/auth.ts).
+    const parent = doc.parentId
+      ? await writeOwnedPage(ctx, userId, doc.parentId)
+      : null;
+    await assertPageQuota(ctx, userId);
     // Same server-side vault inheritance as `create`, plus: an encrypted
     // page must never contribute plaintext to the search index.
-    const parent = doc.parentId ? await ctx.db.get("pages", doc.parentId) : null;
     const vault = doc.vault || parent?.vault ? true : undefined;
     return await ctx.db.insert("pages", {
       ...doc,
+      ownerId: userId,
       vault,
       contentText: vault ? "" : doc.contentText,
       searchText: vault ? "" : doc.searchText,
@@ -333,8 +359,8 @@ export const rename = mutation({
     clientUpdatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     if (
       args.clientUpdatedAt !== undefined &&
@@ -363,8 +389,8 @@ export const updateContent = mutation({
     clientUpdatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     if (
       args.clientUpdatedAt !== undefined &&
@@ -386,6 +412,7 @@ export const updateContent = mutation({
         .first();
       if (shouldSnapshot(latest?.savedAt, now)) {
         await ctx.db.insert("pageVersions", {
+          ownerId: page.ownerId,
           pageId: args.id,
           title: page.title,
           content: page.content,
@@ -419,8 +446,8 @@ export const updateContent = mutation({
 export const setIcon = mutation({
   args: { id: v.id("pages"), icon: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     await ctx.db.patch("pages", args.id, {
       icon: args.icon === null ? undefined : args.icon,
@@ -432,8 +459,8 @@ export const setIcon = mutation({
 export const setCover = mutation({
   args: { id: v.id("pages"), cover: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     await ctx.db.patch("pages", args.id, {
       cover: args.cover === null ? undefined : args.cover,
@@ -454,8 +481,8 @@ export const setPageOptions = mutation({
     locked: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.font !== undefined) patch.font = args.font;
@@ -474,8 +501,8 @@ export const toggleFavorite = mutation({
     value: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     await ctx.db.patch("pages", args.id, {
       isFavorite: args.value ?? !page.isFavorite,
@@ -491,8 +518,8 @@ export const setTemplate = mutation({
     value: v.boolean(),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     await ctx.db.patch("pages", args.id, {
       isTemplate: args.value,
@@ -512,8 +539,11 @@ export const move = mutation({
     rank: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
     if (args.parentId) {
+      // The destination must be the user's own page (parent-ownership
+      // invariant) — checked before anything else.
+      await writeOwnedPage(ctx, userId, args.parentId);
       // Prevent moving a page inside its own subtree.
       let cursor: Id<"pages"> | undefined = args.parentId;
       while (cursor) {
@@ -522,7 +552,7 @@ export const move = mutation({
         cursor = p?.parentId;
       }
     }
-    const page = await ctx.db.get("pages", args.id);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     // The vault boundary is not crossable by moving: a plaintext page can't
     // land inside the encrypted subtree (it would be unreadable there and
@@ -568,12 +598,20 @@ export const duplicate = mutation({
     toRoot: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const src = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const src = await writeOwnedPage(ctx, userId, args.id);
     if (!src) return null;
 
     const reparent = args.parentId !== undefined || args.toRoot === true;
     const destParent = args.parentId;
+    // Foreign destination parents throw (parent-ownership invariant).
+    if (destParent) await writeOwnedPage(ctx, userId, destParent);
+    // Quota: the copy adds the whole subtree's worth of pages.
+    let subtreeSize = 0;
+    await forSubtree(ctx, args.id, async () => {
+      subtreeSize++;
+    });
+    await assertPageQuota(ctx, userId, subtreeSize);
     const destRank = reparent
       ? await nextRank(ctx, destParent)
       : src.rank + 1;
@@ -648,7 +686,8 @@ export const duplicate = mutation({
 export const trash = mutation({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
+    if (!(await writeOwnedPage(ctx, userId, args.id))) return;
     const now = Date.now();
     await forSubtree(ctx, args.id, async (page) => {
       await ctx.db.patch("pages", page._id, {
@@ -665,8 +704,8 @@ export const trash = mutation({
 export const restore = mutation({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     // If the original parent is gone or still in the trash, restore to root.
     let parentId = page.parentId;
@@ -689,7 +728,8 @@ export const restore = mutation({
 export const deleteForever = mutation({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
+    if (!(await writeOwnedPage(ctx, userId, args.id))) return;
     const ids: Id<"pages">[] = [];
     await forSubtree(ctx, args.id, async (p) => {
       ids.push(p._id);
@@ -704,8 +744,8 @@ export const deleteForever = mutation({
 export const emptyTrash = mutation({
   args: {},
   handler: async (ctx) => {
-    await requireUser(ctx);
-    const pages = await ctx.db.query("pages").collect();
+    const userId = await requireUser(ctx);
+    const pages = await pagesOf(ctx, userId);
     for (const p of pages) {
       if (p.inTrash) {
         await deleteSidecarsOf(ctx, p._id);
@@ -722,8 +762,8 @@ export const emptyTrash = mutation({
 export const updateDbProps = mutation({
   args: { id: v.id("pages"), dbProps: v.array(dbProp) },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     await ctx.db.patch("pages", args.id, {
       dbProps: args.dbProps,
@@ -735,8 +775,8 @@ export const updateDbProps = mutation({
 export const setRowProp = mutation({
   args: { id: v.id("pages"), propId: v.string(), value: v.any() },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     const props = { ...(page.props ?? {}) };
     if (args.value === null) delete props[args.propId];
@@ -753,8 +793,8 @@ export const setView = mutation({
     calendarBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.activeView !== undefined) patch.activeView = args.activeView;
@@ -772,8 +812,8 @@ export const setView = mutation({
 export const setViews = mutation({
   args: { id: v.id("pages"), views: v.array(dbView) },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return;
     await ctx.db.patch("pages", args.id, {
       views: args.views,
@@ -806,8 +846,8 @@ function newPublicSlug(): string {
 export const setPublished = mutation({
   args: { id: v.id("pages"), value: v.boolean() },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const page = await ctx.db.get("pages", args.id);
+    const userId = await requireUser(ctx);
+    const page = await writeOwnedPage(ctx, userId, args.id);
     if (!page) return null;
 
     // The Vault's contract is absolute: its pages are ciphertext to the
@@ -858,11 +898,15 @@ export const bySlug = internalQuery({
     if (!page || page.inTrash) return null;
 
     // Titles for sub-page links/mentions — the renderer prints titles only,
-    // never ids or URLs, so this leaks nothing beyond what the author wrote.
+    // never ids or URLs. Restricted to the author's own pages: without the
+    // ownerId check, publishing a doc with a foreign page id pasted into a
+    // link block would read another user's page title through this route.
     const titles: Record<string, string> = {};
     for (const id of extractPageLinks(page.content)) {
       const linked = await ctx.db.get("pages", id as Id<"pages">);
-      if (linked) titles[id] = linked.title;
+      if (linked && linked.ownerId === page.ownerId) {
+        titles[id] = linked.title;
+      }
     }
 
     return {
@@ -878,11 +922,16 @@ export const bySlug = internalQuery({
 export const bootstrap = mutation({
   args: {},
   handler: async (ctx) => {
-    await requireUser(ctx);
-    const existing = await ctx.db.query("pages").first();
+    const userId = await requireUser(ctx);
+    // Per-user: each fresh account gets its own welcome page.
+    const existing = await ctx.db
+      .query("pages")
+      .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+      .first();
     if (existing) return null;
     const now = Date.now();
     const welcome = await ctx.db.insert("pages", {
+      ownerId: userId,
       title: "Welcome to Vellum",
       type: "doc",
       rank: 1024,

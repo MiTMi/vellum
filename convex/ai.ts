@@ -1,9 +1,20 @@
-import { action, internalQuery } from "./_generated/server";
+import {
+  ActionCtx,
+  action,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
-import { requireUser } from "./lib/auth";
+import { isOwnerUser, requireUser } from "./lib/auth";
 import { chat, aiModel } from "./lib/openrouter";
-import { Doc } from "./_generated/dataModel";
+import {
+  AI_POOL_MONTHLY_MICRO_USD,
+  AI_USER_MONTHLY_MICRO_USD,
+  aiSpend,
+  monthKey,
+} from "./lib/quotas";
+import { Doc, Id } from "./_generated/dataModel";
 
 /**
  * AI features, mirroring the three Notion AI capabilities that fit Vellum's
@@ -26,6 +37,80 @@ import { Doc } from "./_generated/dataModel";
  * client is responsible for not offering AI inside the vault — the two other
  * actions re-derive the check server-side, where it can't be bypassed.
  */
+
+/* ------------------------------------------------------------------ *
+ * Spend metering (docs/multi-user-plan.md, decided 2026-08-09)
+ *
+ * Every model call goes through `meteredChat`: a pre-flight budget check
+ * ($0.10/user/month and a $0.85/month pool shared by all non-owner users),
+ * then the call, then recording OpenRouter's reported cost. The owner is
+ * exempt and never recorded — so the pool is simply the month's total.
+ * Concurrent calls can overshoot a cap by one request; that is cents, and
+ * accepted.
+ * ------------------------------------------------------------------ */
+
+export const _budgetCheck = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args): Promise<{ exempt: boolean }> => {
+    if (await isOwnerUser(ctx, args.userId)) return { exempt: true };
+    const { userMicro, poolMicro } = await aiSpend(ctx, args.userId);
+    if (userMicro >= AI_USER_MONTHLY_MICRO_USD) {
+      throw new ConvexError(
+        "You've used this month's AI allowance. It resets on the 1st.",
+      );
+    }
+    if (poolMicro >= AI_POOL_MONTHLY_MICRO_USD) {
+      throw new ConvexError(
+        "This month's shared AI budget is used up. It resets on the 1st.",
+      );
+    }
+    return { exempt: false };
+  },
+});
+
+export const _recordSpend = internalMutation({
+  args: { userId: v.id("users"), costMicroUsd: v.number() },
+  handler: async (ctx, args) => {
+    const month = monthKey();
+    const row = await ctx.db
+      .query("aiUsage")
+      .withIndex("by_user_month", (q) =>
+        q.eq("userId", args.userId).eq("month", month),
+      )
+      .unique();
+    if (row) {
+      await ctx.db.patch("aiUsage", row._id, {
+        costMicroUsd: row.costMicroUsd + args.costMicroUsd,
+        calls: row.calls + 1,
+      });
+    } else {
+      await ctx.db.insert("aiUsage", {
+        userId: args.userId,
+        month,
+        costMicroUsd: args.costMicroUsd,
+        calls: 1,
+      });
+    }
+  },
+});
+
+/** The one way AI actions may call the model: budget-gated and metered. */
+async function meteredChat(
+  ctx: ActionCtx,
+  userId: Id<"users">,
+  messages: Parameters<typeof chat>[0],
+  opts?: Parameters<typeof chat>[1],
+): Promise<string> {
+  const gate: { exempt: boolean } = await ctx.runQuery(
+    internal.ai._budgetCheck,
+    { userId },
+  );
+  const { text, costMicroUsd } = await chat(messages, opts);
+  if (!gate.exempt) {
+    await ctx.runMutation(internal.ai._recordSpend, { userId, costMicroUsd });
+  }
+  return text;
+}
 
 /** Retrieval budget for `ask`. Enough context to answer across pages,
  *  short enough to stay well inside the model's practical latency. */
@@ -132,7 +217,7 @@ export const transform = action({
     option: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<string> => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
 
     const text = args.text.trim();
     if (!text && NEEDS_TEXT.includes(args.kind)) {
@@ -151,7 +236,7 @@ export const transform = action({
       ? `${instructionFor(args.kind, args.option)}\n\n---\n${text}\n---`
       : blankInstructionFor(args.kind, args.option);
 
-    return await chat([
+    return await meteredChat(ctx, userId, [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content },
     ]);
@@ -190,9 +275,12 @@ function propInstruction(kind: AiPropKind, prompt: string | undefined): string {
 /** Server-side read for the fill actions — keeps the vault/trash checks
  *  where the client cannot skip them. */
 export const _rowForFill = internalQuery({
-  args: { pageId: v.id("pages") },
+  args: { pageId: v.id("pages"), userId: v.id("users") },
   handler: async (ctx, args): Promise<Doc<"pages"> | null> => {
-    return await ctx.db.get(args.pageId);
+    const page = await ctx.db.get(args.pageId);
+    // Foreign rows read as missing — same rule as pages.get.
+    if (!page || page.ownerId !== args.userId) return null;
+    return page;
   },
 });
 
@@ -208,11 +296,11 @@ export const fillProperty = action({
     prompt: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<string> => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
 
     const row: Doc<"pages"> | null = await ctx.runQuery(
       internal.ai._rowForFill,
-      { pageId: args.pageId },
+      { pageId: args.pageId, userId },
     );
     if (!row) throw new ConvexError("That row no longer exists.");
     if (row.vault) {
@@ -229,7 +317,9 @@ export const fillProperty = action({
       throw new ConvexError(`"${title}" has no content to work from yet.`);
     }
 
-    return await chat(
+    return await meteredChat(
+      ctx,
+      userId,
       [
         {
           role: "system",
@@ -272,11 +362,13 @@ export interface AskResult {
  * function.
  */
 export const _retrieve = internalQuery({
-  args: { question: v.string() },
+  args: { question: v.string(), userId: v.id("users") },
   handler: async (ctx, args) => {
     const hits = await ctx.db
       .query("pages")
-      .withSearchIndex("search", (q) => q.search("searchText", args.question))
+      .withSearchIndex("search", (q) =>
+        q.search("searchText", args.question).eq("ownerId", args.userId),
+      )
       .take(MAX_CONTEXT_PAGES * 2);
 
     return hits
@@ -300,7 +392,7 @@ export const _retrieve = internalQuery({
 export const ask = action({
   args: { question: v.string() },
   handler: async (ctx, args): Promise<AskResult> => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
 
     const question = args.question.trim();
     if (!question) throw new ConvexError("Ask a question first.");
@@ -310,7 +402,7 @@ export const ask = action({
       title: string;
       icon: string | null;
       text: string;
-    }[] = await ctx.runQuery(internal.ai._retrieve, { question });
+    }[] = await ctx.runQuery(internal.ai._retrieve, { question, userId });
 
     if (docs.length === 0) {
       return {
@@ -327,7 +419,7 @@ export const ask = action({
       .map((d, i) => `[${i + 1}] ${d.title}\n${d.text || "(no body text)"}`)
       .join("\n\n");
 
-    const answer = await chat([
+    const answer = await meteredChat(ctx, userId, [
       {
         role: "system",
         content:
@@ -386,7 +478,7 @@ export const converse = action({
     persona: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<AskResult> => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
 
     const history = args.messages.slice(-MAX_HISTORY_TURNS);
     const latest = [...history].reverse().find((m) => m.role === "user");
@@ -399,7 +491,7 @@ export const converse = action({
     if (args.pageId) {
       const page: Doc<"pages"> | null = await ctx.runQuery(
         internal.ai._rowForFill,
-        { pageId: args.pageId },
+        { pageId: args.pageId, userId },
       );
       if (page?.vault) {
         throw new ConvexError(
@@ -428,6 +520,7 @@ export const converse = action({
         text: string;
       }[] = await ctx.runQuery(internal.ai._retrieve, {
         question: latest.content,
+        userId,
       });
       const fresh = docs.filter((d) => !sources.some((s) => s.pageId === d.pageId));
       if (fresh.length > 0) {
@@ -458,7 +551,7 @@ export const converse = action({
       .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
       .join("\n\n");
 
-    const answer = await chat([
+    const answer = await meteredChat(ctx, userId, [
       { role: "system", content: system },
       { role: "user", content: transcript },
     ]);
@@ -479,7 +572,7 @@ export const deckOutline = action({
     topic: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<string> => {
-    await requireUser(ctx);
+    const userId = await requireUser(ctx);
 
     let source = args.topic?.trim() ?? "";
     let title = source;
@@ -487,7 +580,7 @@ export const deckOutline = action({
     if (args.pageId) {
       const page: Doc<"pages"> | null = await ctx.runQuery(
         internal.ai._rowForFill,
-        { pageId: args.pageId },
+        { pageId: args.pageId, userId },
       );
       if (page?.vault) {
         throw new ConvexError(
@@ -504,7 +597,7 @@ export const deckOutline = action({
       throw new ConvexError("Open a page or give me a topic for the deck.");
     }
 
-    return await chat([
+    return await meteredChat(ctx, userId, [
       {
         role: "system",
         content:

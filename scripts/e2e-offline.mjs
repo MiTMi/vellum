@@ -35,14 +35,23 @@ function convexCli(...args) {
   });
 }
 
-/** Authenticated server call: the CLI's admin key + an impersonated identity. */
+/**
+ * Authenticated server call: the CLI's admin key + an impersonated identity.
+ * Since multi-tenancy the subject's first segment must be the owner's REAL
+ * userId — functions compare `Id<"users">` values, so a made-up subject
+ * reads as a user with no pages.
+ */
+let ownerId = null;
 function serverCall(fn, args = {}) {
+  if (!ownerId) {
+    ownerId = JSON.parse(convexCli("run", "admin:ownerUserId", "{}"));
+  }
   const out = convexCli(
     "run",
     fn,
     JSON.stringify(args),
     "--identity",
-    JSON.stringify({ subject: "owner|e2e" }),
+    JSON.stringify({ subject: `${ownerId}|e2e` }),
   );
   return out.trim() ? JSON.parse(out) : null;
 }

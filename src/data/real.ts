@@ -205,9 +205,11 @@ const realApi: DataApi = {
         });
         if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
         const { storageId } = (await res.json()) as { storageId: string };
-        const url = await getFileUrl({ storageId: storageId as never });
-        if (!url) throw new Error("Could not resolve file URL");
-        return url;
+        const result = await getFileUrl({ storageId: storageId as never });
+        if (!result.url) {
+          throw new Error(result.error ?? "Could not resolve file URL");
+        }
+        return result.url;
       },
       [generateUploadUrl, getFileUrl],
     );

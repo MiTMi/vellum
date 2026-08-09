@@ -7,3 +7,4 @@ release/
 .DS_Store
 .convex/
 _to_delete/
+backup-*.zip

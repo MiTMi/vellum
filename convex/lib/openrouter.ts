@@ -127,10 +127,27 @@ async function describeFailure(res: Response): Promise<string> {
  * completion count on short answers. Only `content` is returned here — the
  * scratchpad must never reach the UI.
  */
+/**
+ * Fallback spend estimate when OpenRouter omits `usage.cost`: a deliberately
+ * conservative $1 per million tokens (several times flash-lite's real price),
+ * so a silent API change under-meters nobody. Logged when used.
+ */
+function estimateMicroUsd(totalTokens: number | undefined): number {
+  if (totalTokens && totalTokens > 0) return Math.ceil(totalTokens);
+  // No usage data at all: charge a conservative flat $0.0005.
+  return 500;
+}
+
+export interface ChatResult {
+  text: string;
+  /** Actual (or conservatively estimated) cost of this call, micro-USD. */
+  costMicroUsd: number;
+}
+
 export async function chat(
   messages: ChatMessage[],
   opts: { maxTokens?: number } = {},
-): Promise<string> {
+): Promise<ChatResult> {
   const key = apiKey();
   let lastError = "AI request failed.";
 
@@ -154,6 +171,9 @@ export async function chat(
           messages,
           max_tokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS,
           temperature: 0.3,
+          // Ask OpenRouter to include this call's actual cost in the
+          // response — it feeds the per-user AI budget accounting.
+          usage: { include: true },
           ...(providerRouting() ? { provider: providerRouting() } : {}),
         }),
       });
@@ -161,6 +181,7 @@ export async function chat(
       if (res.ok) {
         const body = (await res.json()) as {
           choices?: { message?: { content?: string } }[];
+          usage?: { cost?: number; total_tokens?: number };
         };
         const text = body.choices?.[0]?.message?.content?.trim();
         if (!text) {
@@ -170,7 +191,17 @@ export async function chat(
             "The model returned an empty response. Try a shorter selection.",
           );
         }
-        return text;
+        let costMicroUsd: number;
+        if (typeof body.usage?.cost === "number") {
+          costMicroUsd = Math.max(0, Math.ceil(body.usage.cost * 1_000_000));
+        } else {
+          costMicroUsd = estimateMicroUsd(body.usage?.total_tokens);
+          console.warn(
+            "OpenRouter response carried no usage.cost — using conservative estimate",
+            { costMicroUsd },
+          );
+        }
+        return { text, costMicroUsd };
       }
 
       lastError = await describeFailure(res);

@@ -11,21 +11,13 @@ import schema from "../convex/schema";
  * never about the model itself. Nothing here touches the network.
  */
 
-const modules = import.meta.glob([
-  "../convex/pages.ts",
-  "../convex/ai.ts",
-  "../convex/account.ts",
-  "../convex/files.ts",
-  "../convex/versions.ts",
-  "../convex/comments.ts",
-  "../convex/migrate.ts",
-  "../convex/schema.ts",
-  "../convex/lib/*.ts",
-  "../convex/_generated/*.js",
-]);
+import { modules, ownerBackend } from "./helpers";
 
-function t() {
-  return convexTest(schema, modules).withIdentity({ subject: "owner|test" });
+// Fresh backend with the owner signed in (a real users row — functions
+// stamp and compare Id<"users">). Owner is exempt from AI budgets, so
+// these tests exercise the model-call guards, not the quota layer.
+async function t() {
+  return (await ownerBackend()).as;
 }
 
 /** A minimal OpenRouter success envelope carrying `content`. */
@@ -80,7 +72,7 @@ test("AI actions reject unauthenticated callers", async () => {
 test("a missing API key fails before any network call", async () => {
   delete process.env.OPENROUTER_API_KEY;
   await expect(
-    t().action(api.ai.transform, { text: "hello", kind: "improve" }),
+    (await t()).action(api.ai.transform, { text: "hello", kind: "improve" }),
   ).rejects.toThrow(/OPENROUTER_API_KEY/);
   expect(fetchMock).not.toHaveBeenCalled();
 });
@@ -92,7 +84,7 @@ test("transform returns only `content`, never the reasoning scratchpad", async (
       reasoning_details: [{ type: "reasoning.text", text: "secret" }],
     }),
   );
-  const out = await t().action(api.ai.transform, {
+  const out = await (await t()).action(api.ai.transform, {
     text: "sentence bad",
     kind: "improve",
   });
@@ -104,14 +96,14 @@ test("the model comes from OPENROUTER_MODEL, falling back to the default", async
   // Whatever this resolves to must be on the key's guardrail allowlist —
   // the two are a matched pair and a mismatch 404s every call.
   fetchMock.mockResolvedValue(ok("x"));
-  await t().action(api.ai.transform, { text: "y", kind: "fix" });
+  await (await t()).action(api.ai.transform, { text: "y", kind: "fix" });
   expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe(
     "google/gemini-2.5-flash-lite",
   );
 
   fetchMock.mockClear();
   process.env.OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b";
-  await t().action(api.ai.transform, { text: "y", kind: "fix" });
+  await (await t()).action(api.ai.transform, { text: "y", kind: "fix" });
   expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe(
     "nvidia/nemotron-3-super-120b-a12b",
   );
@@ -122,11 +114,11 @@ test("transform rejects empty rewrites and oversized selections without calling 
   // Rewrite kinds need something to rewrite…
   for (const kind of ["improve", "fix", "summarize", "translate"] as const) {
     await expect(
-      t().action(api.ai.transform, { text: "   ", kind }),
+      (await t()).action(api.ai.transform, { text: "   ", kind }),
     ).rejects.toThrow(/Nothing to rewrite/);
   }
   await expect(
-    t().action(api.ai.transform, { text: "x".repeat(12_001), kind: "improve" }),
+    (await t()).action(api.ai.transform, { text: "x".repeat(12_001), kind: "improve" }),
   ).rejects.toThrow(/too long/);
   expect(fetchMock).not.toHaveBeenCalled();
 });
@@ -136,7 +128,7 @@ test("writing from a blank line is allowed and carries the instruction", async (
   // scratch, which is the most-used Notion AI flow. They must not be blocked.
   fetchMock.mockResolvedValue(ok("Standup: shipped the AI menu."));
 
-  const out = await t().action(api.ai.transform, {
+  const out = await (await t()).action(api.ai.transform, {
     text: "",
     kind: "custom",
     option: "Draft a standup update",
@@ -150,14 +142,14 @@ test("writing from a blank line is allowed and carries the instruction", async (
   expect(prompt).not.toMatch(/---\s*---/);
 
   await expect(
-    t().action(api.ai.transform, { text: "", kind: "continue" }),
+    (await t()).action(api.ai.transform, { text: "", kind: "continue" }),
   ).resolves.toBeTruthy();
 });
 
 test("an empty completion is reported rather than returned as blank", async () => {
   fetchMock.mockResolvedValue(ok("   "));
   await expect(
-    t().action(api.ai.transform, { text: "hello", kind: "improve" }),
+    (await t()).action(api.ai.transform, { text: "hello", kind: "improve" }),
   ).rejects.toThrow(/empty response/);
 });
 
@@ -168,7 +160,7 @@ test("a guardrail 404 is explained, and is not retried", async () => {
     fail(404, "No endpoints available matching your guardrail restrictions"),
   );
   await expect(
-    t().action(api.ai.transform, { text: "hello", kind: "improve" }),
+    (await t()).action(api.ai.transform, { text: "hello", kind: "improve" }),
   ).rejects.toThrow(/guardrail does not allow/);
   // Config errors must not burn the 20/min budget on doomed retries.
   expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -177,7 +169,7 @@ test("a guardrail 404 is explained, and is not retried", async () => {
 test("a 401 names the key rather than leaking the raw status", async () => {
   fetchMock.mockResolvedValue(fail(401, "No auth credentials found"));
   await expect(
-    t().action(api.ai.transform, { text: "hello", kind: "improve" }),
+    (await t()).action(api.ai.transform, { text: "hello", kind: "improve" }),
   ).rejects.toThrow(/OPENROUTER_API_KEY/);
 });
 
@@ -185,7 +177,7 @@ test("a 429 is retried and can succeed", async () => {
   fetchMock
     .mockResolvedValueOnce(fail(429, "rate limited"))
     .mockResolvedValueOnce(ok("second try"));
-  const out = await t().action(api.ai.transform, {
+  const out = await (await t()).action(api.ai.transform, {
     text: "hello",
     kind: "improve",
   });
@@ -196,7 +188,7 @@ test("a 429 is retried and can succeed", async () => {
 /* ----------------------------------------------------------------- vault */
 
 test("fillProperty refuses vault rows server-side", async () => {
-  const ctx = t();
+  const ctx = await t();
   // Databases can't live in the Vault (pages.ts), so the row here is a
   // plain vault child — `fillProperty` gates on the `vault` flag itself,
   // which children inherit, not on the page's type.
@@ -219,7 +211,7 @@ test("fillProperty refuses vault rows server-side", async () => {
 });
 
 test("ask never retrieves vault or trashed pages", async () => {
-  const ctx = t();
+  const ctx = await t();
   const plain = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Roadmap",
@@ -268,7 +260,7 @@ test("ask never retrieves vault or trashed pages", async () => {
 /* ------------------------------------------------------------- converse */
 
 test("converse refuses a vault page as chat context", async () => {
-  const ctx = t();
+  const ctx = await t();
   const root = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Vault",
@@ -285,7 +277,7 @@ test("converse refuses a vault page as chat context", async () => {
 
 test("converse sends the conversation history, not just the last turn", async () => {
   fetchMock.mockResolvedValue(ok("Sure."));
-  await t().action(api.ai.converse, {
+  await (await t()).action(api.ai.converse, {
     messages: [
       { role: "user", content: "who wrote the roadmap" },
       { role: "assistant", content: "You did." },
@@ -301,7 +293,7 @@ test("converse sends the conversation history, not just the last turn", async ()
 
 test("converse injects custom instructions into the system prompt", async () => {
   fetchMock.mockResolvedValue(ok("Aye."));
-  await t().action(api.ai.converse, {
+  await (await t()).action(api.ai.converse, {
     messages: [{ role: "user", content: "hello" }],
     persona: "Answer in British English.",
   });
@@ -312,13 +304,13 @@ test("converse injects custom instructions into the system prompt", async () => 
 
 test("converse rejects an empty conversation", async () => {
   await expect(
-    t().action(api.ai.converse, { messages: [] }),
+    (await t()).action(api.ai.converse, { messages: [] }),
   ).rejects.toThrow(/Say something/);
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
 test("deckOutline refuses vault pages and needs a source", async () => {
-  const ctx = t();
+  const ctx = await t();
   const vault = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Vault",
@@ -334,7 +326,7 @@ test("deckOutline refuses vault pages and needs a source", async () => {
 });
 
 test("ask short-circuits when retrieval finds nothing", async () => {
-  const res = await t().action(api.ai.ask, {
+  const res = await (await t()).action(api.ai.ask, {
     question: "something that matches no page at all",
   });
   expect(res.sources).toEqual([]);

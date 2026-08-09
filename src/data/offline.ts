@@ -189,11 +189,13 @@ const offlineApi: DataApi = {
       });
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
       const { storageId } = (await res.json()) as { storageId: string };
-      const fileUrl = await client.mutation(api.files.getFileUrl, {
+      const res2 = await client.mutation(api.files.getFileUrl, {
         storageId: storageId as never,
       });
-      if (!fileUrl) throw new Error("Could not resolve file URL");
-      return fileUrl;
+      if (!res2.url) {
+        throw new Error(res2.error ?? "Could not resolve file URL");
+      }
+      return res2.url;
     }, []);
   },
 

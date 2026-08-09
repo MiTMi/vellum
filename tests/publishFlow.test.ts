@@ -11,24 +11,14 @@ import { expect, test } from "vitest";
 import { api, internal } from "../convex/_generated/api";
 import schema from "../convex/schema";
 
-const modules = import.meta.glob([
-  "../convex/pages.ts",
-  "../convex/account.ts",
-  "../convex/files.ts",
-  "../convex/versions.ts",
-  "../convex/comments.ts",
-  "../convex/migrate.ts",
-  "../convex/schema.ts",
-  "../convex/lib/*.ts",
-  "../convex/_generated/*.js",
-]);
+import { ownerBackend } from "./helpers";
 
-function t() {
-  return convexTest(schema, modules).withIdentity({ subject: "owner|test" });
+async function t() {
+  return (await ownerBackend()).as;
 }
 
 test("publishing mints a slug, re-publishing keeps it, unpublishing kills it", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Public page",
@@ -56,7 +46,7 @@ test("publishing mints a slug, re-publishing keeps it, unpublishing kills it", a
 });
 
 test("a trashed page stops being served even while it holds a slug", async () => {
-  const ctx = t();
+  const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Bye" });
   const slug = await ctx.mutation(api.pages.setPublished, { id, value: true });
   expect(await ctx.query(internal.pages.bySlug, { slug: slug! })).not.toBeNull();
@@ -66,7 +56,7 @@ test("a trashed page stops being served even while it holds a slug", async () =>
 });
 
 test("Vault pages cannot be published", async () => {
-  const ctx = t();
+  const ctx = await t();
   const vault = await ctx.mutation(api.pages.create, {
     type: "doc",
     title: "Vault",
