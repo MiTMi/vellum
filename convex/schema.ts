@@ -115,12 +115,75 @@ export const dbView = v.object({
 });
 
 export default defineSchema({
-  // Convex Auth's account/session/user tables. The whole workspace is
-  // single-tenant: functions gate on "is the owner signed in" (see
-  // lib/auth.ts) rather than per-document ownership.
+  // Convex Auth's account/session/user tables. Multi-tenant since Phase 1
+  // (docs/multi-user-plan.md): every workspace row carries an `ownerId` and
+  // functions scope to the signed-in user (see lib/auth.ts).
   ...authTables,
 
+  // authTables.users, replicated field-for-field plus `inviteCode`: the
+  // Password provider's profile() return is written verbatim to this table,
+  // and it's how the sign-up form's invite code reaches the transactional
+  // check in auth.ts `afterUserCreatedOrUpdated` (which clears it again).
+  users: defineTable({
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    inviteCode: v.optional(v.string()),
+  })
+    .index("email", ["email"])
+    .index("phone", ["phone"]),
+
+  /**
+   * Sign-up invite codes, minted by the owner (convex/admin.ts). A code is
+   * single-use: redemption happens inside the same transaction that creates
+   * the user, so a race on one code creates exactly one account. Redeemed
+   * codes are kept as an audit trail.
+   */
+  invites: defineTable({
+    code: v.string(),
+    note: v.optional(v.string()), // who it's for, freeform
+    createdAt: v.number(),
+    redeemedBy: v.optional(v.id("users")),
+    redeemedAt: v.optional(v.number()),
+  }).index("by_code", ["code"]),
+
+  /**
+   * Uploaded files, attributed to their uploader for the 50 MB quota
+   * (docs/multi-user-plan.md). Known v1 limitation: rows are never removed
+   * when pages are deleted (content may share URLs across duplicates), so
+   * quota counts lifetime uploads, not live usage.
+   */
+  files: defineTable({
+    storageId: v.id("_storage"),
+    ownerId: v.id("users"),
+    size: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_storageId", ["storageId"]),
+
+  /**
+   * AI spend accounting, one row per (user, calendar month), cost in
+   * micro-USD from OpenRouter's per-call accounting. The owner is exempt
+   * and never recorded, so the by_month sum IS the shared non-owner pool.
+   */
+  aiUsage: defineTable({
+    userId: v.id("users"),
+    month: v.string(), // "2026-08" (UTC)
+    costMicroUsd: v.number(),
+    calls: v.number(),
+  })
+    .index("by_user_month", ["userId", "month"])
+    .index("by_month", ["month"]),
+
   pages: defineTable({
+    // Optional only for the widen→backfill→narrow migration; after the
+    // backfill every row has it and all code treats it as required.
+    ownerId: v.optional(v.id("users")),
     title: v.string(),
     type: v.union(v.literal("doc"), v.literal("database")),
     parentId: v.optional(v.id("pages")),
@@ -170,9 +233,13 @@ export default defineSchema({
     publishedAt: v.optional(v.number()),
   })
     .index("by_parent", ["parentId"])
+    .index("by_owner", ["ownerId"])
     .index("by_clientKey", ["clientKey"])
     .index("by_publicSlug", ["publicSlug"])
-    .searchIndex("search", { searchField: "searchText" }),
+    .searchIndex("search", {
+      searchField: "searchText",
+      filterFields: ["ownerId"],
+    }),
 
   /**
    * Point-in-time snapshots of a page's content, captured server-side by
@@ -181,11 +248,14 @@ export default defineSchema({
    * never touches the sync index, reconcile, or the outbox.
    */
   pageVersions: defineTable({
+    ownerId: v.optional(v.id("users")), // optional pending backfill
     pageId: v.id("pages"),
     title: v.string(),
     content: v.optional(v.any()),
     savedAt: v.number(),
-  }).index("by_page", ["pageId", "savedAt"]),
+  })
+    .index("by_page", ["pageId", "savedAt"])
+    .index("by_owner", ["ownerId"]),
 
   /**
    * Page comments. Like pageVersions, a separate table the offline replica
@@ -193,9 +263,12 @@ export default defineSchema({
    * nor the outbox, and is simply unavailable while offline.
    */
   comments: defineTable({
+    ownerId: v.optional(v.id("users")), // optional pending backfill
     pageId: v.id("pages"),
     text: v.string(),
     createdAt: v.number(),
     resolved: v.optional(v.boolean()),
-  }).index("by_page", ["pageId", "createdAt"]),
+  })
+    .index("by_page", ["pageId", "createdAt"])
+    .index("by_owner", ["ownerId"]),
 });
