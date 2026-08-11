@@ -35,6 +35,9 @@ export function toCreatePayload(doc: PageDoc): CreateDocPayload {
   // and grants public access, so it must never ride along on a create.
   delete (rest as Record<string, unknown>).publicSlug;
   delete (rest as Record<string, unknown>).publishedAt;
+  // Share role is a server-stamped, viewer-relative annotation, not page
+  // data — and only pages I own are ever replayed as creates.
+  delete (rest as Record<string, unknown>).role;
   return rest;
 }
 

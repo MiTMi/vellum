@@ -5,6 +5,8 @@ import {
   DataApi,
   Mutations,
   PublishApi,
+  ShareEntry,
+  SharesApi,
   VersionHistoryApi,
 } from "./api";
 import {
@@ -61,6 +63,22 @@ store.subscribe(() => {
  * The snapshot interval is 0 in mock mode so a single edit is immediately
  * restorable; the real backend throttles to SNAPSHOT_INTERVAL_MS.
  */
+/** Share grants, keyed by pageId — enough state to drive the Share UI. */
+function mockShares(): Record<string, ShareEntry[]> {
+  try {
+    return JSON.parse(localStorage.getItem("vellum:mockshares") ?? "{}");
+  } catch {
+    return {};
+  }
+}
+function saveMockShares(all: Record<string, ShareEntry[]>) {
+  try {
+    localStorage.setItem("vellum:mockshares", JSON.stringify(all));
+  } catch {
+    /* ignore */
+  }
+}
+
 const MOCK_SNAPSHOT_INTERVAL_MS = 0;
 const versions = new Map<string, VersionDoc[]>();
 
@@ -282,6 +300,38 @@ const mockApi: DataApi = {
               return;
             }
           }
+        },
+      }),
+      [],
+    );
+  },
+
+  useShares(): SharesApi {
+    return useMemo<SharesApi>(
+      () => ({
+        available: true,
+        list: async (pageId) => mockShares()[pageId] ?? [],
+        add: async (pageId, email, role) => {
+          const all = mockShares();
+          const entries = all[pageId] ?? [];
+          const existing = entries.find((e) => e.email === email);
+          if (existing) existing.role = role;
+          else entries.push({ userId: email, email, role });
+          all[pageId] = entries;
+          saveMockShares(all);
+        },
+        setRole: async (pageId, userId, role) => {
+          const all = mockShares();
+          const entry = (all[pageId] ?? []).find((e) => e.userId === userId);
+          if (entry) {
+            entry.role = role;
+            saveMockShares(all);
+          }
+        },
+        remove: async (pageId, userId) => {
+          const all = mockShares();
+          all[pageId] = (all[pageId] ?? []).filter((e) => e.userId !== userId);
+          saveMockShares(all);
         },
       }),
       [],

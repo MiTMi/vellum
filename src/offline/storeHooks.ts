@@ -45,6 +45,7 @@ export function createStoreReadHooks(store: PageStore) {
               props: p.props ?? null,
               updatedAt: p.updatedAt,
               _creationTime: p._creationTime,
+              role: p.role,
             })),
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [v],
@@ -70,7 +71,10 @@ export function createStoreReadHooks(store: PageStore) {
         () =>
           store
             .all()
-            .filter((p) => p.inTrash && p.trashRoot)
+            // Shared pages the OWNER trashed stay in the replica (marked)
+            // but must not appear in my trash — restore/delete are
+            // owner-only and would throw.
+            .filter((p) => p.inTrash && p.trashRoot && !p.role)
             .sort((a, b) => (b.trashedAt ?? 0) - (a.trashedAt ?? 0))
             .map((p) => ({
               _id: p._id,

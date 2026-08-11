@@ -224,7 +224,10 @@ function PageBody({
   }, [page._id]);
 
   const isDatabase = page.type === "database";
-  const locked = page.locked ?? false;
+  // A viewer-role shared page renders exactly like a locked page — same
+  // read-only affordances, different note below.
+  const isViewer = page.role === "viewer";
+  const locked = (page.locked ?? false) || isViewer;
 
   // Notion offers templates on a brand-new empty page. Same emptiness test
   // the Editor uses to decide whether to seed initialContent.
@@ -233,6 +236,9 @@ function PageBody({
   const showTemplatePrompt =
     !isDatabase &&
     !locked &&
+    // Applying a template composes `duplicate`, which is owner-only — a
+    // shared editor on a blank page must not be offered a throwing path.
+    !page.role &&
     !page.isTemplate &&
     isEmpty &&
     appliedCount === 0 &&
@@ -286,7 +292,11 @@ function PageBody({
               )}
             </div>
           )}
-          {locked && <div className="locked-note">🔒 Page locked</div>}
+          {locked && (
+            <div className="locked-note">
+              {isViewer ? "👁 Shared with you — view only" : "🔒 Page locked"}
+            </div>
+          )}
 
           <textarea
             ref={titleRef}

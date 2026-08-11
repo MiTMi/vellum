@@ -9,6 +9,8 @@ import {
   VersionHistoryApi,
   CommentsApi,
   PublishApi,
+  SharesApi,
+  ShareEntry,
 } from "./api";
 import realApi from "./real";
 import mockApi from "./mock";
@@ -151,6 +153,9 @@ export function useComments(): CommentsApi {
 export function usePublish(): PublishApi {
   return impl.usePublish();
 }
+export function useShares(): SharesApi {
+  return impl.useShares();
+}
 export function useAccount(): AccountApi {
   return impl.useAccount();
 }
@@ -164,6 +169,8 @@ export type {
   VersionHistoryApi,
   CommentsApi,
   PublishApi,
+  SharesApi,
+  ShareEntry,
   AccountApi,
   AiApi,
 };

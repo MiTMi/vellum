@@ -275,6 +275,46 @@ this.
 `${userId}|session` because functions compare `Id<"users">` — a made-up
 subject fails id validation. `process.env.OWNER_EMAIL` is set by helpers.
 
+### Sharing (Phase 2, 2026-08-11 — docs/phase2-sharing-design.md)
+
+A `shares` row grants one user access to one page **and its whole subtree**
+(sound because subtrees are single-owner), role `viewer` or `editor`.
+Access resolves through **`getAccessiblePage(ctx, userId, id, need)`** in
+`convex/lib/auth.ts` — owner wins; otherwise the ancestor chain is walked
+for shares, highest role wins. Same null/throw contract as the Phase 1
+pair; vault pages are never accessible to non-owners, trashed shared pages
+read but never write. **Every function stays owner-only until deliberately
+switched to it** — currently the nine content mutations (updateContent,
+rename, setIcon/Cover, setPageOptions, setRowProp, updateDbProps,
+setView/s), get/getMany, creates, and `ai._rowForFill`. Move, trash,
+duplicate, publish, favorites, templates, history, comments, and share
+management stay owner-only on purpose (see the design doc's role table).
+
+- **Creates inside a shared subtree inherit the PARENT's ownerId** (and
+  quota); `createWithDoc`'s clientKey idempotency therefore checks
+  *accessibility*, not ownership. The `role` arg is accepted-and-dropped
+  like `publicSlug`.
+- **Sync:** `syncIndex` unions owned + shared subtrees, stamping each
+  shared entry (and `getMany` each shared doc) with a viewer-relative
+  `role`. Reconcile diffs on **(updatedAt, role)** — a role change never
+  touches the page. Revocation = absence from the index = local delete;
+  a stale client's writes throw and the outbox drops them.
+- **Client:** `useShares()` on the DataApi (server-only, like publish);
+  People section in the Share popover; "Shared" sidebar section renders
+  `index.sharedRoots` (role + parent not in replica); Library gets a
+  Shared tab. Viewer role reuses the `locked` read-only path. Owner-only
+  affordances hide when `page.role` is set — including TemplatePrompt
+  (it composes owner-only `duplicate`) and the sidebar Recents section
+  (shared pages sort by the owner's edits, not my activity). The owner's
+  `isFavorite`/`isTemplate` flags ride shared docs and must never
+  populate the sharee's sections.
+- `shares.listForPage` is a read: foreign pages return `[]`, never throw.
+- Tests: the sharing matrix lives in `tests/isolation.test.ts` (three
+  identities: owner/sharee/stranger); UI in `scripts/e2e-sharing.mjs`.
+- Deferred to a follow-up pass (design doc, "Deferred"): people-mentions,
+  edited-by activity, comments/history for sharees, per-user favorites,
+  server-side shared search, a Help Center guide for sharing.
+
 ### Auth
 
 Convex Auth with a single Password provider (`convex/auth.ts`). Sign-up

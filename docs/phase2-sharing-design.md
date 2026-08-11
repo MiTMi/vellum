@@ -5,6 +5,13 @@ Michael 2026-08-11: roles are **Viewer + Editor** only; **core sharing
 first** (no people-mentions, no "edited by X" activity — those follow in
 a later pass once sharing is proven); staying on vellum-gilt.vercel.app.*
 
+*Status: **built as designed 2026-08-11** — server side (schema,
+getAccessiblePage, scoped functions, isolation matrix) and client
+(role plumbing, People section, Shared sidebar/Library, viewer gating,
+e2e-sharing.mjs). See the Sharing section of CLAUDE.md for the as-built
+summary. Remaining before inviting anyone: a smoke test on prod with a
+second real account.*
+
 Goal: a user can share a page — meaning that page **and its whole
 subtree** — with another account on the deployment, as read-only
 (viewer) or read-write (editor). Shared pages appear in the recipient's

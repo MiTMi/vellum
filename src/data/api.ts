@@ -12,6 +12,7 @@ import {
   PageId,
   PageMeta,
   SearchHit,
+  ShareRole,
   TrashedMeta,
   VersionDoc,
   VersionMeta,
@@ -46,6 +47,8 @@ export interface DataApi {
   useComments(): CommentsApi;
   /** Publish to web — server-only, like history and comments. */
   usePublish(): PublishApi;
+  /** Sharing with other accounts (Phase 2) — server-only, owner-side. */
+  useShares(): SharesApi;
   /** Account management (Settings) — server-only, single-owner. */
   useAccount(): AccountApi;
   /** Notion-style AI. Server-only: the model key lives in Convex env. */
@@ -95,6 +98,27 @@ export interface AccountApi {
   signOutEverywhere(): Promise<void>;
   /** Password-gated: erases the workspace and the account entirely. */
   deleteAccount(password: string): Promise<void>;
+}
+
+/** One grant on a page: who, and at what level. */
+export interface ShareEntry {
+  userId: string;
+  email: string;
+  role: ShareRole;
+}
+
+export interface SharesApi {
+  /**
+   * False while offline: shares live in a table the replica never mirrors,
+   * and granting access is server-authoritative (like publishing).
+   */
+  available: boolean;
+  /** Everyone this page is shared with. Owner-only; empty otherwise. */
+  list(pageId: PageId): Promise<ShareEntry[]>;
+  /** Grant by exact email. Throws a readable error for unknown emails. */
+  add(pageId: PageId, email: string, role: ShareRole): Promise<void>;
+  setRole(pageId: PageId, userId: string, role: ShareRole): Promise<void>;
+  remove(pageId: PageId, userId: string): Promise<void>;
 }
 
 export interface PublishApi {

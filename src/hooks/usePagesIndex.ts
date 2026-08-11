@@ -25,17 +25,29 @@ export function usePagesIndex(): PagesIndex {
       // entry, and its children are listed only inside the unlocked
       // VaultView — the sidebar must not reveal the vault's structure.
       if (p.vault) continue;
+      // Shared roots live in the "Shared" section, not the main tree — a
+      // top-level shared page (parentId null) must not show up twice.
+      if (p.role && (!p.parentId || !byId.has(p.parentId))) continue;
       const key = childrenKey(p.parentId);
       const list = children.get(key);
       if (list) list.push(p);
       else children.set(key, [p]);
     }
     for (const list of children.values()) list.sort((a, b) => a.rank - b.rank);
+    // isFavorite/isTemplate on a shared page are the OWNER's flags — they
+    // must not populate my sections (and the toggles are owner-only).
     const favorites = all
-      .filter((p) => p.isFavorite && !p.vault)
+      .filter((p) => p.isFavorite && !p.vault && !p.role)
       .sort((a, b) => a.title.localeCompare(b.title));
     const templates = all
-      .filter((p) => p.isTemplate && !p.vault)
+      .filter((p) => p.isTemplate && !p.vault && !p.role)
+      .sort((a, b) => a.title.localeCompare(b.title));
+    // Shared subtree roots: shared with me, and the parent isn't in my
+    // replica (the shared root's parent belongs to the owner's private
+    // tree). They root the sidebar's "Shared" section; their descendants
+    // are in `children` and expand normally.
+    const sharedRoots = all
+      .filter((p) => p.role && (!p.parentId || !byId.has(p.parentId)))
       .sort((a, b) => a.title.localeCompare(b.title));
     return {
       loading: pages === undefined,
@@ -45,6 +57,7 @@ export function usePagesIndex(): PagesIndex {
       favorites,
       templates,
       vaultRoot,
+      sharedRoots,
     };
   }, [pages]);
 }

@@ -213,7 +213,8 @@ export default function PageEditor({ page }: EditorProps) {
   // The vault's whole point is that its plaintext never leaves the device,
   // so the AI affordances are absent there rather than disabled — and the
   // server refuses vault pages independently (convex/ai.ts).
-  const aiAllowed = ai.available && !isVaultPage(page._id) && !page.locked;
+  const readOnly = !!page.locked || page.role === "viewer";
+  const aiAllowed = ai.available && !isVaultPage(page._id) && !readOnly;
 
   /** Document text up to and including the caret's block. */
   const precedingText = () => {
@@ -530,7 +531,7 @@ export default function PageEditor({ page }: EditorProps) {
       <BlockNoteView
         editor={editor}
         theme={theme}
-        editable={!page.locked}
+        editable={!readOnly}
         onChange={scheduleSave}
         slashMenu={false}
       >

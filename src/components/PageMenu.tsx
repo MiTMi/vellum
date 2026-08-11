@@ -44,6 +44,10 @@ export default function PageMenu({ anchor, onClose, page, index }: PageMenuProps
   const fullPage = usePage(page._id);
   const history = useVersionHistory();
   const [view, setView] = useState<"main" | "move">("main");
+  // Shared-with-me pages (Phase 2): duplicate/move/trash/lock/template/
+  // history are owner-only; viewers additionally lose every write toggle.
+  const shared = page.role !== undefined;
+  const isViewer = page.role === "viewer";
   const [copied, setCopied] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -136,68 +140,80 @@ export default function PageMenu({ anchor, onClose, page, index }: PageMenuProps
           <span>{copied ? "Copied!" : "Copy page contents"}</span>
         </button>
       )}
-      <button
-        className="menu-item"
-        onClick={async () => {
-          onClose();
-          const id = await mutations.duplicate({ id: page._id });
-          if (id) navigate(id);
-        }}
-      >
-        <span className="menu-icon">
-          <Copy size={15} />
-        </span>
-        <span>Duplicate</span>
-        <span className="menu-kbd">⌘D</span>
-      </button>
-      <button className="menu-item" onClick={() => setView("move")}>
-        <span className="menu-icon">
-          <CornerUpRight size={15} />
-        </span>
-        <span>Move to</span>
-        <span className="menu-kbd">›</span>
-      </button>
-      <button
-        className="menu-item danger"
-        onClick={() => {
-          onClose();
-          void mutations.trash({ id: page._id });
-          navigate(null);
-        }}
-      >
-        <span className="menu-icon">
-          <Trash2 size={15} />
-        </span>
-        <span>Move to Trash</span>
-      </button>
+      {!shared && (
+        <>
+          <button
+            className="menu-item"
+            onClick={async () => {
+              onClose();
+              const id = await mutations.duplicate({ id: page._id });
+              if (id) navigate(id);
+            }}
+          >
+            <span className="menu-icon">
+              <Copy size={15} />
+            </span>
+            <span>Duplicate</span>
+            <span className="menu-kbd">⌘D</span>
+          </button>
+          <button className="menu-item" onClick={() => setView("move")}>
+            <span className="menu-icon">
+              <CornerUpRight size={15} />
+            </span>
+            <span>Move to</span>
+            <span className="menu-kbd">›</span>
+          </button>
+          <button
+            className="menu-item danger"
+            onClick={() => {
+              onClose();
+              void mutations.trash({ id: page._id });
+              navigate(null);
+            }}
+          >
+            <span className="menu-icon">
+              <Trash2 size={15} />
+            </span>
+            <span>Move to Trash</span>
+          </button>
 
-      <div className="menu-divider" />
-      <ToggleRow
-        label="Small text"
-        checked={fullPage?.smallText ?? false}
-        onChange={(v) => setOpt({ smallText: v })}
-      />
-      <ToggleRow
-        label="Full width"
-        checked={fullPage?.fullWidth ?? false}
-        onChange={(v) => setOpt({ fullWidth: v })}
-      />
-      <div className="menu-divider" />
-      <ToggleRow
-        label="Lock page"
-        icon={<Lock size={15} />}
-        checked={fullPage?.locked ?? false}
-        onChange={(v) => setOpt({ locked: v })}
-      />
-      <ToggleRow
-        label="Template"
-        icon={<LayoutTemplate size={15} />}
-        checked={fullPage?.isTemplate ?? false}
-        onChange={(v) =>
-          void mutations.setTemplate({ id: page._id, value: v })
-        }
-      />
-      {!isDatabase && (
+          <div className="menu-divider" />
+        </>
+      )}
+      {!isViewer && (
+        <>
+          <ToggleRow
+            label="Small text"
+            checked={fullPage?.smallText ?? false}
+            onChange={(v) => setOpt({ smallText: v })}
+          />
+          <ToggleRow
+            label="Full width"
+            checked={fullPage?.fullWidth ?? false}
+            onChange={(v) => setOpt({ fullWidth: v })}
+          />
+          <div className="menu-divider" />
+        </>
+      )}
+      {!shared && (
+        <>
+          <ToggleRow
+            label="Lock page"
+            icon={<Lock size={15} />}
+            checked={fullPage?.locked ?? false}
+            onChange={(v) => setOpt({ locked: v })}
+          />
+          <ToggleRow
+            label="Template"
+            icon={<LayoutTemplate size={15} />}
+            checked={fullPage?.isTemplate ?? false}
+            onChange={(v) =>
+              void mutations.setTemplate({ id: page._id, value: v })
+            }
+          />
+        </>
+      )}
+      {!isDatabase && !shared && (
         <button
           className="menu-item"
           disabled={!history.available}
@@ -220,7 +236,7 @@ export default function PageMenu({ anchor, onClose, page, index }: PageMenuProps
         <>
           <button
             className="menu-item"
-            disabled={fullPage?.locked}
+            disabled={fullPage?.locked || isViewer}
             onClick={() => importRef.current?.click()}
           >
             <span className="menu-icon">

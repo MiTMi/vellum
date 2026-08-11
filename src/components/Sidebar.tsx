@@ -11,6 +11,7 @@ import {
   LayoutTemplate,
   Library as LibraryIcon,
   Lock,
+  Users,
   LockOpen,
   Settings as SettingsIcon,
 } from "lucide-react";
@@ -151,7 +152,9 @@ export default function Sidebar({
               <History size={11} /> Recents
             </div>
             {[...index.all]
-              .filter((p) => !p.vault) // vault pages never surface here
+              // Vault pages never surface here; shared pages have their own
+              // section (and sort by the OWNER's edits, not my activity).
+              .filter((p) => !p.vault && !p.role)
               .sort((a, b) => b.updatedAt - a.updatedAt)
               .slice(0, 5)
               .map((p) => (
@@ -243,6 +246,29 @@ export default function Sidebar({
         )}
 
         <VaultSection index={index} />
+
+        {index.sharedRoots.length > 0 && (
+          <>
+            <div className="sidebar-heading">
+              <Users size={11} /> Shared
+            </div>
+            <div className="tree-root">
+              {index.sharedRoots.map((p, i) => (
+                <PageTreeItem
+                  key={p._id}
+                  page={p}
+                  depth={0}
+                  index={index}
+                  expanded={expanded}
+                  toggleExpanded={toggleExpanded}
+                  drag={drag}
+                  siblings={index.sharedRoots}
+                  position={i}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
         <div className="sidebar-heading">Private</div>
         <div

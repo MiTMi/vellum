@@ -366,6 +366,9 @@ export const createWithDoc = mutation({
     publicSlug: v.optional(v.string()),
     publishedAt: v.optional(v.number()),
     ownerId: v.optional(v.id("users")),
+    // The viewer-relative share-role stamp (Phase 2) — never stored; a
+    // replica doc that somehow carries it must not fail replay forever.
+    role: v.optional(v.union(v.literal("viewer"), v.literal("editor"))),
   },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
@@ -383,7 +386,7 @@ export const createWithDoc = mutation({
       const access = await getAccessiblePage(ctx, userId, existing._id, "read");
       if (access) return existing._id;
     }
-    const { clientKey, publicSlug, publishedAt, ownerId: _dropped, ...doc } = args;
+    const { clientKey, publicSlug, publishedAt, ownerId: _dropped, role: _role, ...doc } = args;
     // Owned or editor-shared parents pass; foreign/viewer parents throw
     // (parent-ownership invariant, lib/auth.ts) so the outbox drops the
     // op. A *missing* parent stays a null no-throw — replays race deletes,

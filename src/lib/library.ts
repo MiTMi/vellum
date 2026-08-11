@@ -17,12 +17,18 @@ export function isLibraryId(id: string | null): boolean {
   return id === LIBRARY_ID;
 }
 
-export type LibraryTab = "recents" | "favorites" | "private" | "templates";
+export type LibraryTab =
+  | "recents"
+  | "favorites"
+  | "private"
+  | "shared"
+  | "templates";
 
 export const LIBRARY_TABS: { key: LibraryTab; label: string }[] = [
   { key: "recents", label: "Recents" },
   { key: "favorites", label: "Favorites" },
   { key: "private", label: "Private" },
+  { key: "shared", label: "Shared" },
   { key: "templates", label: "Templates" },
 ];
 
@@ -66,7 +72,14 @@ export function libraryRows(
       break;
     case "private":
       pages = index.all
-        .filter((p) => !p.vault && !p.isTemplate)
+        .filter((p) => !p.vault && !p.isTemplate && !p.role)
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+      break;
+    case "shared":
+      // Every page shared with me (roots and descendants alike), newest
+      // edit first — the whole point is seeing what others changed.
+      pages = index.all
+        .filter((p) => p.role !== undefined)
         .sort((a, b) => b.updatedAt - a.updatedAt);
       break;
     case "templates":

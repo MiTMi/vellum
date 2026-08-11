@@ -10,6 +10,7 @@ import {
   Plus,
   Search,
   Star,
+  Users,
   X,
 } from "lucide-react";
 import { PagesIndex, PageMeta } from "../lib/types";
@@ -22,6 +23,7 @@ const TAB_ICONS: Record<LibraryTab, React.ReactNode> = {
   recents: <History size={15} />,
   favorites: <Star size={15} />,
   private: <Lock size={15} />,
+  shared: <Users size={15} />,
   templates: <LayoutTemplate size={15} />,
 };
 
@@ -29,6 +31,7 @@ const EMPTY_HINTS: Record<LibraryTab, string> = {
   recents: "Pages you open will show up here.",
   favorites: "Star a page and it will show up here.",
   private: "No pages yet — create one to get started.",
+  shared: "Pages someone shares with you will show up here.",
   templates: "Mark a page as a template and it will show up here.",
 };
 
@@ -161,6 +164,10 @@ export default function LibraryView({ index }: { index: PagesIndex }) {
                       <PageIcon page={source} />
                       <span>{source.title || "Untitled"}</span>
                     </button>
+                  ) : page.role ? (
+                    <span className="lib-source-private">
+                      <Users size={13} /> Shared with me
+                    </span>
                   ) : (
                     <span className="lib-source-private">
                       <Lock size={13} /> Private

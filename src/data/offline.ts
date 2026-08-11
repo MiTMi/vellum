@@ -8,6 +8,8 @@ import {
   DataApi,
   PublishApi,
   publicUrlFor,
+  ShareEntry,
+  SharesApi,
   VersionHistoryApi,
 } from "./api";
 import {
@@ -140,6 +142,47 @@ const offlineApi: DataApi = {
           })) as string | null;
         },
         urlFor: publicUrlFor,
+      }),
+      [connected],
+    );
+  },
+
+  useShares(): SharesApi {
+    const connected = useSyncExternalStore(
+      (cb) => offlineEngine().subscribeStatus(cb),
+      () => offlineEngine().getStatus().connected,
+      () => false,
+    );
+    return useMemo<SharesApi>(
+      () => ({
+        available: connected,
+        list: async (pageId) => {
+          // A page created offline has no server id to share yet.
+          if (isLocalId(pageId)) return [];
+          return (await convexClient().query(api.shares.listForPage, {
+            pageId: pageId as Id<"pages">,
+          })) as ShareEntry[];
+        },
+        add: async (pageId, email, role) => {
+          await convexClient().mutation(api.shares.add, {
+            pageId: pageId as Id<"pages">,
+            email,
+            role,
+          });
+        },
+        setRole: async (pageId, userId, role) => {
+          await convexClient().mutation(api.shares.setRole, {
+            pageId: pageId as Id<"pages">,
+            userId: userId as Id<"users">,
+            role,
+          });
+        },
+        remove: async (pageId, userId) => {
+          await convexClient().mutation(api.shares.remove, {
+            pageId: pageId as Id<"pages">,
+            userId: userId as Id<"users">,
+          });
+        },
       }),
       [connected],
     );

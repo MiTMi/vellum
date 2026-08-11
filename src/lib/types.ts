@@ -2,6 +2,13 @@ import { Id } from "../../convex/_generated/dataModel";
 
 export type PageId = Id<"pages">;
 
+/**
+ * My access to a page shared with me (Phase 2). Absent on pages I own.
+ * Viewer-relative — stamped by the server on syncIndex/getMany/get, stored
+ * on the replica doc, never written back.
+ */
+export type ShareRole = "viewer" | "editor";
+
 /** Lightweight page record returned by api.pages.list */
 export interface PageMeta {
   _id: PageId;
@@ -18,6 +25,8 @@ export interface PageMeta {
   props: Record<string, unknown> | null;
   updatedAt: number;
   _creationTime: number;
+  /** Set when this page is shared with me rather than mine. */
+  role?: ShareRole;
 }
 
 export type PropType =
@@ -167,6 +176,11 @@ export interface PagesIndex {
   templates: PageMeta[];
   /** The vault root, if one exists. Its subtree is E2E encrypted. */
   vaultRoot: PageMeta | null;
+  /**
+   * Roots of subtrees shared with me — pages carrying a `role` whose
+   * parent isn't in my replica. The sidebar's "Shared" section.
+   */
+  sharedRoots: PageMeta[];
 }
 
 export function childrenKey(parentId: PageId | null): string {
@@ -211,6 +225,11 @@ export interface PageDoc {
   /** Set while the page is published to the web (see pages.setPublished). */
   publicSlug?: string;
   publishedAt?: number;
+  /**
+   * My role on a page shared with me (absent on my own pages). Server-
+   * stamped; stripped by toCreatePayload so it can never ride a create.
+   */
+  role?: ShareRole;
 }
 
 /** One entry in a page's history (metadata only — content fetched on demand). */

@@ -29,6 +29,8 @@ import { PageStore } from "./store";
 export interface SyncIndexEntry {
   _id: string;
   updatedAt: number;
+  /** My role on a shared page (absent for owned). Part of the diff key. */
+  role?: "viewer" | "editor";
 }
 
 /** Injectable transport — production wires to Convex, tests to convex-test. */
@@ -256,7 +258,10 @@ export function createSyncEngine({
     const toFetch = entries
       .filter((e) => {
         const local = store.get(e._id as PageId);
-        return !local || local.updatedAt !== e.updatedAt;
+        // Diff on (updatedAt, role): a share-role change never touches the
+        // page itself, so comparing updatedAt alone would leave a stale
+        // role in the replica until the next real edit.
+        return !local || local.updatedAt !== e.updatedAt || local.role !== e.role;
       })
       .map((e) => e._id);
 

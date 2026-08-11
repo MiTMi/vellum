@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -18,11 +18,13 @@ import {
   Check,
   ExternalLink,
   Library as LibraryIcon,
+  UserPlus,
+  X,
 } from "lucide-react";
-import { PagesIndex, PageMeta, childrenKey } from "../lib/types";
+import { PagesIndex, PageMeta, ShareRole, childrenKey } from "../lib/types";
 import { isLibraryId, LIBRARY_ID } from "../lib/library";
 import { pathTo } from "../hooks/usePagesIndex";
-import { useMutations, usePage, usePublish } from "../data";
+import { ShareEntry, useMutations, usePage, usePublish, useShares } from "../data";
 import { useNav } from "../state";
 import { displayTitle, useVaultVersion } from "../lib/vaultSession";
 import Popover from "./ui/Popover";
@@ -116,7 +118,7 @@ export default function TopBar({ index }: TopBarProps) {
             <ShareIcon size={14} /> Share
           </button>
         )}
-        {page && (
+        {page && !page.role && (
           <button
             className={`icon-btn ${page.isFavorite ? "starred" : ""}`}
             title={page.isFavorite ? "Remove from favorites" : "Add to favorites"}
@@ -193,6 +195,7 @@ function SharePopover({
 
   return (
     <Popover anchor={anchor} onClose={onClose} align="right" className="menu" width={280}>
+      <PeopleSection page={page} />
       <PublishSection page={page} />
       <div className="menu-divider" />
       <div className="prop-menu-label">Export</div>
@@ -254,6 +257,150 @@ function SharePopover({
 }
 
 /**
+ * Share with people (Phase 2). Owner-side only: the server refuses share
+ * management from anyone but the page owner, and a page that carries a
+ * `role` is by definition someone else's — show who runs it instead.
+ * Sharing covers the page and its whole subtree.
+ */
+function PeopleSection({ page }: { page: PageMeta }) {
+  const shares = useShares();
+  const [entries, setEntries] = useState<ShareEntry[] | null>(null);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<ShareRole>("editor");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canManage = shares.available && !page.role && !page.vault;
+
+  const refresh = useCallback(async () => {
+    try {
+      setEntries(await shares.list(page._id));
+    } catch {
+      setEntries([]);
+    }
+  }, [shares, page._id]);
+
+  useEffect(() => {
+    if (canManage) void refresh();
+  }, [canManage, refresh]);
+
+  // Vault pages: PublishSection already renders the "can't be published"
+  // note; sharing is refused server-side for the same reason. Say nothing.
+  if (page.vault) return null;
+
+  if (page.role) {
+    return (
+      <>
+        <div className="prop-menu-label">People</div>
+        <div className="share-note">
+          Shared with you as {page.role === "editor" ? "an editor" : "a viewer"}.
+          Only the owner can manage sharing.
+        </div>
+        <div className="menu-divider" />
+      </>
+    );
+  }
+
+  const submit = async () => {
+    const value = email.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await shares.add(page._id, value, role);
+      setEmail("");
+      await refresh();
+    } catch (err) {
+      const data = (err as { data?: unknown })?.data;
+      setError(typeof data === "string" ? data : "Couldn't share — try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="prop-menu-label">People</div>
+      {!shares.available ? (
+        <div className="share-note">
+          Sharing needs a connection — reconnect to invite people.
+        </div>
+      ) : (
+        <div className="people-box">
+          <div className="people-add">
+            <input
+              className="publish-link people-email"
+              type="email"
+              placeholder="Invite by email…"
+              value={email}
+              disabled={busy}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void submit();
+              }}
+            />
+            <select
+              className="people-role"
+              value={role}
+              disabled={busy}
+              onChange={(e) => setRole(e.target.value as ShareRole)}
+            >
+              <option value="editor">Editor</option>
+              <option value="viewer">Viewer</option>
+            </select>
+            <button
+              className="btn subtle people-invite"
+              disabled={busy || !email.trim()}
+              onClick={() => void submit()}
+              title="Share page and sub-pages"
+            >
+              <UserPlus size={13} />
+            </button>
+          </div>
+          {error && <div className="share-note error">{error}</div>}
+          {entries && entries.length > 0 && (
+            <div className="people-list">
+              {entries.map((entry) => (
+                <div className="people-row" key={entry.userId}>
+                  <span className="people-name" title={entry.email}>
+                    {entry.email}
+                  </span>
+                  <select
+                    className="people-role"
+                    value={entry.role}
+                    onChange={(e) =>
+                      void shares
+                        .setRole(page._id, entry.userId, e.target.value as ShareRole)
+                        .then(refresh)
+                    }
+                  >
+                    <option value="editor">Editor</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                  <button
+                    className="icon-btn people-remove"
+                    title="Remove access"
+                    onClick={() =>
+                      void shares.remove(page._id, entry.userId).then(refresh)
+                    }
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="share-note">
+            People get this page and everything inside it.
+          </div>
+        </div>
+      )}
+      <div className="menu-divider" />
+    </>
+  );
+}
+
+/**
  * Publish to web. The slug returned by the server is the only thing that
  * makes the page reachable, so "unpublish" genuinely revokes the old link
  * rather than hiding it — worth saying plainly in the UI.
@@ -280,6 +427,15 @@ function PublishSection({ page }: { page: PageMeta }) {
       setBusy(false);
     }
   };
+
+  if (page.role) {
+    return (
+      <>
+        <div className="prop-menu-label">Share to web</div>
+        <div className="share-note">Only the owner can publish this page.</div>
+      </>
+    );
+  }
 
   // The server rejects publishing vault pages; don't offer the toggle.
   if (page.vault) {

@@ -8,6 +8,8 @@ import {
   Mutations,
   PublishApi,
   publicUrlFor,
+  ShareEntry,
+  SharesApi,
   VersionHistoryApi,
 } from "./api";
 import {
@@ -165,6 +167,39 @@ const realApi: DataApi = {
         urlFor: publicUrlFor,
       }),
       [setPublished],
+    );
+  },
+
+  useShares(): SharesApi {
+    const client = useConvex();
+    const addShare = useMutation(api.shares.add);
+    const setShareRole = useMutation(api.shares.setRole);
+    const removeShare = useMutation(api.shares.remove);
+    return useMemo<SharesApi>(
+      () => ({
+        available: true,
+        list: async (pageId) =>
+          (await client.query(api.shares.listForPage, {
+            pageId: pageId as Id<"pages">,
+          })) as ShareEntry[],
+        add: async (pageId, email, role) => {
+          await addShare({ pageId: pageId as Id<"pages">, email, role });
+        },
+        setRole: async (pageId, userId, role) => {
+          await setShareRole({
+            pageId: pageId as Id<"pages">,
+            userId: userId as Id<"users">,
+            role,
+          });
+        },
+        remove: async (pageId, userId) => {
+          await removeShare({
+            pageId: pageId as Id<"pages">,
+            userId: userId as Id<"users">,
+          });
+        },
+      }),
+      [client, addShare, setShareRole, removeShare],
     );
   },
 

@@ -55,11 +55,16 @@ export default function PageTreeItem({
 
   const kids = index.children.get(childrenKey(page._id)) ?? [];
   const hasKids = kids.length > 0;
+  // Shared-with-me pages (Phase 2): move/trash/duplicate/favorite are
+  // owner-only, so their affordances hide; editors keep rename and create.
+  const shared = page.role !== undefined;
+  const canEdit = page.role !== "viewer";
   const isOpen = expanded.has(page._id);
   const isActive = pageId === page._id;
 
   const onDragOver = (e: React.DragEvent) => {
-    if (!drag.dragId || drag.dragId === page._id) return;
+    // No drops on or into shared pages — `move` is owner-only.
+    if (!drag.dragId || drag.dragId === page._id || shared) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     const rect = rowRef.current!.getBoundingClientRect();
@@ -113,7 +118,7 @@ export default function PageTreeItem({
         ref={rowRef}
         className={`tree-row ${isActive ? "active" : ""} ${dropZone ? `drop-${dropZone}` : ""}`}
         style={{ paddingLeft: 8 + depth * 14 }}
-        draggable={!renaming}
+        draggable={!renaming && !shared}
         onDragStart={(e) => {
           drag.setDragId(page._id);
           e.dataTransfer.effectAllowed = "move";
@@ -164,27 +169,31 @@ export default function PageTreeItem({
           <span className="tree-title">{page.title || "Untitled"}</span>
         )}
         <span className="tree-actions" onClick={(e) => e.stopPropagation()}>
-          <button
-            className="tree-action"
-            title="More"
-            onClick={(e) => setMenuAnchor(e.currentTarget)}
-          >
-            <MoreHorizontal size={14} />
-          </button>
-          <button
-            className="tree-action"
-            title="Add a page inside"
-            onClick={async () => {
-              const id = await mutations.create({
-                parentId: page._id,
-                type: "doc",
-              });
-              if (!isOpen) toggleExpanded(page._id);
-              navigate(id);
-            }}
-          >
-            <Plus size={14} />
-          </button>
+          {(!shared || canEdit) && (
+            <button
+              className="tree-action"
+              title="More"
+              onClick={(e) => setMenuAnchor(e.currentTarget)}
+            >
+              <MoreHorizontal size={14} />
+            </button>
+          )}
+          {canEdit && (
+            <button
+              className="tree-action"
+              title="Add a page inside"
+              onClick={async () => {
+                const id = await mutations.create({
+                  parentId: page._id,
+                  type: "doc",
+                });
+                if (!isOpen) toggleExpanded(page._id);
+                navigate(id);
+              }}
+            >
+              <Plus size={14} />
+            </button>
+          )}
         </span>
       </div>
 
@@ -192,36 +201,51 @@ export default function PageTreeItem({
         <Menu
           anchor={menuAnchor}
           onClose={() => setMenuAnchor(null)}
-          items={[
-            {
-              label: page.isFavorite ? "Remove from favorites" : "Add to favorites",
-              icon: page.isFavorite ? <StarOff size={15} /> : <Star size={15} />,
-              onClick: () => void mutations.toggleFavorite({ id: page._id }),
-            },
-            {
-              label: "Rename",
-              icon: <PenLine size={15} />,
-              onClick: () => {
-                setRenameValue(page.title);
-                setRenaming(true);
-              },
-            },
-            {
-              label: "Duplicate",
-              icon: <Copy size={15} />,
-              onClick: () => void mutations.duplicate({ id: page._id }),
-            },
-            "divider",
-            {
-              label: "Move to trash",
-              icon: <Trash2 size={15} />,
-              danger: true,
-              onClick: () => {
-                void mutations.trash({ id: page._id });
-                if (isActive) navigate(null);
-              },
-            },
-          ]}
+          items={
+            shared
+              ? [
+                  // Editors on a shared page: rename only — everything
+                  // else in this menu is owner-only on the server.
+                  {
+                    label: "Rename",
+                    icon: <PenLine size={15} />,
+                    onClick: () => {
+                      setRenameValue(page.title);
+                      setRenaming(true);
+                    },
+                  },
+                ]
+              : [
+                  {
+                    label: page.isFavorite ? "Remove from favorites" : "Add to favorites",
+                    icon: page.isFavorite ? <StarOff size={15} /> : <Star size={15} />,
+                    onClick: () => void mutations.toggleFavorite({ id: page._id }),
+                  },
+                  {
+                    label: "Rename",
+                    icon: <PenLine size={15} />,
+                    onClick: () => {
+                      setRenameValue(page.title);
+                      setRenaming(true);
+                    },
+                  },
+                  {
+                    label: "Duplicate",
+                    icon: <Copy size={15} />,
+                    onClick: () => void mutations.duplicate({ id: page._id }),
+                  },
+                  "divider",
+                  {
+                    label: "Move to trash",
+                    icon: <Trash2 size={15} />,
+                    danger: true,
+                    onClick: () => {
+                      void mutations.trash({ id: page._id });
+                      if (isActive) navigate(null);
+                    },
+                  },
+                ]
+          }
         />
       )}
 
