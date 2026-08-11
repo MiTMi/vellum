@@ -27,6 +27,8 @@ export interface CellRow {
   _creationTime: number;
   updatedAt: number;
   props?: Record<string, unknown> | null;
+  /** Share role when the row reaches me through a share (Phase 2). */
+  role?: "viewer" | "editor";
 }
 
 interface CellProps {
@@ -58,7 +60,13 @@ export default function Cell({
     if (editing) inputRef.current?.focus();
   }, [editing]);
 
-  const set = (v: unknown) => void mutations.setRowProp({ id: rowId, propId: prop.id, value: v });
+  // Viewer-role shared rows are read-only: no popovers, no edits, and
+  // `set` is inert as a backstop so no path can queue a doomed write.
+  const readOnly = row.role === "viewer";
+  const set = (v: unknown) => {
+    if (readOnly) return;
+    void mutations.setRowProp({ id: rowId, propId: prop.id, value: v });
+  };
 
   const startEdit = () => {
     setDraft(
@@ -113,6 +121,7 @@ export default function Cell({
           <input
             type="checkbox"
             checked={value === true}
+            disabled={readOnly}
             onChange={(e) => set(e.target.checked)}
           />
         </div>
@@ -131,7 +140,7 @@ export default function Cell({
         .filter(Boolean) as SelectOption[];
       return (
         <>
-          <div className={cls} onClick={(e) => setAnchor(e.currentTarget)}>
+          <div className={cls} onClick={readOnly ? undefined : (e) => setAnchor(e.currentTarget)}>
             {chips.length ? (
               chips.map((o) => (
                 <span key={o.id} className={`chip chip-${o.color}`}>
@@ -170,7 +179,7 @@ export default function Cell({
       const ids = Array.isArray(value) ? (value as string[]) : [];
       return (
         <>
-          <div className={cls} onClick={(e) => setAnchor(e.currentTarget)}>
+          <div className={cls} onClick={readOnly ? undefined : (e) => setAnchor(e.currentTarget)}>
             <RelationChips ids={ids} />
           </div>
           {anchor && (
@@ -192,7 +201,7 @@ export default function Cell({
     case "date":
       return (
         <>
-          <div className={cls} onClick={(e) => setAnchor(e.currentTarget)}>
+          <div className={cls} onClick={readOnly ? undefined : (e) => setAnchor(e.currentTarget)}>
             {parseDateValue(value) ? (
               formatDateValue(value)
             ) : (
@@ -230,7 +239,7 @@ export default function Cell({
         );
       }
       return (
-        <div className={cls} onClick={startEdit}>
+        <div className={cls} onClick={readOnly ? undefined : startEdit}>
           {typeof value === "string" && value ? (
             <span className="url-value">
               <span className="url-text">{value.replace(/^https?:\/\//, "")}</span>
@@ -272,7 +281,7 @@ export default function Cell({
         );
       }
       return (
-        <div className={cls} onClick={startEdit}>
+        <div className={cls} onClick={readOnly ? undefined : startEdit}>
           {value !== undefined && value !== null && value !== "" ? (
             <span className="cell-value">{String(value)}</span>
           ) : (
@@ -308,6 +317,7 @@ function AiCell({
   const [error, setError] = useState<string | null>(null);
   const value = row.props?.[prop.id];
   const text = typeof value === "string" ? value : "";
+  const readOnly = row.role === "viewer";
 
   const generate = async () => {
     setBusy(true);
@@ -337,7 +347,7 @@ function AiCell({
     <div className={cls} title={error ?? undefined}>
       <div className="ai-cell">
         {text && <span className="ai-cell-value">{text}</span>}
-        {ai.available && (
+        {ai.available && !readOnly && (
           <button
             className="ai-cell-generate"
             disabled={busy}

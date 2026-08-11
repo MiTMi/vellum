@@ -234,7 +234,11 @@ export default function TableView({
                   ) : (
                     <span
                       className="row-title"
-                      onClick={() => setTitleEdit({ id: row._id, value: row.title })}
+                      onClick={
+                        locked
+                          ? undefined
+                          : () => setTitleEdit({ id: row._id, value: row.title })
+                      }
                     >
                       {row.title || <span className="cell-placeholder">Untitled</span>}
                     </span>
@@ -246,13 +250,15 @@ export default function TableView({
                   >
                     <ArrowUpRight size={13} /> Open
                   </button>
-                  <button
-                    className="row-delete"
-                    title="Delete row"
-                    onClick={() => void mutations.trash({ id: row._id })}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  {!locked && !row.role && (
+                    <button
+                      className="row-delete"
+                      title="Delete row"
+                      onClick={() => void mutations.trash({ id: row._id })}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
                 </div>
               </td>
               {dbProps.map((prop) => (

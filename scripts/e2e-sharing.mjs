@@ -66,6 +66,32 @@ try {
         isFavorite: true, // the OWNER's flag — must not leak into my favorites
       },
       {
+        _id: "mock_shared_db",
+        _creationTime: now,
+        title: "Family tasks",
+        type: "database",
+        rank: 3,
+        updatedAt: now,
+        role: "viewer",
+        activeView: "table",
+        dbProps: [
+          { id: "status", name: "Status", type: "select",
+            options: [{ id: "todo", name: "To do", color: "gray" }] },
+          { id: "done", name: "Done", type: "checkbox" },
+        ],
+      },
+      {
+        _id: "mock_shared_db_row",
+        _creationTime: now,
+        title: "Water the plants",
+        type: "doc",
+        parentId: "mock_shared_db",
+        rank: 1,
+        updatedAt: now,
+        role: "viewer",
+        props: { status: "todo", done: false },
+      },
+      {
         _id: "mock_shared_editable",
         _creationTime: now,
         title: "Shared notes",
@@ -108,6 +134,10 @@ try {
     "favorite star hidden on shared page",
     !(await page.isVisible(".topbar-right .icon-btn[title='Add to favorites']")),
   );
+  check(
+    "comments section hidden on shared pages",
+    !(await page.isVisible(".comments, .comments-section, [class*='comment']")),
+  );
 
   // Share popover on a shared page: role note, no publish toggle.
   await page.click(".share-btn");
@@ -141,6 +171,22 @@ try {
     (el) => el.getAttribute("contenteditable"),
   );
   check("editor role can edit", editable2 === "true");
+
+  /* ------------------------------------------ shared database (viewer) */
+  await page.click(".tree-title:text('Family tasks')");
+  await page.waitForSelector(".db-table", { timeout: 5000 });
+  check("no new-row button for viewers", !(await page.isVisible(".new-row-btn")));
+  check("no row-delete for viewers", !(await page.isVisible(".row-delete")));
+  const checkboxDisabled = await page.$eval(
+    ".db-table input[type='checkbox']",
+    (el) => el.disabled,
+  );
+  check("checkbox cells disabled for viewers", checkboxDisabled === true);
+  // Clicking a select cell must not open the option popover.
+  await page.click(".db-table td .cell, .db-table .cell", { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  check("select popover doesn't open for viewers", !(await page.isVisible(".select-popover, .prop-menu")));
+  await page.screenshot({ path: `${SHOTS}/4-shared-db.png` });
 
   /* --------------------------------- People section on my own page */
   await page.click(".sidebar-footer .new-page");

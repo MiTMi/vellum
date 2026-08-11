@@ -97,7 +97,7 @@ export default function BoardView({ page, view, rows, locked }: BoardViewProps) 
               <div
                 key={row._id}
                 className="board-card"
-                draggable
+                draggable={!locked}
                 onDragStart={(e) => {
                   setDragRow(row._id);
                   e.dataTransfer.effectAllowed = "move";

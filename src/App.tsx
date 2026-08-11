@@ -147,6 +147,9 @@ function Workspace() {
         newTab();
       } else if (mod && e.key.toLowerCase() === "d" && pageId && !isLibraryId(pageId)) {
         e.preventDefault();
+        // Duplicate is owner-only — on a shared page the replay would be
+        // dropped (or copy someone else's subtree), so ⌘D is inert there.
+        if (index.byId.get(pageId)?.role) return;
         void mutations.duplicate({ id: pageId }).then((id) => {
           if (id) navigate(id);
         });
@@ -165,7 +168,7 @@ function Workspace() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mutations, navigate, newTab, pageId]);
+  }, [mutations, navigate, newTab, pageId, index]);
 
   return (
     <div className={`app theme-${theme}`}>

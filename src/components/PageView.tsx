@@ -338,7 +338,10 @@ function PageBody({
         )}
 
         <LinkedMentions pageId={page._id} />
-        <Comments pageId={page._id} />
+        {/* Comments are owner-only server-side; sharee support is deferred
+            with the people-awareness pass, so the section hides entirely
+            rather than offering a composer whose submit would throw. */}
+        {!page.role && <Comments pageId={page._id} />}
       </div>
 
       {iconAnchor && (
