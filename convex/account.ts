@@ -149,6 +149,15 @@ export const wipeUser = internalMutation({
       await ctx.db.delete("pages", p._id);
     }
 
+    // Shares: both directions — grants they made (their pages are being
+    // deleted) and grants made to them (dangling recipient otherwise).
+    const granted = await ctx.db.query("shares").collect();
+    for (const s of granted) {
+      if (s.ownerId === args.userId || s.userId === args.userId) {
+        await ctx.db.delete("shares", s._id);
+      }
+    }
+
     // Files: rows and the stored objects themselves.
     const files = await ctx.db
       .query("files")
@@ -187,6 +196,7 @@ async function wipeEverythingImpl(ctx: MutationCtx) {
     "pages",
     "pageVersions",
     "comments",
+    "shares",
     "files",
     "aiUsage",
     "invites",

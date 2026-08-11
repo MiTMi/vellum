@@ -89,6 +89,80 @@ export async function writeOwnedPage(
   return page;
 }
 
+export type AccessRole = "owner" | "editor" | "viewer";
+
+export interface PageAccess {
+  page: Doc<"pages">;
+  role: AccessRole;
+}
+
+/**
+ * Phase 2 access resolution (docs/phase2-sharing-design.md): ownership, or
+ * a share on the page or any ancestor — highest role along the chain wins.
+ * Every function stays owner-only (`readOwnedPage`/`writeOwnedPage`) until
+ * it deliberately switches to this.
+ *
+ * Contract mirrors the Phase 1 pair:
+ *  - `need: "read"`  → null for missing, foreign-unshared, and vault alike
+ *    (no id probing).
+ *  - `need: "write"` → null only for missing (callers no-op, replays race
+ *    deletes); a LOUD "Not authorized" throw for anything the caller may
+ *    not write — foreign, viewer-role, vault, or a trashed shared page —
+ *    so the outbox drops the op deterministically.
+ *
+ * Vault pages are never accessible to non-owners, even through a shared
+ * ancestor — checked on the target page before any walk.
+ */
+export async function getAccessiblePage(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  id: Id<"pages">,
+  need: "read" | "write",
+): Promise<PageAccess | null> {
+  let page: Doc<"pages"> | null;
+  try {
+    page = await ctx.db.get("pages", id);
+  } catch {
+    return null;
+  }
+  if (!page) return null;
+  if (page.ownerId === userId) return { page, role: "owner" };
+
+  const deny = (): null => {
+    if (need === "write") throw new ConvexError("Not authorized");
+    return null;
+  };
+  if (page.vault) return deny();
+
+  // Walk the ancestor chain collecting shares; editor beats viewer. The
+  // guard mirrors pathTo's — trees are shallow, cycles are impossible by
+  // construction, but a bound keeps a corrupt parentId from spinning.
+  let role: AccessRole | null = null;
+  let cursor: Doc<"pages"> | null = page;
+  let guard = 0;
+  while (cursor && guard++ < 100) {
+    const share = await ctx.db
+      .query("shares")
+      .withIndex("by_page_user", (q) =>
+        q.eq("pageId", cursor!._id).eq("userId", userId),
+      )
+      .unique();
+    if (share) {
+      if (share.role === "editor") {
+        role = "editor";
+        break; // can't do better — stop walking
+      }
+      role = "viewer";
+    }
+    cursor = cursor.parentId ? await ctx.db.get("pages", cursor.parentId) : null;
+  }
+  if (!role) return deny();
+  // Sharees read trashed pages (so sync can mark them) but never write
+  // them; viewers never write at all.
+  if (need === "write" && (role === "viewer" || page.inTrash)) return deny();
+  return { page, role };
+}
+
 /** Every page belonging to this user (trashed included). */
 export async function pagesOf(
   ctx: QueryCtx,

@@ -6,7 +6,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
-import { isOwnerUser, requireUser } from "./lib/auth";
+import { getAccessiblePage, isOwnerUser, requireUser } from "./lib/auth";
 import { chat, aiModel } from "./lib/openrouter";
 import {
   AI_POOL_MONTHLY_MICRO_USD,
@@ -277,10 +277,12 @@ function propInstruction(kind: AiPropKind, prompt: string | undefined): string {
 export const _rowForFill = internalQuery({
   args: { pageId: v.id("pages"), userId: v.id("users") },
   handler: async (ctx, args): Promise<Doc<"pages"> | null> => {
-    const page = await ctx.db.get(args.pageId);
-    // Foreign rows read as missing — same rule as pages.get.
-    if (!page || page.ownerId !== args.userId) return null;
-    return page;
+    // Owner or shared-editor; viewers read as missing — a fill is paid for
+    // by the caller and written back via setRowProp, which a viewer can't
+    // do, so generating for them would burn budget on an unwritable value.
+    const access = await getAccessiblePage(ctx, args.userId, args.pageId, "read");
+    if (!access || access.role === "viewer") return null;
+    return access.page;
   },
 });
 

@@ -437,3 +437,227 @@ test("deleting a regular user erases only their data; owner blocked while others
     expect(await ctx.db.get("users", a.userId as Id<"users">)).toBeNull();
   });
 });
+
+/* ----------------------- Phase 2: sharing ---------------------------- */
+/* Owner A shares a subtree with B; C is a stranger. Design contract in
+ * docs/phase2-sharing-design.md — B gets exactly the granted role inside
+ * the subtree and nothing anywhere else; C's world is unchanged. */
+
+/** A's subtree (root ← child), shared with B at `role`; C uninvolved. */
+async function sharedFixture(role: "viewer" | "editor") {
+  const tc = freshBackend();
+  const a = await addUser(tc, "alice@vellum.test");
+  const b = await addUser(tc, "bob@vellum.test");
+  const c = await addUser(tc, "carol@vellum.test");
+  const root = await a.as.mutation(api.pages.create, {
+    type: "doc",
+    title: "Family plans",
+  });
+  const child = await a.as.mutation(api.pages.create, {
+    type: "doc",
+    title: "Packing list",
+    parentId: root,
+  });
+  const outside = await a.as.mutation(api.pages.create, {
+    type: "doc",
+    title: "Alice private",
+  });
+  await a.as.mutation(api.shares.add, {
+    pageId: root,
+    email: "bob@vellum.test",
+    role,
+  });
+  return { tc, a, b, c, root, child, outside };
+}
+
+test("viewer B reads the whole subtree and nothing else; C sees nothing", async () => {
+  const { b, c, root, child, outside } = await sharedFixture("viewer");
+
+  expect(await b.as.query(api.pages.get, { id: root })).not.toBeNull();
+  expect(await b.as.query(api.pages.get, { id: child })).not.toBeNull();
+  expect(await b.as.query(api.pages.get, { id: outside })).toBeNull();
+
+  // Sync surfaces: role-stamped entries for the subtree, nothing more.
+  const index = await b.as.query(api.pages.syncIndex, {});
+  const entries = new Map(index.map((e) => [e._id, e]));
+  expect((entries.get(root) as { role?: string })?.role).toBe("viewer");
+  expect((entries.get(child) as { role?: string })?.role).toBe("viewer");
+  expect(entries.has(outside)).toBe(false);
+  const docs = await b.as.query(api.pages.getMany, { ids: [root, child, outside] });
+  expect(docs.map((d) => d._id).sort()).toEqual([root, child].sort());
+  expect(docs.every((d) => (d as { role?: string }).role === "viewer")).toBe(true);
+
+  // C: the stranger's world is unchanged by the share existing.
+  expect(await c.as.query(api.pages.get, { id: root })).toBeNull();
+  expect((await c.as.query(api.pages.syncIndex, {})).map((e) => e._id)).not.toContain(root);
+});
+
+test("viewer B cannot write anywhere in the subtree", async () => {
+  const { b, root, child } = await sharedFixture("viewer");
+  const rejects = async (p: Promise<unknown>) =>
+    await expect(p).rejects.toThrow(/Not authorized/);
+  await rejects(b.as.mutation(api.pages.updateContent, { id: root, content: [], text: "x" }));
+  await rejects(b.as.mutation(api.pages.rename, { id: child, title: "hax" }));
+  await rejects(b.as.mutation(api.pages.setRowProp, { id: child, propId: "p", value: 1 }));
+  await rejects(b.as.mutation(api.pages.create, { type: "doc", parentId: root }));
+});
+
+test("editor B edits inside the subtree; owner-only surfaces stay closed", async () => {
+  const { a, b, root, child, outside } = await sharedFixture("editor");
+
+  await b.as.mutation(api.pages.rename, { id: child, title: "Packing (edited by B)" });
+  await b.as.mutation(api.pages.updateContent, {
+    id: child,
+    content: [{ type: "paragraph", content: [{ type: "text", text: "socks", styles: {} }] }],
+    text: "socks",
+  });
+  const asA = await a.as.query(api.pages.get, { id: child });
+  expect(asA?.title).toBe("Packing (edited by B)");
+
+  const rejects = async (p: Promise<unknown>) =>
+    await expect(p).rejects.toThrow(/Not authorized/);
+  // Owner-only mutations, even with editor role.
+  await rejects(b.as.mutation(api.pages.move, { id: child, rank: 9 }));
+  await rejects(b.as.mutation(api.pages.trash, { id: child }));
+  await rejects(b.as.mutation(api.pages.duplicate, { id: child }));
+  await rejects(b.as.mutation(api.pages.setPublished, { id: child, value: true }));
+  await rejects(b.as.mutation(api.pages.toggleFavorite, { id: root }));
+  await rejects(b.as.mutation(api.pages.setTemplate, { id: root, value: true }));
+  // Only the owner manages shares — B cannot grant C access.
+  await rejects(
+    b.as.mutation(api.shares.add, { pageId: root, email: "carol@vellum.test", role: "viewer" }),
+  );
+  // And nothing outside the subtree opened up.
+  await rejects(b.as.mutation(api.pages.rename, { id: outside, title: "hax" }));
+});
+
+test("editor B's create lands in A's ownership and stays idempotent on replay", async () => {
+  const { tc, a, b, root } = await sharedFixture("editor");
+  const args = {
+    clientKey: "b-offline-create",
+    title: "B's addition",
+    type: "doc" as const,
+    parentId: root,
+    rank: 1,
+    updatedAt: Date.now(),
+  };
+  const created = await b.as.mutation(api.pages.createWithDoc, args);
+  const replay = await b.as.mutation(api.pages.createWithDoc, args);
+  expect(replay).toBe(created); // accessibility-based idempotency
+  await tc.run(async (ctx) => {
+    const row = await ctx.db.get("pages", created);
+    expect(row?.ownerId).toBe(a.userId); // parent-ownership invariant holds
+  });
+  // The page is A's: A can see and trash it like any of their own.
+  expect(await a.as.query(api.pages.get, { id: created })).not.toBeNull();
+  await a.as.mutation(api.pages.trash, { id: created });
+});
+
+test("vault pages are unshareable and unreachable through a shared ancestor", async () => {
+  const { a, b, root } = await sharedFixture("editor");
+  const vaultRoot = await a.as.mutation(api.pages.create, {
+    type: "doc",
+    title: "venc1:iv:data",
+    vault: true,
+    parentId: root, // vault root nested INSIDE the shared subtree
+  });
+  await expect(
+    a.as.mutation(api.shares.add, { pageId: vaultRoot, email: "bob@vellum.test", role: "viewer" }),
+  ).rejects.toThrow(/can't be shared/);
+  // Not through get, not through sync, not through getMany.
+  expect(await b.as.query(api.pages.get, { id: vaultRoot })).toBeNull();
+  expect((await b.as.query(api.pages.syncIndex, {})).map((e) => e._id)).not.toContain(vaultRoot);
+  expect(await b.as.query(api.pages.getMany, { ids: [vaultRoot] })).toHaveLength(0);
+  // And B cannot plant a vault flag in A's tree.
+  await expect(
+    b.as.mutation(api.pages.create, { type: "doc", parentId: root, vault: true }),
+  ).rejects.toThrow(/Not authorized/);
+});
+
+test("revocation closes every surface; role changes apply immediately", async () => {
+  const { a, b, root, child } = await sharedFixture("editor");
+
+  // Downgrade editor → viewer: reads stay, writes die.
+  await a.as.mutation(api.shares.setRole, {
+    pageId: root,
+    userId: b.userId as Id<"users">,
+    role: "viewer",
+  });
+  expect(await b.as.query(api.pages.get, { id: child })).not.toBeNull();
+  await expect(
+    b.as.mutation(api.pages.rename, { id: child, title: "still?" }),
+  ).rejects.toThrow(/Not authorized/);
+
+  // Revoke: reads null, writes throw, sync index empties.
+  await a.as.mutation(api.shares.remove, {
+    pageId: root,
+    userId: b.userId as Id<"users">,
+  });
+  expect(await b.as.query(api.pages.get, { id: root })).toBeNull();
+  expect(await b.as.query(api.pages.get, { id: child })).toBeNull();
+  await expect(
+    b.as.mutation(api.pages.updateContent, { id: child, content: [], text: "x" }),
+  ).rejects.toThrow(/Not authorized/);
+  expect((await b.as.query(api.pages.syncIndex, {})).map((e) => e._id)).not.toContain(root);
+});
+
+test("moving a page out of the shared subtree severs B's access to it", async () => {
+  const { a, b, root, child } = await sharedFixture("viewer");
+  await a.as.mutation(api.pages.move, { id: child, parentId: undefined, rank: 99 });
+  expect(await b.as.query(api.pages.get, { id: child })).toBeNull();
+  expect(await b.as.query(api.pages.get, { id: root })).not.toBeNull(); // root still shared
+});
+
+test("overlapping shares resolve to the highest role", async () => {
+  const { a, b, root, child } = await sharedFixture("viewer");
+  await a.as.mutation(api.shares.add, {
+    pageId: child,
+    email: "bob@vellum.test",
+    role: "editor",
+  });
+  // Child: editor via the direct share, even though the root grant is viewer.
+  await b.as.mutation(api.pages.rename, { id: child, title: "edited" });
+  // Root: still viewer-only.
+  await expect(
+    b.as.mutation(api.pages.rename, { id: root, title: "nope" }),
+  ).rejects.toThrow(/Not authorized/);
+});
+
+test("trashed shared pages stay readable but never writable for editors", async () => {
+  const { a, b, child } = await sharedFixture("editor");
+  await a.as.mutation(api.pages.trash, { id: child });
+  // Still visible to sync (so the replica can mark it) …
+  expect((await b.as.query(api.pages.syncIndex, {})).map((e) => e._id)).toContain(child);
+  // … but not writable, even with editor role.
+  await expect(
+    b.as.mutation(api.pages.updateContent, { id: child, content: [], text: "x" }),
+  ).rejects.toThrow(/Not authorized/);
+});
+
+test("share management guards: unknown email, self-share, foreign listing", async () => {
+  const { a, b, c, root } = await sharedFixture("viewer");
+  await expect(
+    a.as.mutation(api.shares.add, { pageId: root, email: "nobody@vellum.test", role: "viewer" }),
+  ).rejects.toThrow(/No Vellum account/);
+  await expect(
+    a.as.mutation(api.shares.add, { pageId: root, email: "alice@vellum.test", role: "viewer" }),
+  ).rejects.toThrow(/already have access/);
+  // listForPage is a read: foreign page reads as empty, not a throw.
+  expect(await c.as.query(api.shares.listForPage, { pageId: root })).toHaveLength(0);
+  // The owner sees the grant; B sees their side through listSharedWithMe.
+  const grants = await a.as.query(api.shares.listForPage, { pageId: root });
+  expect(grants.map((g) => g.email)).toContain("bob@vellum.test");
+  const mine = await b.as.query(api.shares.listSharedWithMe, {});
+  expect(mine.map((s) => s.pageId)).toContain(root);
+  expect(await c.as.query(api.shares.listSharedWithMe, {})).toHaveLength(0);
+});
+
+test("deleteForever removes the page's share rows", async () => {
+  const { tc, a, root, child } = await sharedFixture("viewer");
+  await a.as.mutation(api.pages.trash, { id: root });
+  await a.as.mutation(api.pages.deleteForever, { id: root });
+  await tc.run(async (ctx) => {
+    expect(await ctx.db.query("shares").collect()).toHaveLength(0);
+    expect(await ctx.db.get("pages", child)).toBeNull();
+  });
+});

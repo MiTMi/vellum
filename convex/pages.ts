@@ -4,15 +4,17 @@ import {
   internalQuery,
   MutationCtx,
 } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
 import { activeView, dbProp, dbView } from "./schema";
 import {
+  getAccessiblePage,
   pagesOf,
   readOwnedPage,
   requireUser,
   writeOwnedPage,
 } from "./lib/auth";
+import { sharedPagesFor } from "./lib/sharing";
 import { assertPageQuota } from "./lib/quotas";
 import { extractPageLinks } from "./lib/pageLinks";
 import { makeSnippet } from "./lib/snippet";
@@ -42,7 +44,7 @@ async function nextRank(ctx: MutationCtx, parentId: Id<"pages"> | undefined) {
   return max + 1024;
 }
 
-/** Delete every history snapshot and comment belonging to a page. */
+/** Delete every history snapshot, comment, and share attached to a page. */
 async function deleteSidecarsOf(ctx: MutationCtx, pageId: Id<"pages">) {
   const versions = await ctx.db
     .query("pageVersions")
@@ -54,6 +56,11 @@ async function deleteSidecarsOf(ctx: MutationCtx, pageId: Id<"pages">) {
     .withIndex("by_page", (q) => q.eq("pageId", pageId))
     .collect();
   for (const c of comments) await ctx.db.delete("comments", c._id);
+  const shares = await ctx.db
+    .query("shares")
+    .withIndex("by_page", (q) => q.eq("pageId", pageId))
+    .collect();
+  for (const s of shares) await ctx.db.delete("shares", s._id);
 }
 
 async function forSubtree(
@@ -110,8 +117,14 @@ export const get = query({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    // Null for missing AND foreign alike — reads can't probe existence.
-    return await readOwnedPage(ctx, userId, args.id);
+    // Null for missing AND foreign-unshared alike — reads can't probe
+    // existence. Shared docs carry the viewer-relative `role` so clients
+    // can render read-only chrome; owned docs stay shaped as before.
+    const access = await getAccessiblePage(ctx, userId, args.id, "read");
+    if (!access) return null;
+    return access.role === "owner"
+      ? access.page
+      : { ...access.page, role: access.role };
   },
 });
 
@@ -144,7 +157,19 @@ export const syncIndex = query({
   handler: async (ctx) => {
     const userId = await requireUser(ctx);
     const pages = await pagesOf(ctx, userId);
-    return pages.map((p) => ({ _id: p._id, updatedAt: p.updatedAt }));
+    const owned = pages.map((p) => ({ _id: p._id, updatedAt: p.updatedAt }));
+    // Union in pages shared with me, each entry stamped with my role.
+    // Reconcile must diff on (updatedAt, role) — a role change re-pulls
+    // without touching the page — and revocation is just absence here.
+    const shared = await sharedPagesFor(ctx, userId);
+    return [
+      ...owned,
+      ...[...shared.values()].map(({ page, role }) => ({
+        _id: page._id,
+        updatedAt: page.updatedAt,
+        role,
+      })),
+    ];
   },
 });
 
@@ -153,12 +178,19 @@ export const getMany = query({
   args: { ids: v.array(v.id("pages")) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    const docs: Doc<"pages">[] = [];
+    const docs: (Doc<"pages"> & { role?: "viewer" | "editor" })[] = [];
     for (const id of args.ids) {
-      // Foreign ids silently drop out, like deleted ones — the sync engine
-      // treats absence as "permanently gone", which is the right outcome.
-      const doc = await readOwnedPage(ctx, userId, id);
-      if (doc) docs.push(doc);
+      // Foreign-unshared ids silently drop out, like deleted ones — the
+      // sync engine treats absence as "permanently gone", which is right.
+      // `role` is viewer-relative (never stored on the page), so shared
+      // docs are stamped here and the replica persists the stamp.
+      const access = await getAccessiblePage(ctx, userId, id, "read");
+      if (!access) continue;
+      docs.push(
+        access.role === "owner"
+          ? access.page
+          : { ...access.page, role: access.role },
+      );
     }
     return docs;
   },
@@ -230,12 +262,27 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    // A foreign parent throws — this is one of the writes upholding the
-    // parent-ownership invariant (see lib/auth.ts).
-    const parent = args.parentId
-      ? await writeOwnedPage(ctx, userId, args.parentId)
+    // The parent must be writable — owned, or shared with editor role. A
+    // foreign/viewer parent throws, which is what upholds the
+    // parent-ownership invariant: the new page inherits the PARENT's
+    // ownerId, so a shared subtree stays single-owner (and the page
+    // counts against the subtree owner's quota, not the creator's).
+    const parentAccess = args.parentId
+      ? await getAccessiblePage(ctx, userId, args.parentId, "write")
       : null;
-    await assertPageQuota(ctx, userId);
+    if (args.parentId && !parentAccess) {
+      // Missing parent: write-mode null. Nothing sane to attach to.
+      throw new ConvexError("Parent page not found");
+    }
+    const parent = parentAccess?.page ?? null;
+    const ownerId = parent?.ownerId ?? userId;
+    // Only the vault's owner may create inside it; a shared parent is
+    // never vault (getAccessiblePage refuses vault for non-owners), and a
+    // sharee must not plant a vault flag in someone else's tree.
+    if (args.vault && parentAccess && parentAccess.role !== "owner") {
+      throw new ConvexError("Not authorized");
+    }
+    await assertPageQuota(ctx, ownerId);
     // Vault membership is inherited server-side so a buggy client can't
     // create a plaintext-indexed page inside the encrypted subtree.
     const vault = args.vault || parent?.vault ? true : undefined;
@@ -245,7 +292,7 @@ export const create = mutation({
     const rank = await nextRank(ctx, args.parentId);
     const now = Date.now();
     const id = await ctx.db.insert("pages", {
-      ownerId: userId,
+      ownerId,
       title: args.title ?? "",
       type: args.type,
       parentId: args.parentId,
@@ -327,20 +374,36 @@ export const createWithDoc = mutation({
       .withIndex("by_clientKey", (q) => q.eq("clientKey", args.clientKey))
       .unique();
     // clientKeys are client-generated UUIDs; a cross-user collision is not
-    // a replay, so only the creator's own row makes the call idempotent.
-    if (existing && existing.ownerId === userId) return existing._id;
+    // a replay, so idempotency requires the row to be the caller's own —
+    // by ownership, or by access to it (an editor's create inside a shared
+    // subtree is owned by the SHARER, so the accessibility check is what
+    // keeps that replay idempotent instead of duplicating the page).
+    if (existing) {
+      if (existing.ownerId === userId) return existing._id;
+      const access = await getAccessiblePage(ctx, userId, existing._id, "read");
+      if (access) return existing._id;
+    }
     const { clientKey, publicSlug, publishedAt, ownerId: _dropped, ...doc } = args;
-    // Foreign parents throw (parent-ownership invariant, lib/auth.ts).
-    const parent = doc.parentId
-      ? await writeOwnedPage(ctx, userId, doc.parentId)
+    // Owned or editor-shared parents pass; foreign/viewer parents throw
+    // (parent-ownership invariant, lib/auth.ts) so the outbox drops the
+    // op. A *missing* parent stays a null no-throw — replays race deletes,
+    // and the pre-Phase-2 behavior (insert as an orphan of the creator)
+    // must hold or the op would retry forever.
+    const parentAccess = doc.parentId
+      ? await getAccessiblePage(ctx, userId, doc.parentId, "write")
       : null;
-    await assertPageQuota(ctx, userId);
+    const parent = parentAccess?.page ?? null;
+    const ownerId = parent?.ownerId ?? userId;
+    if (doc.vault && parentAccess && parentAccess.role !== "owner") {
+      throw new ConvexError("Not authorized");
+    }
+    await assertPageQuota(ctx, ownerId);
     // Same server-side vault inheritance as `create`, plus: an encrypted
     // page must never contribute plaintext to the search index.
     const vault = doc.vault || parent?.vault ? true : undefined;
     return await ctx.db.insert("pages", {
       ...doc,
-      ownerId: userId,
+      ownerId,
       vault,
       contentText: vault ? "" : doc.contentText,
       searchText: vault ? "" : doc.searchText,
@@ -360,8 +423,11 @@ export const rename = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    const page = await writeOwnedPage(ctx, userId, args.id);
-    if (!page) return;
+    // Owner or shared-editor may write; viewers and foreigners throw
+    // loudly, missing pages no-op (see getAccessiblePage).
+    const access = await getAccessiblePage(ctx, userId, args.id, "write");
+    if (!access) return;
+    const page = access.page;
     if (
       args.clientUpdatedAt !== undefined &&
       page.contentUpdatedAt !== undefined &&
@@ -390,8 +456,11 @@ export const updateContent = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    const page = await writeOwnedPage(ctx, userId, args.id);
-    if (!page) return;
+    // Owner or shared-editor may write; viewers and foreigners throw
+    // loudly, missing pages no-op (see getAccessiblePage).
+    const access = await getAccessiblePage(ctx, userId, args.id, "write");
+    if (!access) return;
+    const page = access.page;
     if (
       args.clientUpdatedAt !== undefined &&
       page.contentUpdatedAt !== undefined &&
@@ -447,8 +516,11 @@ export const setIcon = mutation({
   args: { id: v.id("pages"), icon: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    const page = await writeOwnedPage(ctx, userId, args.id);
-    if (!page) return;
+    // Owner or shared-editor may write; viewers and foreigners throw
+    // loudly, missing pages no-op (see getAccessiblePage).
+    const access = await getAccessiblePage(ctx, userId, args.id, "write");
+    if (!access) return;
+    const page = access.page;
     await ctx.db.patch("pages", args.id, {
       icon: args.icon === null ? undefined : args.icon,
       updatedAt: Date.now(),
@@ -460,8 +532,11 @@ export const setCover = mutation({
   args: { id: v.id("pages"), cover: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    const page = await writeOwnedPage(ctx, userId, args.id);
-    if (!page) return;
+    // Owner or shared-editor may write; viewers and foreigners throw
+    // loudly, missing pages no-op (see getAccessiblePage).
+    const access = await getAccessiblePage(ctx, userId, args.id, "write");
+    if (!access) return;
+    const page = access.page;
     await ctx.db.patch("pages", args.id, {
       cover: args.cover === null ? undefined : args.cover,
       updatedAt: Date.now(),
@@ -482,8 +557,11 @@ export const setPageOptions = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    const page = await writeOwnedPage(ctx, userId, args.id);
-    if (!page) return;
+    // Owner or shared-editor may write; viewers and foreigners throw
+    // loudly, missing pages no-op (see getAccessiblePage).
+    const access = await getAccessiblePage(ctx, userId, args.id, "write");
+    if (!access) return;
+    const page = access.page;
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.font !== undefined) patch.font = args.font;
     if (args.smallText !== undefined) patch.smallText = args.smallText;
@@ -763,8 +841,11 @@ export const updateDbProps = mutation({
   args: { id: v.id("pages"), dbProps: v.array(dbProp) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    const page = await writeOwnedPage(ctx, userId, args.id);
-    if (!page) return;
+    // Owner or shared-editor may write; viewers and foreigners throw
+    // loudly, missing pages no-op (see getAccessiblePage).
+    const access = await getAccessiblePage(ctx, userId, args.id, "write");
+    if (!access) return;
+    const page = access.page;
     await ctx.db.patch("pages", args.id, {
       dbProps: args.dbProps,
       updatedAt: Date.now(),
@@ -776,8 +857,11 @@ export const setRowProp = mutation({
   args: { id: v.id("pages"), propId: v.string(), value: v.any() },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    const page = await writeOwnedPage(ctx, userId, args.id);
-    if (!page) return;
+    // Owner or shared-editor may write; viewers and foreigners throw
+    // loudly, missing pages no-op (see getAccessiblePage).
+    const access = await getAccessiblePage(ctx, userId, args.id, "write");
+    if (!access) return;
+    const page = access.page;
     const props = { ...(page.props ?? {}) };
     if (args.value === null) delete props[args.propId];
     else props[args.propId] = args.value;
@@ -794,8 +878,11 @@ export const setView = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    const page = await writeOwnedPage(ctx, userId, args.id);
-    if (!page) return;
+    // Owner or shared-editor may write; viewers and foreigners throw
+    // loudly, missing pages no-op (see getAccessiblePage).
+    const access = await getAccessiblePage(ctx, userId, args.id, "write");
+    if (!access) return;
+    const page = access.page;
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.activeView !== undefined) patch.activeView = args.activeView;
     if (args.boardGroupBy !== undefined) patch.boardGroupBy = args.boardGroupBy;
@@ -813,8 +900,11 @@ export const setViews = mutation({
   args: { id: v.id("pages"), views: v.array(dbView) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    const page = await writeOwnedPage(ctx, userId, args.id);
-    if (!page) return;
+    // Owner or shared-editor may write; viewers and foreigners throw
+    // loudly, missing pages no-op (see getAccessiblePage).
+    const access = await getAccessiblePage(ctx, userId, args.id, "write");
+    if (!access) return;
+    const page = access.page;
     await ctx.db.patch("pages", args.id, {
       views: args.views,
       updatedAt: Date.now(),

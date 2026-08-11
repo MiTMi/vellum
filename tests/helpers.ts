@@ -8,6 +8,7 @@ import schema from "../convex/schema";
 
 export const modules = import.meta.glob([
   "../convex/pages.ts",
+  "../convex/shares.ts",
   "../convex/ai.ts",
   "../convex/account.ts",
   "../convex/admin.ts",

@@ -180,6 +180,25 @@ export default defineSchema({
     .index("by_user_month", ["userId", "month"])
     .index("by_month", ["month"]),
 
+  /**
+   * Page shares (Phase 2, docs/phase2-sharing-design.md): one row grants
+   * `userId` access to `pageId` AND its whole subtree — sound because the
+   * parent-ownership invariant makes a subtree single-owner. A share never
+   * changes ownership; access is resolved by walking a page's ancestor
+   * chain (lib/auth.ts `getAccessiblePage`), highest role wins. Vault
+   * pages are never shareable or reachable through a share.
+   */
+  shares: defineTable({
+    pageId: v.id("pages"), // the subtree root being shared
+    ownerId: v.id("users"), // denormalized page owner (the sharer)
+    userId: v.id("users"), // the recipient
+    role: v.union(v.literal("viewer"), v.literal("editor")),
+    createdAt: v.number(),
+  })
+    .index("by_page", ["pageId"])
+    .index("by_user", ["userId"])
+    .index("by_page_user", ["pageId", "userId"]),
+
   pages: defineTable({
     // Optional only for the widen→backfill→narrow migration; after the
     // backfill every row has it and all code treats it as required.
