@@ -45,9 +45,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   process.env.OPENROUTER_API_KEY = "sk-or-v1-test";
-  delete process.env.BRAVE_SEARCH_API_KEY;
-  delete process.env.GOOGLE_SEARCH_API_KEY;
-  delete process.env.GOOGLE_SEARCH_CX;
+  delete process.env.TAVILY_API_KEY;
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -476,19 +474,17 @@ test("agent: web tools stay out of the prompt without the globe opt-in", async (
 });
 
 test("agent: webSearch round-trips a provider and cites web sources", async () => {
-  process.env.BRAVE_SEARCH_API_KEY = "b";
+  process.env.TAVILY_API_KEY = "tvly-x";
   fetchMock.mockImplementation(async (url: string) => {
-    if (String(url).includes("api.search.brave.com")) {
+    if (String(url).includes("api.tavily.com")) {
       return {
         ok: true,
         status: 200,
         headers: new Headers(),
         json: async () => ({
-          web: {
-            results: [
-              { title: "Vellum docs", url: "https://docs.example", description: "the manual" },
-            ],
-          },
+          results: [
+            { title: "Vellum docs", url: "https://docs.example", content: "the manual" },
+          ],
         }),
       } as unknown as Response;
     }

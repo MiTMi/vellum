@@ -2,22 +2,29 @@ import { normalizeUrl } from "./linkMeta";
 
 /**
  * Web access for the AI agent (docs/ai-agent-design.md follow-up,
- * 2026-08-12): a `webSearch` tool backed by Brave and/or Google
- * Programmable Search, and a free `fetchUrl` tool that reads one page's
- * text (same fetch pattern as linkPreview.fetchMeta).
+ * 2026-08-12): a `webSearch` tool backed by Tavily, and a free
+ * `fetchUrl` tool that reads one page's text (same fetch pattern as
+ * linkPreview.fetchMeta).
  *
- * Provider policy — decided with Michael: pick RANDOMLY among the
- * configured providers so both free tiers wear evenly, and fail over to
- * the other on any error (an exhausted quota must degrade to "the other
- * engine answers", never to a failed search). Providers appear only when
- * their env keys exist:
+ * Provider history, so nobody re-litigates it: Brave and Google
+ * adapters (random pick + failover) shipped first and were replaced the
+ * same day — Google discontinued "search the entire web" engines in
+ * March 2026 and closes the Custom Search JSON API entirely on
+ * 2027-01-01; Brave's free tier became $5/month in credits behind a
+ * mandatory card. Tavily won: 1,000 free credits/month, no card,
+ * LLM-agent-shaped API. The multi-provider policy lives in git history
+ * (commit 205593a) if a second engine is ever wanted again.
  *
- *   npx convex env set BRAVE_SEARCH_API_KEY  "..." [--prod]
- *   npx convex env set GOOGLE_SEARCH_API_KEY "..." [--prod]
- *   npx convex env set GOOGLE_SEARCH_CX     "..." [--prod]  (engine id)
+ *   npx convex env set TAVILY_API_KEY "tvly-..." [--prod]
  *
- * Keys are Convex env vars — never VITE_* (they'd be inlined into the
- * client bundle, same rule as OPENROUTER_API_KEY).
+ * The key is a Convex env var — never VITE_* (it would be inlined into
+ * the client bundle, same rule as OPENROUTER_API_KEY).
+ *
+ * Privacy, from Tavily's own policy (checked 2026-08-12): query text is
+ * collected, retained while the account exists, may be used to improve
+ * their service, and may be shared with third-party search indexes.
+ * Only the model-composed query string is ever sent — never page
+ * content wholesale — and only when the user's globe toggle is on.
  */
 
 export interface WebResult {
@@ -26,8 +33,6 @@ export interface WebResult {
   snippet: string;
 }
 
-export type SearchProvider = "brave" | "google";
-
 const RESULT_COUNT = 5;
 const SEARCH_TIMEOUT_MS = 8000;
 const FETCH_TIMEOUT_MS = 8000;
@@ -35,13 +40,8 @@ const MAX_FETCH_BYTES = 512 * 1024;
 /** Page text handed to the model per fetchUrl call. */
 const MAX_PAGE_TEXT_CHARS = 6000;
 
-export function configuredProviders(): SearchProvider[] {
-  const out: SearchProvider[] = [];
-  if (process.env.BRAVE_SEARCH_API_KEY) out.push("brave");
-  if (process.env.GOOGLE_SEARCH_API_KEY && process.env.GOOGLE_SEARCH_CX) {
-    out.push("google");
-  }
-  return out;
+export function searchConfigured(): boolean {
+  return Boolean(process.env.TAVILY_API_KEY);
 }
 
 async function timedFetch(url: string, init: RequestInit, timeoutMs: number) {
@@ -54,83 +54,41 @@ async function timedFetch(url: string, init: RequestInit, timeoutMs: number) {
   }
 }
 
-async function braveSearch(query: string): Promise<WebResult[]> {
+/**
+ * One Tavily basic search (1 credit). Null when no key is configured
+ * (the agent then never offers the tool); throws on provider failure —
+ * the agent degrades that to "answer from what you have".
+ */
+export async function webSearch(query: string): Promise<WebResult[] | null> {
+  if (!searchConfigured()) return null;
   const res = await timedFetch(
-    `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${RESULT_COUNT}`,
+    "https://api.tavily.com/search",
     {
+      method: "POST",
       headers: {
-        Accept: "application/json",
-        "X-Subscription-Token": process.env.BRAVE_SEARCH_API_KEY!,
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.TAVILY_API_KEY}`,
       },
+      body: JSON.stringify({
+        query,
+        search_depth: "basic",
+        max_results: RESULT_COUNT,
+      }),
     },
     SEARCH_TIMEOUT_MS,
   );
-  if (!res.ok) throw new Error(`brave ${res.status}`);
+  if (!res.ok) throw new Error(`tavily ${res.status}`);
   const body = (await res.json()) as {
-    web?: { results?: { title?: string; url?: string; description?: string }[] };
+    results?: { title?: string; url?: string; content?: string }[];
   };
-  return (body.web?.results ?? [])
+  return (body.results ?? [])
     .filter((r) => r.url)
     .slice(0, RESULT_COUNT)
     .map((r) => ({
       title: r.title ?? r.url!,
       url: r.url!,
-      snippet: r.description ?? "",
+      snippet: r.content ?? "",
     }));
-}
-
-async function googleSearch(query: string): Promise<WebResult[]> {
-  const params = new URLSearchParams({
-    key: process.env.GOOGLE_SEARCH_API_KEY!,
-    cx: process.env.GOOGLE_SEARCH_CX!,
-    q: query,
-    num: String(RESULT_COUNT),
-  });
-  const res = await timedFetch(
-    `https://www.googleapis.com/customsearch/v1?${params}`,
-    { headers: { Accept: "application/json" } },
-    SEARCH_TIMEOUT_MS,
-  );
-  if (!res.ok) throw new Error(`google ${res.status}`);
-  const body = (await res.json()) as {
-    items?: { title?: string; link?: string; snippet?: string }[];
-  };
-  return (body.items ?? [])
-    .filter((r) => r.link)
-    .slice(0, RESULT_COUNT)
-    .map((r) => ({
-      title: r.title ?? r.link!,
-      url: r.link!,
-      snippet: r.snippet ?? "",
-    }));
-}
-
-const RUNNERS: Record<SearchProvider, (q: string) => Promise<WebResult[]>> = {
-  brave: braveSearch,
-  google: googleSearch,
-};
-
-/**
- * Random provider, failover to the rest on any error. Returns null when
- * no provider is configured (the agent then never offers the tool) and
- * throws only when every configured provider failed.
- */
-export async function webSearch(
-  query: string,
-): Promise<{ provider: SearchProvider; results: WebResult[] } | null> {
-  const providers = configuredProviders();
-  if (providers.length === 0) return null;
-  // Even wear across free tiers; order is a uniform shuffle of the pool.
-  const order = [...providers].sort(() => Math.random() - 0.5);
-  let lastErr: unknown = null;
-  for (const provider of order) {
-    try {
-      return { provider, results: await RUNNERS[provider](query) };
-    } catch (err) {
-      lastErr = err; // quota/network/5xx — try the next provider
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error("web search failed");
 }
 
 /** Crude but dependency-free HTML → text: drop script/style, strip tags,

@@ -960,15 +960,20 @@ creation-shaped asks ("create/make/set up/build") so e2e can apply it.
 **Web access (2026-08-12, opt-in).** The composer's globe toggle (off by
 default, per-device `vellum:ai-web`) adds two more agent tools:
 `fetchUrl` (free — fetches one page's text server-side, same pattern as
-`linkPreview.fetchMeta`) and `webSearch`, which appears only when a
-provider key is configured. Providers live in `convex/lib/websearch.ts`:
-**random pick between Brave and Google so both free tiers wear evenly,
-with automatic failover** to the other on any error — an exhausted quota
-degrades to the other engine, never to a failed search. Keys are Convex
-env vars (never `VITE_*`): `BRAVE_SEARCH_API_KEY`, and
-`GOOGLE_SEARCH_API_KEY` + `GOOGLE_SEARCH_CX` (Programmable Search needs
-both). ≤3 web ops per request (`MAX_WEB_OPS`); web citations ride
-`AskSource.url` and render as open-in-tab chips. `tests/websearch.test.ts`
+`linkPreview.fetchMeta`) and `webSearch`, which appears only when
+**`TAVILY_API_KEY`** is set (Convex env var, never `VITE_*`). Tavily
+was chosen deliberately — free 1,000 credits/month, no card; Brave now
+gates its $5/month credit behind a mandatory card, Google's Custom Search
+API is closed to new customers and dies 2027-01-01, and DuckDuckGo has
+no official search API at all. Brave/Google adapters with a
+random-pick-and-failover policy existed for one commit (205593a) —
+resurrect from git history if a second engine is ever wanted. **Privacy
+(from Tavily's own policy, 2026-08-12): query text is retained while
+the account exists, may improve their service, may be shared with
+third-party indexes** — only model-composed query strings ever go
+there, never page content wholesale, and only with the globe on. ≤3 web
+ops per request (`MAX_WEB_OPS`); web citations ride `AskSource.url` and
+render as open-in-tab chips. `tests/websearch.test.ts`
 covers the policy; the vault guarantee is untouched (web tools add
 outbound reads, no new access to workspace data).
 

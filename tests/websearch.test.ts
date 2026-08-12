@@ -1,21 +1,18 @@
 /// <reference types="vite/client" />
-// The agent's web tools: provider configuration, the random-pick-with-
-// failover search policy, HTML→text extraction, and the fetchUrl gate.
-// All network is stubbed.
+// The agent's web tools: Tavily configuration and parsing, HTML→text
+// extraction, and the fetchUrl gate. All network is stubbed.
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
-  configuredProviders,
   fetchUrlText,
   htmlToText,
+  searchConfigured,
   webSearch,
 } from "../convex/lib/websearch";
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  delete process.env.BRAVE_SEARCH_API_KEY;
-  delete process.env.GOOGLE_SEARCH_API_KEY;
-  delete process.env.GOOGLE_SEARCH_CX;
+  delete process.env.TAVILY_API_KEY;
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -34,65 +31,42 @@ function ok(body: unknown) {
   } as unknown as Response;
 }
 
-const BRAVE_BODY = {
-  web: { results: [{ title: "Brave hit", url: "https://a.example", description: "d" }] },
-};
-const GOOGLE_BODY = {
-  items: [{ title: "Google hit", link: "https://b.example", snippet: "s" }],
+const TAVILY_BODY = {
+  results: [
+    { title: "Tavily hit", url: "https://a.example", content: "snippet text" },
+  ],
 };
 
-test("providers appear only with their keys (google needs key AND cx)", () => {
-  expect(configuredProviders()).toEqual([]);
-  process.env.GOOGLE_SEARCH_API_KEY = "k";
-  expect(configuredProviders()).toEqual([]); // cx missing
-  process.env.GOOGLE_SEARCH_CX = "cx";
-  expect(configuredProviders()).toEqual(["google"]);
-  process.env.BRAVE_SEARCH_API_KEY = "b";
-  expect(configuredProviders()).toEqual(["brave", "google"]);
+test("search is configured only when the Tavily key exists", () => {
+  expect(searchConfigured()).toBe(false);
+  process.env.TAVILY_API_KEY = "tvly-x";
+  expect(searchConfigured()).toBe(true);
 });
 
-test("no providers configured → null, no network", async () => {
+test("no key → null, no network", async () => {
   expect(await webSearch("anything")).toBeNull();
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
-test("single provider parses results", async () => {
-  process.env.BRAVE_SEARCH_API_KEY = "b";
-  fetchMock.mockResolvedValue(ok(BRAVE_BODY));
+test("a search parses Tavily results and sends the key as a Bearer", async () => {
+  process.env.TAVILY_API_KEY = "tvly-x";
+  fetchMock.mockResolvedValue(ok(TAVILY_BODY));
   const out = await webSearch("query");
-  expect(out?.provider).toBe("brave");
-  expect(out?.results).toEqual([
-    { title: "Brave hit", url: "https://a.example", snippet: "d" },
+  expect(out).toEqual([
+    { title: "Tavily hit", url: "https://a.example", snippet: "snippet text" },
   ]);
-  expect(fetchMock.mock.calls[0][0]).toContain("api.search.brave.com");
+  const [url, init] = fetchMock.mock.calls[0];
+  expect(String(url)).toContain("api.tavily.com/search");
+  expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tvly-x");
+  expect(JSON.parse(init.body as string).query).toBe("query");
 });
 
-test("a failing provider fails over to the other", async () => {
-  process.env.BRAVE_SEARCH_API_KEY = "b";
-  process.env.GOOGLE_SEARCH_API_KEY = "g";
-  process.env.GOOGLE_SEARCH_CX = "cx";
-  // Whichever is tried first 429s; the second answers.
-  fetchMock.mockImplementation(async (url: string) => {
-    if (fetchMock.mock.calls.length === 1) {
-      return { ok: false, status: 429, headers: new Headers(), json: async () => ({}) } as unknown as Response;
-    }
-    return ok(String(url).includes("brave") ? BRAVE_BODY : GOOGLE_BODY);
-  });
-  const out = await webSearch("query");
-  expect(out).not.toBeNull();
-  expect(out!.results).toHaveLength(1);
-  expect(fetchMock).toHaveBeenCalledTimes(2);
-});
-
-test("every provider failing throws", async () => {
-  process.env.BRAVE_SEARCH_API_KEY = "b";
-  process.env.GOOGLE_SEARCH_API_KEY = "g";
-  process.env.GOOGLE_SEARCH_CX = "cx";
+test("provider failure throws (the agent degrades it, not the lib)", async () => {
+  process.env.TAVILY_API_KEY = "tvly-x";
   fetchMock.mockResolvedValue({
-    ok: false, status: 500, headers: new Headers(), json: async () => ({}),
+    ok: false, status: 429, headers: new Headers(), json: async () => ({}),
   } as unknown as Response);
-  await expect(webSearch("query")).rejects.toThrow();
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  await expect(webSearch("query")).rejects.toThrow(/tavily 429/);
 });
 
 test("htmlToText strips markup, scripts, and entities", () => {

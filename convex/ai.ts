@@ -15,7 +15,7 @@ import {
   monthKey,
 } from "./lib/quotas";
 import { AgentOp, parseAgentJson, validatePlan } from "./lib/agentPlan";
-import { configuredProviders, fetchUrlText, webSearch } from "./lib/websearch";
+import { fetchUrlText, searchConfigured, webSearch } from "./lib/websearch";
 import { Doc, Id } from "./_generated/dataModel";
 
 /**
@@ -752,7 +752,7 @@ export const agent = action({
     // Web tools appear in the prompt only when the user opted in; the
     // search tool additionally needs a configured provider key.
     const webEnabled = args.allowWeb === true;
-    const searchEnabled = webEnabled && configuredProviders().length > 0;
+    const searchEnabled = webEnabled && searchConfigured();
     const webToolLines = webEnabled
       ? (searchEnabled
           ? '{"tool":"webSearch","query":"<keywords>"} — search the public web\n'
@@ -857,17 +857,17 @@ export const agent = action({
           const found = await webSearch(parsed.query);
           if (found) {
             result =
-              found.results.length === 0
+              found.length === 0
                 ? "No results."
-                : found.results
+                : found
                     .map((r) => `- ${r.title} <${r.url}>: ${r.snippet}`)
                     .join("\n");
-            for (const r of found.results) {
+            for (const r of found) {
               addSource({ pageId: r.url, title: r.title, icon: "🌐", url: r.url });
             }
           }
         } catch {
-          // Every configured provider failed; the fallback text stands.
+          // Provider failure/quota — the fallback text stands.
         }
         convo.push(`Tool result for webSearch "${parsed.query}":\n${result}`);
         continue;
