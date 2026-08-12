@@ -463,6 +463,58 @@ const mockApi: DataApi = {
             model: "demo",
           };
         },
+        // Deterministic agent: creation-shaped asks yield a fixed plan so
+        // e2e can click Apply and assert real pages appear; anything else
+        // mirrors the converse demo reply.
+        agent: async ({ messages }) => {
+          const last = [...messages].reverse().find((m) => m.role === "user");
+          const content = last?.content ?? "";
+          if (/\b(create|make|set up|build)\b/i.test(content)) {
+            return {
+              answer: "Here's a plan — review and apply it.",
+              plan: [
+                {
+                  kind: "createDatabase" as const,
+                  title: "Meal plan",
+                  icon: "🍽️",
+                  parent: "root" as const,
+                  columns: [
+                    { name: "Day", type: "select" as const, options: ["Mon", "Tue", "Wed"] },
+                    { name: "Recipe", type: "text" as const },
+                    { name: "Done", type: "checkbox" as const },
+                  ],
+                },
+                {
+                  kind: "addRow" as const,
+                  target: "#0" as const,
+                  title: "Pasta night",
+                  props: { Day: "Mon", Recipe: "Spaghetti", Done: false },
+                },
+                {
+                  kind: "addRow" as const,
+                  target: "#0" as const,
+                  title: "Taco night",
+                  props: { Day: "Tue", Recipe: "Tacos", Done: true },
+                },
+                {
+                  kind: "createPage" as const,
+                  title: "Grocery list",
+                  icon: "🛒",
+                  parent: "root" as const,
+                  markdown: "# Groceries\n- [ ] pasta\n- [ ] tomatoes",
+                },
+              ],
+              sources: [],
+              model: "demo",
+            };
+          }
+          return {
+            answer: `Demo reply to "${content}". Connect a workspace to chat for real.`,
+            plan: null,
+            sources: [],
+            model: "demo",
+          };
+        },
         deckOutline: async ({ topic }) =>
           [
             `## ${topic?.trim() || "Overview"}`,
@@ -479,6 +531,12 @@ const mockApi: DataApi = {
       }),
       [],
     );
+  },
+  useGetDoc() {
+    return useCallback(async (id: PageId) => {
+      const doc = store.get(id);
+      return doc ? (structuredClone(doc) as PageDoc) : null;
+    }, []);
   },
 };
 

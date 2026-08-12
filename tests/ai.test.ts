@@ -333,3 +333,123 @@ test("ask short-circuits when retrieval finds nothing", async () => {
   expect(res.answer).toMatch(/couldn't find/i);
   expect(fetchMock).not.toHaveBeenCalled();
 });
+
+/* ------------------------------------------------------ workspace agent */
+
+test("agent: a direct reply with a valid plan comes back validated", async () => {
+  fetchMock.mockResolvedValue(
+    ok(
+      JSON.stringify({
+        reply: "Here's your meal planner.",
+        plan: [
+          {
+            kind: "createDatabase",
+            title: "Meals",
+            parent: "root",
+            columns: [{ name: "Day", type: "select", options: ["Mon"] }],
+          },
+          { kind: "addRow", target: "#0", title: "Pasta", props: { Day: "Mon" } },
+        ],
+      }),
+    ),
+  );
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "make me a meal planner" }],
+  });
+  expect(res.answer).toBe("Here's your meal planner.");
+  expect(res.plan).toHaveLength(2);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test("agent: tool rounds run, feed results back, and cap at 4 calls", async () => {
+  const ctx = await t();
+  // Model asks to search three times, then must answer on the forced
+  // final round. Every round is a metered model call.
+  fetchMock
+    .mockResolvedValueOnce(ok('{"tool":"search","query":"groceries"}'))
+    .mockResolvedValueOnce(ok('{"tool":"search","query":"errands"}'))
+    .mockResolvedValueOnce(ok('{"tool":"search","query":"chores"}'))
+    .mockResolvedValueOnce(ok('{"reply":"Nothing found."}'));
+  const res = await ctx.action(api.ai.agent, {
+    messages: [{ role: "user", content: "what's on my lists?" }],
+  });
+  expect(res.answer).toBe("Nothing found.");
+  expect(res.plan).toBeNull();
+  expect(fetchMock).toHaveBeenCalledTimes(4);
+  // The later requests carry the earlier tool results in the transcript.
+  const lastBody = JSON.parse(fetchMock.mock.calls[3][1].body as string);
+  expect(lastBody.messages[1].content).toContain('Tool result for search "groceries"');
+  expect(lastBody.messages[1].content).toContain("final JSON now");
+});
+
+test("agent: a malformed plan is rejected whole; the reply survives", async () => {
+  fetchMock.mockResolvedValue(
+    ok(
+      JSON.stringify({
+        reply: "Done!",
+        plan: [{ kind: "trashPage", target: "everything" }],
+      }),
+    ),
+  );
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "clean up my workspace" }],
+  });
+  expect(res.plan).toBeNull();
+  expect(res.answer).toContain("Done!");
+  expect(res.answer).toMatch(/malformed/);
+});
+
+test("agent: off-protocol prose becomes the answer, never an error", async () => {
+  fetchMock.mockResolvedValue(ok("I'm not sure what you mean."));
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "hmm" }],
+  });
+  expect(res.answer).toBe("I'm not sure what you mean.");
+  expect(res.plan).toBeNull();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test("agent: vault context page is refused before any model call", async () => {
+  const ctx = await t();
+  const vault = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Vault",
+    vault: true,
+  });
+  await expect(
+    ctx.action(api.ai.agent, {
+      messages: [{ role: "user", content: "summarize" }],
+      pageId: vault,
+    }),
+  ).rejects.toThrow(/Vault/);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("agent: the read tool refuses vault pages but allows normal ones", async () => {
+  const ctx = await t();
+  const normal = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Groceries",
+  });
+  await ctx.mutation(api.pages.updateContent, {
+    id: normal,
+    content: [{ type: "paragraph", content: [{ type: "text", text: "milk and eggs", styles: {} }] }],
+    text: "milk and eggs",
+  });
+  const vault = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "venc1:x:y",
+    vault: true,
+  });
+  fetchMock
+    .mockResolvedValueOnce(ok(`{"tool":"read","pageId":"${vault}"}`))
+    .mockResolvedValueOnce(ok(`{"tool":"read","pageId":"${normal}"}`))
+    .mockResolvedValueOnce(ok('{"reply":"ok"}'));
+  await ctx.action(api.ai.agent, {
+    messages: [{ role: "user", content: "read my pages" }],
+  });
+  const thirdBody = JSON.parse(fetchMock.mock.calls[2][1].body as string);
+  const transcript = thirdBody.messages[1].content as string;
+  expect(transcript).toContain("That page is not available."); // the vault read
+  expect(transcript).toContain("milk and eggs"); // the normal read
+});

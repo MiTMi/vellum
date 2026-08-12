@@ -156,6 +156,9 @@ export function usePublish(): PublishApi {
 export function useShares(): SharesApi {
   return impl.useShares();
 }
+export function useGetDoc() {
+  return impl.useGetDoc();
+}
 export function useAccount(): AccountApi {
   return impl.useAccount();
 }

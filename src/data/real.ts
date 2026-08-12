@@ -13,6 +13,7 @@ import {
   VersionHistoryApi,
 } from "./api";
 import {
+  AgentAnswer,
   AiAnswer,
   BacklinkMeta,
   CommentMeta,
@@ -256,6 +257,7 @@ const realApi: DataApi = {
     const ask = useAction(api.ai.ask);
     const converse = useAction(api.ai.converse);
     const deckOutline = useAction(api.ai.deckOutline);
+    const agent = useAction(api.ai.agent);
     return useMemo<AiApi>(
       () => ({
         available: true,
@@ -273,8 +275,24 @@ const realApi: DataApi = {
             ...args,
             pageId: args.pageId as Id<"pages"> | undefined,
           }) as Promise<string>,
+        agent: (args) =>
+          agent({
+            ...args,
+            pageId: args.pageId as Id<"pages"> | undefined,
+          }) as Promise<AgentAnswer>,
       }),
-      [transform, fillProperty, ask, converse, deckOutline],
+      [transform, fillProperty, ask, converse, deckOutline, agent],
+    );
+  },
+
+  useGetDoc() {
+    const client = useConvex();
+    return useCallback(
+      async (id: PageId) =>
+        (await client.query(api.pages.get, {
+          id: id as Id<"pages">,
+        })) as PageDoc | null,
+      [client],
     );
   },
 };

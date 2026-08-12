@@ -14,6 +14,7 @@ import {
   aiSpend,
   monthKey,
 } from "./lib/quotas";
+import { AgentOp, parseAgentJson, validatePlan } from "./lib/agentPlan";
 import { Doc, Id } from "./_generated/dataModel";
 
 /**
@@ -286,6 +287,18 @@ export const _rowForFill = internalQuery({
   },
 });
 
+/** Read-only page access for AI grounding (chat context, the agent's
+ *  `read` tool): any role suffices — reading is exactly what a viewer
+ *  may do. `_rowForFill` stays stricter because a fill must be written
+ *  back. Vault/trash handling stays with the callers, same as above. */
+export const _rowForRead = internalQuery({
+  args: { pageId: v.id("pages"), userId: v.id("users") },
+  handler: async (ctx, args): Promise<Doc<"pages"> | null> => {
+    const access = await getAccessiblePage(ctx, args.userId, args.pageId, "read");
+    return access?.page ?? null;
+  },
+});
+
 /**
  * Generate one AI property value for one database row. Returns the text; the
  * caller writes it through the normal `setRowProp` mutation so the value
@@ -489,10 +502,11 @@ export const converse = action({
     const contextParts: string[] = [];
     const sources: AskSource[] = [];
 
-    // The open page, when the chip is on.
+    // The open page, when the chip is on. Read-scoped: a viewer-role
+    // shared page is legitimate chat context (it's on their screen).
     if (args.pageId) {
       const page: Doc<"pages"> | null = await ctx.runQuery(
-        internal.ai._rowForFill,
+        internal.ai._rowForRead,
         { pageId: args.pageId, userId },
       );
       if (page?.vault) {
@@ -613,5 +627,216 @@ export const deckOutline = action({
         content: `Outline a slide deck titled "${title}" from the following:\n\n---\n${source}\n---`,
       },
     ]);
+  },
+});
+
+/* ------------------------------------------------------------------ *
+ * Workspace agent (docs/ai-agent-design.md)
+ * ------------------------------------------------------------------ */
+
+/** Model calls per agent request, tool rounds included. Each is metered. */
+const MAX_AGENT_CALLS = 4;
+/** Tool-round replies are tiny JSON; the final round may carry a whole
+ *  plan with markdown content. */
+const AGENT_TOOL_MAX_TOKENS = 600;
+const AGENT_FINAL_MAX_TOKENS = 4000;
+/** Body budget for the agent's `read` tool and search results. */
+const AGENT_READ_CHARS = 6000;
+
+export interface AgentResult {
+  answer: string;
+  plan: AgentOp[] | null;
+  sources: AskSource[];
+  model: string;
+}
+
+const AGENT_SYSTEM = `You are the AI assistant built into Vellum, a personal Notion-style workspace. The user may ask you to look things up or to create content. You respond ONLY with a single JSON object, no prose around it.
+
+To consult the workspace first (optional, at most a few times), reply with exactly one of:
+{"tool":"search","query":"<keywords>"}
+{"tool":"read","pageId":"<id from a search result or the open page>"}
+
+To finish, reply with:
+{"reply":"<your Markdown answer to the user>","plan":[...]}
+
+Include "plan" ONLY when the user asked to create something; omit it for questions. A plan is a list of at most 20 steps executed top-to-bottom after the user approves it. Steps may only CREATE or APPEND — never modify, move, or delete. "#N" refers to the page created by step N (0-based). Available steps:
+
+{"kind":"createPage","title":"...","icon":"<one emoji, optional>","parent":"current"|"root"|"#N","markdown":"<page content, optional>"}
+{"kind":"createDatabase","title":"...","icon":"<optional>","parent":"current"|"root","columns":[{"name":"...","type":"text"|"number"|"select"|"multiSelect"|"date"|"checkbox"|"url","options":["..."]}]}
+{"kind":"addRow","target":"#N"|"<database page id>","title":"...","props":{"<column name>":<value>}}
+{"kind":"appendToPage","target":"current"|"<page id>","markdown":"..."}
+
+Rules: prop values are strings, numbers, booleans, or string lists keyed by COLUMN NAME; dates are "YYYY-MM-DD"; "parent":"current" needs an open page (you are told when one is open); markdown supports #/##/### headings, - bullets, 1. numbered lists, - [ ] checkboxes, and plain paragraphs.`;
+
+/**
+ * The propose-then-apply workspace agent. Runs a bounded read-tool loop
+ * server-side and returns an answer plus an optional additive plan; the
+ * client renders the plan as a card and, on Apply, executes it through
+ * the ordinary mutations — this action never writes anything.
+ */
+export const agent = action({
+  args: {
+    messages: v.array(chatTurn),
+    /** The open page, when the composer's context chip is active. */
+    pageId: v.optional(v.id("pages")),
+    /** Ground in workspace retrieval up-front (the composer's toggle);
+     *  the agent can also search on its own via the tool loop. */
+    useWorkspace: v.optional(v.boolean()),
+    persona: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<AgentResult> => {
+    const userId = await requireUser(ctx);
+
+    const history = args.messages.slice(-MAX_HISTORY_TURNS);
+    const latest = [...history].reverse().find((m) => m.role === "user");
+    if (!latest?.content.trim()) throw new ConvexError("Say something first.");
+
+    const sources: AskSource[] = [];
+    const addSource = (s: AskSource) => {
+      if (!sources.some((x) => x.pageId === s.pageId)) sources.push(s);
+    };
+
+    // The open page, read-scoped (viewers may ground in what they see).
+    let pageNote = "No page is currently open.";
+    if (args.pageId) {
+      const page: Doc<"pages"> | null = await ctx.runQuery(
+        internal.ai._rowForRead,
+        { pageId: args.pageId, userId },
+      );
+      if (page?.vault) {
+        throw new ConvexError(
+          "AI is unavailable inside the Vault — its content is encrypted and never leaves your device.",
+        );
+      }
+      if (page && !page.inTrash) {
+        const body = (page.contentText ?? "").slice(0, MAX_PAGE_CONTEXT_CHARS);
+        pageNote = `The currently open page is "${page.title || "Untitled"}" (id ${page._id}):\n${body || "(empty)"}`;
+        addSource({
+          pageId: page._id as string,
+          title: page.title || "Untitled",
+          icon: page.icon ?? null,
+        });
+      }
+    }
+
+    // Up-front retrieval when the workspace toggle is on, exactly like
+    // converse — the tool loop can still search deeper on its own.
+    let retrievedNote = "";
+    if (args.useWorkspace) {
+      const docs: { pageId: string; title: string; icon: string | null; text: string }[] =
+        await ctx.runQuery(internal.ai._retrieve, {
+          question: latest.content,
+          userId,
+        });
+      if (docs.length > 0) {
+        retrievedNote =
+          "\n\nRelevant pages from the workspace:\n" +
+          docs
+            .map((d) => `- "${d.title}" (id ${d.pageId}): ${d.text.slice(0, 300)}`)
+            .join("\n");
+        for (const d of docs) {
+          addSource({ pageId: d.pageId, title: d.title, icon: d.icon });
+        }
+      }
+    }
+
+    const persona = args.persona?.trim().slice(0, MAX_PERSONA_CHARS);
+    const system =
+      AGENT_SYSTEM +
+      (persona ? `\n\nThe user's instructions for you:\n${persona}` : "") +
+      `\n\n---\n${pageNote}` +
+      retrievedNote;
+
+    // History folds into one transcript (the provider takes a flat list),
+    // and tool rounds append to it so the model sees its own trail.
+    const convo: string[] = [
+      history
+        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+        .join("\n\n"),
+    ];
+
+    for (let round = 0; round < MAX_AGENT_CALLS; round++) {
+      const finalRound = round === MAX_AGENT_CALLS - 1;
+      const text = await meteredChat(
+        ctx,
+        userId,
+        [
+          { role: "system", content: system },
+          {
+            role: "user",
+            content:
+              convo.join("\n\n") +
+              (finalRound
+                ? "\n\n(You must reply with the final JSON now — no more tool calls.)"
+                : ""),
+          },
+        ],
+        {
+          maxTokens: finalRound ? AGENT_FINAL_MAX_TOKENS : AGENT_TOOL_MAX_TOKENS,
+        },
+      );
+
+      const parsed = parseAgentJson(text);
+
+      // Not JSON at all: treat the text as the final reply. A model that
+      // drifts off-protocol mid-loop still answers the user.
+      if (!parsed) return { answer: text.trim(), plan: null, sources, model: aiModel() };
+
+      if (!finalRound && parsed.tool === "search" && typeof parsed.query === "string") {
+        const docs: { pageId: string; title: string; icon: string | null; text: string }[] =
+          await ctx.runQuery(internal.ai._retrieve, {
+            question: parsed.query,
+            userId,
+          });
+        for (const d of docs) {
+          addSource({ pageId: d.pageId, title: d.title, icon: d.icon });
+        }
+        const result =
+          docs.length === 0
+            ? "No pages matched."
+            : docs
+                .map((d) => `- "${d.title}" (id ${d.pageId}): ${d.text.slice(0, 300)}`)
+                .join("\n");
+        convo.push(`Tool result for search "${parsed.query}":\n${result}`);
+        continue;
+      }
+
+      if (!finalRound && parsed.tool === "read" && typeof parsed.pageId === "string") {
+        let result = "That page is not available.";
+        try {
+          const page: Doc<"pages"> | null = await ctx.runQuery(
+            internal.ai._rowForRead,
+            { pageId: parsed.pageId as Id<"pages">, userId },
+          );
+          if (page && !page.vault && !page.inTrash) {
+            result = `"${page.title || "Untitled"}" (id ${page._id}, ${page.type}):\n${(page.contentText ?? "").slice(0, AGENT_READ_CHARS) || "(empty)"}`;
+            addSource({
+              pageId: page._id as string,
+              title: page.title || "Untitled",
+              icon: page.icon ?? null,
+            });
+          }
+        } catch {
+          // Malformed id — the model hallucinated one; tell it plainly.
+        }
+        convo.push(`Tool result for read ${parsed.pageId}:\n${result}`);
+        continue;
+      }
+
+      // Final answer (or a tool call on the forced-final round, which we
+      // treat as an answer attempt).
+      const reply = typeof parsed.reply === "string" ? parsed.reply.trim() : text.trim();
+      let plan: AgentOp[] | null = null;
+      let note = "";
+      if (parsed.plan !== undefined) {
+        const validated = validatePlan(parsed.plan);
+        if (validated.ok) plan = validated.plan;
+        else note = `\n\n_(I drafted a plan but it was malformed — ${validated.error}. Try asking again.)_`;
+      }
+      return { answer: reply + note, plan, sources, model: aiModel() };
+    }
+
+    // Unreachable (the last round always returns), but typecheck-honest.
+    throw new ConvexError("The agent ran out of rounds without answering.");
   },
 });

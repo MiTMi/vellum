@@ -301,9 +301,19 @@ export interface AiChatTurn {
   content: string;
 }
 
+/** The agent's reply: an answer plus an optional additive plan the user
+ *  can apply with one click (docs/ai-agent-design.md). */
+export interface AgentAnswer extends AiAnswer {
+  plan: import("../../convex/lib/agentPlan").AgentOp[] | null;
+}
+
 /** A rendered panel message — a turn plus what the answer drew on. */
 export interface AiChatMessage extends AiChatTurn {
   sources?: AiSource[];
+  /** A proposed plan awaiting Apply/Dismiss (workspace agent). */
+  plan?: import("../../convex/lib/agentPlan").AgentOp[] | null;
+  /** Set once the plan was applied — collapses the card into a receipt. */
+  planApplied?: boolean;
   /** Set instead of `content` when the request failed, so the thread keeps
    *  its shape and the user can retry without losing the conversation. */
   error?: string;

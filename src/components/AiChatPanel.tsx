@@ -17,8 +17,10 @@ import {
   X,
 } from "lucide-react";
 import { AiChatMessage, PageId, PageMeta } from "../lib/types";
-import { useAi, useMutations } from "../data";
+import { useAi, useGetDoc, useMutations } from "../data";
 import { isVaultPage } from "../lib/vaultSession";
+import { describeOp, executePlan } from "../lib/agentPlan";
+import { Check, ListChecks } from "lucide-react";
 
 /**
  * The docked AI chat panel — Vellum's take on Notion's right-hand AI pane.
@@ -76,6 +78,8 @@ export default function AiChatPanel({
 }: AiChatPanelProps) {
   const ai = useAi();
   const mutations = useMutations();
+  const getDoc = useGetDoc();
+  const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -138,7 +142,9 @@ export default function AiChatPanel({
     setInput("");
     setBusy(true);
     try {
-      const res = await ai.converse({
+      // The workspace agent: same grounding as converse, plus an optional
+      // additive plan rendered as an Apply/Dismiss card.
+      const res = await ai.agent({
         messages: next.map(({ role, content }) => ({ role, content })),
         pageId: useContext && contextPage ? contextPage._id : undefined,
         useWorkspace,
@@ -146,7 +152,7 @@ export default function AiChatPanel({
       });
       setMessages([
         ...next,
-        { role: "assistant", content: res.answer, sources: res.sources },
+        { role: "assistant", content: res.answer, sources: res.sources, plan: res.plan },
       ]);
     } catch (err) {
       const data = (err as { data?: unknown }).data;
@@ -231,6 +237,47 @@ export default function AiChatPanel({
     }
   };
 
+  const applyPlan = async (idx: number) => {
+    const msg = messages[idx];
+    if (!msg?.plan || applyingIdx !== null) return;
+    setApplyingIdx(idx);
+    try {
+      const result = await executePlan(msg.plan, {
+        mutations,
+        getDoc,
+        currentPageId: contextPage?._id ?? null,
+      });
+      const failNote =
+        result.failures.length > 0
+          ? `\n\nSome steps didn't run: ${result.failures
+              .map((f) => `step ${f.opIndex + 1} (${f.reason})`)
+              .join(", ")}.`
+          : "";
+      setMessages((m) =>
+        m.map((x, i) => (i === idx ? { ...x, planApplied: true } : x)).concat({
+          role: "assistant",
+          content:
+            (result.created.length > 0
+              ? "Done — created what we discussed."
+              : "Nothing was created.") + failNote,
+          sources: result.created.map((c) => ({
+            pageId: c.pageId,
+            title: c.title,
+            icon: c.icon,
+          })),
+        }),
+      );
+    } finally {
+      setApplyingIdx(null);
+    }
+  };
+
+  const dismissPlan = (idx: number) => {
+    setMessages((m) =>
+      m.map((x, i) => (i === idx ? { ...x, plan: null } : x)),
+    );
+  };
+
   const runSuggestion = (s: Suggestion) => {
     if (s.id === "personalize") return setPersonaOpen(true);
     if (s.id === "deck") return void makeDeck();
@@ -310,6 +357,47 @@ export default function AiChatPanel({
                   <div className="ai-menu-error">{m.error}</div>
                 ) : (
                   <div className="ai-msg-body">{m.content}</div>
+                )}
+                {m.plan && m.plan.length > 0 && !m.planApplied && (
+                  <div className="ai-plan-card">
+                    <div className="ai-plan-title">
+                      <ListChecks size={14} /> Proposed changes
+                    </div>
+                    <ul className="ai-plan-steps">
+                      {m.plan.map((op, oi) => (
+                        <li key={oi}>{describeOp(op)}</li>
+                      ))}
+                    </ul>
+                    <div className="ai-plan-actions">
+                      <button
+                        className="btn primary ai-plan-apply"
+                        disabled={applyingIdx !== null}
+                        onClick={() => void applyPlan(i)}
+                      >
+                        {applyingIdx === i ? (
+                          <Loader2 size={13} className="ai-spin" />
+                        ) : (
+                          <Check size={13} />
+                        )}
+                        Apply
+                      </button>
+                      <button
+                        className="btn subtle"
+                        disabled={applyingIdx !== null}
+                        onClick={() => dismissPlan(i)}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                    <div className="ai-plan-note">
+                      Only creates new content — nothing is changed or deleted.
+                    </div>
+                  </div>
+                )}
+                {m.plan && m.planApplied && (
+                  <div className="ai-plan-applied">
+                    <Check size={12} /> Applied
+                  </div>
                 )}
                 {m.sources && m.sources.length > 0 && (
                   <div className="ai-msg-sources">

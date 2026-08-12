@@ -272,6 +272,73 @@ try {
       (await page.locator(".ai-msg-user").count()) === 0,
     );
 
+    /* ------------- workspace agent: plan card → Apply → real pages ------ */
+    await page.fill(".ai-panel-composer textarea", "Create a meal plan for the week");
+    await page.keyboard.press("Enter");
+    const planCard = await page
+      .waitForSelector(".ai-plan-card", { timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    check("a creation ask renders a plan card", planCard);
+    if (planCard) {
+      const steps = await page.locator(".ai-plan-steps li").count();
+      check("the card lists the plan's steps", steps === 4, `${steps} steps`);
+      check(
+        "the card says it only creates",
+        (await page.textContent(".ai-plan-note"))?.includes("nothing is changed"),
+      );
+      await page.screenshot({ path: `${SHOTS}/07-plan-card.png` });
+
+      await page.click(".ai-plan-apply");
+      await page.waitForSelector(".ai-plan-applied", { timeout: 5000 });
+      check("Apply collapses the card into a receipt", true);
+      const chips = await page.locator(".ai-msg-sources").last().locator(".ai-msg-source").count();
+      check("the confirmation links what was created", chips === 2, `${chips} chips`);
+
+      // The promised pages actually exist in the sidebar tree.
+      check(
+        "the database landed in the sidebar",
+        await page.isVisible(".tree-title:text('Meal plan')"),
+      );
+      check(
+        "the content page landed in the sidebar",
+        await page.isVisible(".tree-title:text('Grocery list')"),
+      );
+      // And the database really has the plan's rows.
+      await page.click(".tree-title:text('Meal plan')");
+      await page.waitForSelector(".db-table", { timeout: 5000 });
+      const rowTitles = await page.$$eval(".db-table .row-title", (els) =>
+        els.map((e) => e.textContent),
+      );
+      check(
+        "the rows from the plan exist",
+        rowTitles.includes("Pasta night") && rowTitles.includes("Taco night"),
+        rowTitles.join(", "),
+      );
+      await page.screenshot({ path: `${SHOTS}/08-plan-applied.png` });
+
+      // Dismiss leaves no trace: new chat, same ask, dismiss instead.
+      await page.click(".ai-launcher").catch(() => {});
+      const panelStillOpen = await page.locator(".ai-panel").isVisible();
+      if (!panelStillOpen) await page.keyboard.press("Meta+Shift+J");
+      await page.click(".ai-panel-head-actions .icon-btn[title='New chat']");
+      await page.waitForTimeout(300);
+      await page.fill(".ai-panel-composer textarea", "Create another meal plan");
+      await page.keyboard.press("Enter");
+      await page.waitForSelector(".ai-plan-card", { timeout: 5000 });
+      await page.click(".ai-plan-actions .btn.subtle");
+      await page.waitForTimeout(300);
+      const cardsLeft = await page.locator(".ai-plan-card").count();
+      // Scoped to the tree: the Recents section legitimately shows the
+      // freshly-edited database too.
+      const mealPlans = await page.locator(".tree-root .tree-title:text('Meal plan')").count();
+      check(
+        "Dismiss removes the card without writing",
+        cardsLeft === 0 && mealPlans === 1,
+        `cards=${cardsLeft} mealplans=${mealPlans}`,
+      );
+    }
+
     await page.click(".ai-panel-head-actions .icon-btn[title='Close']");
     await page.waitForTimeout(300);
     check("the panel closes", !(await page.locator(".ai-panel").isVisible()));

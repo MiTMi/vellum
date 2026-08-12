@@ -15,6 +15,7 @@ import type * as auth from "../auth.js";
 import type * as comments from "../comments.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
+import type * as lib_agentPlan from "../lib/agentPlan.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_invites from "../lib/invites.js";
 import type * as lib_linkMeta from "../lib/linkMeta.js";
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   comments: typeof comments;
   files: typeof files;
   http: typeof http;
+  "lib/agentPlan": typeof lib_agentPlan;
   "lib/auth": typeof lib_auth;
   "lib/invites": typeof lib_invites;
   "lib/linkMeta": typeof lib_linkMeta;

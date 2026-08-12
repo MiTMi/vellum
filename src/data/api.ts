@@ -1,4 +1,5 @@
 import {
+  AgentAnswer,
   AiAnswer,
   AiChatTurn,
   AiPropKind,
@@ -53,6 +54,12 @@ export interface DataApi {
   useAccount(): AccountApi;
   /** Notion-style AI. Server-only: the model key lives in Convex env. */
   useAi(): AiApi;
+  /**
+   * Imperative full-doc read for flows that act on pages outside React's
+   * render cycle (the agent plan executor). Replica-backed in offline and
+   * mock modes; a server query in direct mode.
+   */
+  useGetDoc(): (id: PageId) => Promise<PageDoc | null>;
 }
 
 export interface AiApi {
@@ -85,6 +92,17 @@ export interface AiApi {
   }): Promise<AiAnswer>;
   /** Markdown slide outline for "Create a slide deck". */
   deckOutline(args: { pageId?: PageId; topic?: string }): Promise<string>;
+  /**
+   * The workspace agent (docs/ai-agent-design.md): like `converse`, but
+   * may also return an additive plan the panel offers to Apply. Never
+   * writes anything itself.
+   */
+  agent(args: {
+    messages: AiChatTurn[];
+    pageId?: PageId;
+    useWorkspace?: boolean;
+    persona?: string;
+  }): Promise<AgentAnswer>;
 }
 
 export interface AccountApi {

@@ -13,9 +13,12 @@ import {
   VersionHistoryApi,
 } from "./api";
 import {
+  AgentAnswer,
   AiAnswer,
   CommentMeta,
   LinkPreview,
+  PageDoc,
+  PageId,
   VersionDoc,
   VersionMeta,
 } from "../lib/types";
@@ -273,9 +276,23 @@ const offlineApi: DataApi = {
             ...args,
             pageId: args.pageId as Id<"pages"> | undefined,
           }) as Promise<string>,
+        agent: (args) =>
+          convexClient().action(api.ai.agent, {
+            ...args,
+            pageId: args.pageId as Id<"pages"> | undefined,
+          }) as Promise<AgentAnswer>,
       }),
       [connected],
     );
+  },
+
+  useGetDoc() {
+    // Replica-backed and synchronous under the hood — the Promise shape
+    // just keeps the three implementations interchangeable.
+    return useCallback(async (id: PageId) => {
+      const doc = store.get(id);
+      return doc ? (structuredClone(doc) as PageDoc) : null;
+    }, []);
   },
 };
 
