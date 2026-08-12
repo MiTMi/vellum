@@ -24,6 +24,7 @@ import type * as lib_pageLinks from "../lib/pageLinks.js";
 import type * as lib_passwordPolicy from "../lib/passwordPolicy.js";
 import type * as lib_publicHtml from "../lib/publicHtml.js";
 import type * as lib_quotas from "../lib/quotas.js";
+import type * as lib_safefetch from "../lib/safefetch.js";
 import type * as lib_sharing from "../lib/sharing.js";
 import type * as lib_snippet from "../lib/snippet.js";
 import type * as lib_versions from "../lib/versions.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   "lib/passwordPolicy": typeof lib_passwordPolicy;
   "lib/publicHtml": typeof lib_publicHtml;
   "lib/quotas": typeof lib_quotas;
+  "lib/safefetch": typeof lib_safefetch;
   "lib/sharing": typeof lib_sharing;
   "lib/snippet": typeof lib_snippet;
   "lib/versions": typeof lib_versions;
