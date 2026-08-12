@@ -89,6 +89,14 @@ try {
   check("search finds guides by their body text, not just titles",
     visible.includes("The Vault"), visible.join(", "));
   check("search hides the rest", visible.length < 21, `${visible.length} shown`);
+  const visuallyShown = await page.$$eval(".help-index a", (els) =>
+    els.filter((e) => getComputedStyle(e).display !== "none").length,
+  );
+  check(
+    "hidden links are actually invisible (computed style)",
+    visuallyShown === visible.length,
+    `${visuallyShown} visible vs ${visible.length} unhidden`,
+  );
 
   await page.fill(".help-search input", "zzzzzz");
   await page.waitForTimeout(400);

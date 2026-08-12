@@ -96,6 +96,13 @@
   margin-top: 0;
 }
 
+.help-index a[hidden],
+.help-index-group[hidden] {
+  /* The hidden attribute's UA styling is display:none, which loses to
+     any author display value — restate it or search filters nothing. */
+  display: none;
+}
+
 .help-index a {
   display: block;
   padding: 5px 10px;
