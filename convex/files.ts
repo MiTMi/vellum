@@ -51,6 +51,13 @@ export const getFileUrl = mutation({
       .query("files")
       .withIndex("by_storageId", (q) => q.eq("storageId", args.storageId))
       .unique();
+    // A storageId registered to SOMEONE ELSE is not the caller's retry —
+    // refuse without serving a URL (audit finding, 2026-08-12). Same
+    // {url, error} shape, and crucially no throw and no delete: a throw
+    // would roll back sibling work, and the file is the other user's.
+    if (already && already.ownerId !== userId) {
+      return { url: null, error: "That file belongs to another account." };
+    }
     if (!already) {
       const meta = await ctx.db.system.get("_storage", args.storageId);
       const size = meta?.size ?? 0;

@@ -464,3 +464,33 @@ test("offline template flag and instantiation replay to the server", async () =>
   expect(pages.filter((p) => p.title === "Weekly")).toHaveLength(2);
   expect(pages.filter((p) => p.isTemplate)).toHaveLength(1);
 });
+
+test("quota-rejected ops are retained, not dropped (audit 2026-08-12)", async () => {
+  const backend = await makeBackend();
+  const device = await makeDevice(backend);
+  device.setConnected(true);
+  await device.engine.idle();
+
+  // Server refuses with a quota-shaped ConvexError: the op must survive.
+  const realRun = device.transport.runMutation;
+  device.transport.runMutation = async () => {
+    const err = new Error("quota") as Error & { data: string };
+    err.data = "Page limit reached (2000). Delete some pages from Trash to make room.";
+    throw err;
+  };
+  await device.mutations.create({ type: "doc", title: "Over the cap" });
+  await device.engine.idle();
+  await sleep(50);
+  expect(device.outbox.size()).toBe(1); // retained
+  expect(device.engine.getStatus().failed).toBe(0); // not counted as dropped
+
+  // The user frees space (the server accepts again) → the op drains.
+  device.transport.runMutation = realRun;
+  device.engine.kick();
+  await device.engine.idle();
+  await sleep(50);
+  expect(device.outbox.size()).toBe(0);
+  const titles = (await backend.query(api.pages.list, {})).map((p) => p.title);
+  expect(titles).toContain("Over the cap");
+  device.engine.stop();
+});

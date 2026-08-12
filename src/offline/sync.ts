@@ -68,6 +68,19 @@ export interface SyncEngine {
 }
 
 const FETCH_BATCH = 50;
+/** Retry cadence for quota-blocked ops — deterministic *now*, but the
+ *  user can resolve them by deleting pages/files, so they must never be
+ *  dropped (audit finding, 2026-08-12). Slow on purpose. */
+const QUOTA_RETRY_MS = 60_000;
+
+/** A server refusal the user can fix (page/storage caps) — retained and
+ *  retried, unlike other deterministic rejections which are dropped. */
+function isQuotaError(err: unknown): boolean {
+  const text = String(
+    (err as { data?: unknown })?.data ?? (err as Error)?.message ?? "",
+  );
+  return /limit reached|storage is full|doesn't fit in your storage/i.test(text);
+}
 
 function dispatchAppEvent(name: string, detail?: unknown) {
   if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
@@ -236,6 +249,22 @@ export function createSyncEngine({
           outbox.complete(stored.seq);
         }
       } catch (err) {
+        if (isQuotaError(err)) {
+          // Keep the op — dropping it would destroy queued content the
+          // user can still save by freeing space. FIFO stalls behind it
+          // deliberately (later ops may depend on it), and a slow timer
+          // retries long after the 5s transport-failure cadence.
+          console.warn(`Quota-blocked op "${op.kind}" retained; retrying later.`);
+          outbox.clearInFlight();
+          if (!retryTimer && !stopped) {
+            retryTimer = setTimeout(() => {
+              retryTimer = null;
+              kick();
+            }, QUOTA_RETRY_MS);
+          }
+          refreshStatus();
+          return;
+        }
         // Convex retries transport failures internally, so a rejected
         // mutation is a deterministic server error — retrying would loop
         // forever. Drop the op and keep draining.
