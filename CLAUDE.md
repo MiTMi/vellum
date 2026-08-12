@@ -19,9 +19,9 @@ editor, Convex backend, wrapped in Electron for macOS, and hosted on Vercel.
 Everything is one `pages` table — docs, databases, and rows alike
 (`convex/schema.ts`).
 
-### Three build entries
+### Four build entries
 
-The Vite build has **three HTML entries** (`rollupOptions.input` in
+The Vite build has **four HTML entries** (`rollupOptions.input` in
 `vite.config.ts`), and confusing them is the most common way to break things:
 
 - **`app.html`** — the workspace (`#root` + `src/main.tsx`). This is the old
@@ -32,8 +32,18 @@ The Vite build has **three HTML entries** (`rollupOptions.input` in
   plus `src/landing/{landing.css,landing.ts}`; no React, so `/` stays small.
 - **`help.html`** — the Help Center at `/help`. Same shape as the landing
   page and *extends* its stylesheet rather than restating it (see below).
+- **`legal.html`** — Privacy Policy / Terms of Service / License at
+  `/legal` (2026-08-12), hash-routed like the Help Center (`#privacy` /
+  `#terms` / `#license`) and reusing its classes so `help.css` styles it;
+  `src/legal/legal.ts` is help.ts minus the search box. Linked from every
+  footer (landing, help, legal). Content notes: the privacy policy names
+  the real processors (Convex EU, OpenRouter, Tavily + its query
+  retention, the 90-day web audit log) and the operator-can-read-outside-
+  the-Vault boundary — keep those claims in sync with reality when
+  features change.
 
-`vite.config.ts`'s dev middleware maps both clean URLs (`/app`, `/help`) to
+`vite.config.ts`'s dev middleware maps the clean URLs (`/app`, `/help`,
+`/legal`) to
 their `.html` files, and the PWA plugin's `CANONICAL` map precaches them under
 those same clean URLs — a new HTML entry must be added to **both** or it will
 404 in dev and break the offline shell in production.
@@ -646,9 +656,12 @@ up from the bundle). The hero is a hand-built fake Vellum document (the
 `.sheet`) whose page title *is* the `<h1>`; its load animation, checkbox
 ticks and caret are pure CSS and all disabled under
 `prefers-reduced-motion`. The e2e suite pins the skeleton — `.hero h1` copy,
-6 `.feature` cards, 5 `.deep .row`s, `#features/#vault/#sync/#publish`
-anchors, `[data-cta]` hrefs — so structural edits must update
-`scripts/e2e-landing.mjs` in the same commit. (`e2e-pwa.mjs` also asserts the
+**9** `.feature` cards, **7** `.deep .row`s (AI and people-sharing rows
+added 2026-08-12, with hand-built CSS mocks `.agent-mock`/`.share-mock`),
+`#features/#ai/#people/#vault/#sync/#publish/#helpcenter` anchors, the
+footer's `/legal#…` links, and `[data-cta]` hrefs — so structural edits
+must update `scripts/e2e-landing.mjs` in the same commit. A `.helpband`
+section markets the Help Center before the final CTA. (`e2e-pwa.mjs` also asserts the
 `.hero h1` copy for its offline check; a headline rewrite has to touch that
 one too.) The nav and footer both carry a `/help` link — `e2e-help.mjs`
 checks the nav one, so don't drop it in a restyle. `assets/hero.png` is currently
@@ -657,8 +670,9 @@ unreferenced (the sheet replaced it) but still written by
 
 ### Help Center (`help.html`, `src/help/`)
 
-Nineteen guides covering every feature, at `/help`, linked from the landing
-nav and footer. Static markup plus ~90 lines of vanilla TS; **`help.ts`
+Twenty-one guides covering every feature (AI assistant and
+sharing-with-people added 2026-08-12), at `/help`, linked from the
+landing nav and footer. Static markup plus ~90 lines of vanilla TS; **`help.ts`
 imports `landing.css` before `help.css`**, so the design system (tokens, nav,
 buttons, eyebrows, `kbd`, footer) is inherited rather than duplicated — a
 landing restyle restyles the Help Center with it.
@@ -668,9 +682,11 @@ landing restyle restyles the Help Center with it.
   back button works. Prev/next footers are **generated from the index order**
   — adding a guide means adding one index link and one article, nothing else.
 - Search filters the index against each guide's full text, not just titles.
-- `scripts/e2e-help.mjs` pins the skeleton (19 index links ↔ 19 articles, no
+- `scripts/e2e-help.mjs` pins the skeleton (21 index links ↔ 21 articles, no
   orphans either way, hash routing, search, CTA hrefs), the same way
-  `e2e-landing.mjs` pins the landing page.
+  `e2e-landing.mjs` pins the landing page. The hero copy says
+  "Twenty-one short guides" — the count lives in prose AND in the suite,
+  so adding a guide touches both.
 - **The guides' claims are themselves tested**: `scripts/e2e-guide-*.mjs`
   (basics, writing, organizing, databases, sharing) drive the real UI in mock
   mode and assert each documented step, and `tests/publishFlow.test.ts` covers
@@ -722,9 +738,9 @@ request (those carry `redirect: "manual"`), so caching `/app.html` behind
 `.ttf`/`.woff` font fallbacks are excluded from the precache and left to the
 runtime cache.
 
-`offlineFallbackFor` decides which of those three a failed navigation falls
-back to (`/` for the root, `/help` for the guides, `/app` for everything
-else). A new entry that isn't taught to it is precached but unreachable
+`offlineFallbackFor` decides which entry a failed navigation falls
+back to (`/` for the root, `/help` for the guides, `/legal` for the
+legal pages, `/app` for everything else). A new entry that isn't taught to it is precached but unreachable
 offline — the navigation lands on the workspace shell instead.
 
 ### One-off migrations (`convex/migrate.ts`)

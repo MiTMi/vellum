@@ -6,7 +6,7 @@
     <title>Vellum — a personal workspace for notes, docs and databases</title>
     <meta
       name="description"
-      content="Vellum is a personal workspace for notes, docs and databases. Offline-first, synced between the web and a native Mac app, and private by default."
+      content="Vellum is a personal workspace for notes, docs and databases — with built-in AI, page sharing, an end-to-end encrypted Vault, offline-first sync, and publishing. Private by default."
     />
     <meta name="theme-color" content="#fbfaf7" />
     <link rel="icon" href="./favicon.png" />
@@ -34,6 +34,8 @@
         </a>
         <nav class="nav-links" aria-label="Sections">
           <a href="#features">Features</a>
+          <a href="#ai">AI</a>
+          <a href="#people">Sharing</a>
           <a href="#vault">Vault</a>
           <a href="#sync">Sync</a>
           <a href="#publish">Publish</a>
@@ -92,7 +94,7 @@
             <div class="block block-slash d6">
               <span class="caret" aria-hidden="true"></span>
               <span class="slash-hint">
-                Type <kbd>/</kbd> for a heading, a table, an equation, an embed…
+                Type <kbd>/</kbd> for a heading, a table, an equation… or ask the AI
               </span>
             </div>
           </div>
@@ -178,6 +180,39 @@
               <p>
                 The same workspace as a real desktop app: native menus, Touch ID
                 unlock, proper PDF export and its own Dock icon.
+              </p>
+            </article>
+            <article class="feature">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3m0 12v3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M3 12h3m12 0h3M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/></svg>
+              </span>
+              <h3>Built-in AI</h3>
+              <p>
+                Fix a sentence, ask your notes a question, or have the agent
+                draft whole pages and databases — applied only when you click
+                Apply. Web search is opt-in, safety-checked and logged.
+              </p>
+            </article>
+            <article class="feature">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </span>
+              <h3>Share with people</h3>
+              <p>
+                Invite someone to a page — and everything inside it — as a
+                viewer or an editor. Take access back anytime and it vanishes
+                from their app on its own.
+              </p>
+            </article>
+            <article class="feature">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6M9 15h6"/></svg>
+              </span>
+              <h3>History, comments &amp; export</h3>
+              <p>
+                Page history you can restore from, comments in the margin, and
+                one-click export to Markdown, HTML, CSV or PDF. Your thoughts
+                are not a subscription.
               </p>
             </article>
           </div>
@@ -280,7 +315,40 @@
         </div>
       </section>
 
-      <section class="deep" id="sync">
+      <section class="deep" id="ai">
+        <div class="wrap row">
+          <div class="row-copy">
+            <p class="eyebrow">
+              <span class="pilcrow" aria-hidden="true">&para;</span> Assist
+            </p>
+            <h2>An assistant that <em>does</em> things.</h2>
+            <p>
+              Press <kbd>&#8984;J</kbd> on a selection to fix, translate or
+              rewrite it. Open the chat panel and ask questions — answers come
+              from <strong>your own notes</strong>, with citations.
+            </p>
+            <p>
+              Ask for something bigger and the agent proposes a plan — a
+              database here, a page of content there — and
+              <strong>nothing happens until you click Apply</strong>. Flip the
+              globe and it can search the web too: opt-in, checked by an
+              independent safety filter, and always logged.
+            </p>
+          </div>
+          <figure class="row-shot agent-mock" aria-hidden="true">
+            <div class="am-bubble">Set up a meal plan for the week</div>
+            <div class="am-card">
+              <span class="am-title">Proposed changes</span>
+              <span class="am-step">Create database &ldquo;Meals&rdquo; &middot; 3 columns</span>
+              <span class="am-step">Add 7 rows</span>
+              <span class="am-step">Create page &ldquo;Grocery list&rdquo;</span>
+              <span class="am-actions"><i class="am-apply">Apply</i><i class="am-dismiss">Dismiss</i></span>
+            </div>
+          </figure>
+        </div>
+      </section>
+
+      <section class="deep band" id="sync">
         <div class="wrap row">
           <div class="row-copy">
             <p class="eyebrow">
@@ -317,13 +385,41 @@
         </div>
       </section>
 
-      <section class="deep band" id="publish">
+      <section class="deep band" id="people">
+        <div class="wrap row">
+          <div class="row-copy">
+            <p class="eyebrow">
+              <span class="pilcrow" aria-hidden="true">&para;</span> Together
+            </p>
+            <h2>Your people, your <em>pages</em>.</h2>
+            <p>
+              Vellum is <strong>invite-only</strong>: mint a code and someone
+              you trust gets their own private workspace — separate accounts,
+              separate pages, nothing shared by accident.
+            </p>
+            <p>
+              When you want to work together, share a page and everything
+              inside it as a <strong>viewer</strong> or an
+              <strong>editor</strong>. Take access back anytime and it
+              disappears from their app on its own. The Vault can never be
+              shared — by design.
+            </p>
+          </div>
+          <figure class="row-shot share-mock" aria-hidden="true">
+            <div class="sm-row"><span class="sm-avatar">S</span><span class="sm-mail">sister&#64;example.com</span><span class="sm-role">Editor</span></div>
+            <div class="sm-row"><span class="sm-avatar sm-b">D</span><span class="sm-mail">dad&#64;example.com</span><span class="sm-role sm-viewer">Viewer</span></div>
+            <div class="sm-note">People get this page and everything inside it.</div>
+          </figure>
+        </div>
+      </section>
+
+      <section class="deep" id="publish">
         <div class="wrap row row-reverse">
           <div class="row-copy">
             <p class="eyebrow">
-              <span class="pilcrow" aria-hidden="true">&para;</span> Share
+              <span class="pilcrow" aria-hidden="true">&para;</span> Publish
             </p>
-            <h2>Share when <em>you're</em> ready.</h2>
+            <h2>Public when <em>you're</em> ready.</h2>
             <p>
               Flip one switch and a page gets an unguessable public link that
               anyone can read — no account, no app, just the page.
@@ -357,9 +453,9 @@
             <div class="principle">
               <h3>Private by default.</h3>
               <p>
-                One owner, one password, nothing social. Publishing is a
-                deliberate act — and the Vault goes further: end-to-end
-                encrypted, readable by no one but you.
+                Accounts are invite-only, sharing is a deliberate act, page by
+                page — and the Vault goes further: end-to-end encrypted,
+                readable by no one but you.
               </p>
             </div>
             <div class="principle">
@@ -377,6 +473,23 @@
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------- help center -->
+      <section class="helpband" id="helpcenter">
+        <div class="wrap">
+          <p class="eyebrow">
+            <span class="pilcrow" aria-hidden="true">&para;</span> Help Center
+          </p>
+          <h2 class="section-title">Twenty-one guides, zero guesswork.</h2>
+          <p class="helpband-copy">
+            Every feature on this page has a short, plain-language guide — and
+            every step in every guide was carried out in the app before it was
+            written down. Searchable, keyboard-friendly, and readable offline,
+            like the rest of Vellum.
+          </p>
+          <a class="btn btn-secondary" href="/help">Browse the Help Center</a>
         </div>
       </section>
 
@@ -401,6 +514,9 @@
         </p>
         <nav class="footer-links" aria-label="Elsewhere">
           <a href="/help">Help</a>
+          <a href="/legal#privacy">Privacy</a>
+          <a href="/legal#terms">Terms</a>
+          <a href="/legal#license">License</a>
           <a href="https://github.com/MiTMi/vellum" rel="noreferrer">GitHub</a>
           <span>© <span data-year>2026</span></span>
         </nav>

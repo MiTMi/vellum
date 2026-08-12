@@ -55,6 +55,7 @@ function offlineFallbackFor(pathname) {
   // The Help Center is its own precached entry: offline, "how do I…?" should
   // answer itself rather than dumping the reader into the workspace.
   if (pathname === "/help" || pathname === "/help.html") return "/help";
+  if (pathname === "/legal" || pathname === "/legal.html") return "/legal";
   return "/app";
 }
 

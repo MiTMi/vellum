@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vellum — privacy, terms &amp; license</title>
+    <meta
+      name="description"
+      content="How Vellum handles your data, the terms of using the service, and what is and isn't allowed."
+    />
+    <meta name="theme-color" content="#fbfaf7" />
+    <link rel="icon" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./favicon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <a class="skip-link" href="#documents">Skip to the documents</a>
+
+    <!-- ---------------------------------------------------------- nav -->
+    <header class="nav">
+      <div class="nav-inner">
+        <a class="wordmark" href="/">
+          <img src="./favicon.png" alt="" width="26" height="26" />
+          <span>Vellum</span>
+        </a>
+        <nav class="nav-links" aria-label="Sections">
+          <a href="/#features">Features</a>
+          <a href="/help">Help</a>
+        </nav>
+        <a class="btn btn-primary btn-sm" data-cta href="/app">Get started</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="help-hero">
+        <p class="eyebrow">
+          <span class="pilcrow" aria-hidden="true">&para;</span> The fine print
+        </p>
+        <h1>Plain rules, <em>plainly</em> written.</h1>
+        <p>
+          Vellum is a small, invite-only workspace. These three documents say
+          how your data is handled, what using the service means, and what is
+          and isn&rsquo;t allowed.
+        </p>
+      </section>
+
+      <div class="wrap help-shell" id="documents">
+        <!-- ---------------------------------------------------- index -->
+        <nav class="help-index" aria-label="Documents">
+          <p class="help-index-group">Legal</p>
+          <a href="#privacy">Privacy Policy</a>
+          <a href="#terms">Terms of Service</a>
+          <a href="#license">License &amp; Acceptable Use</a>
+        </nav>
+
+        <!-- ------------------------------------------------ documents -->
+        <div class="help-content">
+          <!-- ==================================================== privacy -->
+          <article class="guide" id="privacy">
+            <h1>Privacy Policy</h1>
+            <p class="guide-lead">
+              Last updated August 12, 2026. The short version: your notes are
+              yours, they live on a European server, the Vault is encrypted so
+              that no one — including the operator — can read it, and nothing
+              is sold or used for advertising. Ever.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>What Vellum stores</h2>
+            <ul>
+              <li><strong>Your account</strong>: an email address and a salted, hashed password. Passwords are never stored in readable form.</li>
+              <li><strong>Your content</strong>: pages, databases, uploaded files, page history and comments, stored in a Convex database hosted in the EU (eu-west).</li>
+              <li><strong>Sharing records</strong>: who you have shared a page with, and at what level.</li>
+              <li><strong>A copy on your devices</strong>: Vellum is offline-first, so each device you sign in on keeps a local replica of your workspace.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>The Vault is different</h2>
+            <p>
+              Pages inside the Vault are <strong>end-to-end encrypted</strong>
+              on your device with a passphrase that never leaves it. The
+              server stores only ciphertext. Nobody — not the operator, not
+              the hosting provider, not the AI — can read Vault content.
+              There is no recovery if the passphrase is lost; that is the
+              design, not an oversight.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Honesty about the operator</h2>
+            <p>
+              Vellum is run by one person for an invited circle. Outside the
+              Vault, content on the server is technically readable by the
+              operator, the same way any hosted service's data is readable by
+              whoever runs it. It isn't read, but you should know the
+              boundary — and put anything that must be private beyond doubt in
+              the Vault.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>When you use the AI</h2>
+            <ul>
+              <li>Text you explicitly send to the AI (a selection, a chat message, a page used as context) is processed by a language model via <strong>OpenRouter</strong> under its API terms. Vellum sends only what you invoked the AI on, keeps no copy beyond your workspace, and Vault pages can never be sent.</li>
+              <li>If you turn the <strong>globe</strong> on, web searches composed by the AI are sent to <strong>Tavily</strong>, a search provider. Per Tavily's policy, query text is retained by them while the API account exists. Only short search phrases are sent — never your pages.</li>
+              <li>Outgoing web searches and fetches are recorded in an <strong>audit log</strong> (who, what, allowed or declined) visible only to the workspace owner, and deleted after 90 days.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>What Vellum doesn't do</h2>
+            <ul>
+              <li>No advertising, no trackers, no analytics scripts, no selling or sharing data with anyone beyond the processors named above (Convex for the database, OpenRouter for AI, Tavily for opt-in search).</li>
+              <li>No cookies beyond what sign-in requires; preferences (theme, panel sizes, AI persona) live in your browser's local storage, on your device.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Your controls</h2>
+            <ul>
+              <li><strong>Export</strong> any page as Markdown, HTML, CSV or PDF at any time.</li>
+              <li><strong>Delete your account</strong> in Settings: it erases your pages, files, history, comments, shares and audit entries in one transaction. This is immediate and irreversible.</li>
+              <li>Published pages are public only while published; unpublishing permanently kills the link.</li>
+            </ul>
+          </article>
+
+          <!-- ====================================================== terms -->
+          <article class="guide" id="terms">
+            <h1>Terms of Service</h1>
+            <p class="guide-lead">
+              Last updated August 12, 2026. Vellum is a personal, invite-only
+              service provided in good faith and free of charge. These terms
+              keep it simple and fair for everyone on it.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>The service</h2>
+            <ul>
+              <li>Accounts are created by <strong>invitation only</strong>. An invite is personal — don't pass codes along without asking.</li>
+              <li>The service is provided <strong>as-is, without warranty</strong> of availability, durability or fitness for any purpose. Export what you can't afford to lose.</li>
+              <li>Fair-use quotas apply (storage, page count, AI usage) and may change as the service evolves.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Your content</h2>
+            <ul>
+              <li>Everything you write <strong>belongs to you</strong>. Using Vellum grants the operator no rights over your content beyond what's technically needed to store, sync and display it to you and the people you share with.</li>
+              <li>You are responsible for what you store, share and publish — including having the right to store it.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Behaviour</h2>
+            <ul>
+              <li>Use the service lawfully. The <a href="#license">License &amp; Acceptable Use</a> document is part of these terms.</li>
+              <li>Don't attempt to break, overload, probe or gain access beyond your own account and what's shared with you.</li>
+              <li>The operator may suspend or remove an account that breaks these terms, and may discontinue the service with reasonable notice — with export always available first.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Liability</h2>
+            <p>
+              To the fullest extent permitted by law, the operator is not
+              liable for lost data, lost profits, or any indirect damages
+              arising from use of the service. The service is a personal
+              project, not a commercial product with an SLA.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Changes</h2>
+            <p>
+              These terms may change as Vellum grows. Material changes will be
+              announced in the app or by email, and continuing to use the
+              service after that means accepting the updated terms.
+            </p>
+          </article>
+
+          <!-- ==================================================== license -->
+          <article class="guide" id="license">
+            <h1>License &amp; Acceptable Use</h1>
+            <p class="guide-lead">
+              Last updated August 12, 2026. Your invitation grants a personal,
+              non-transferable license to use Vellum. Here is what that
+              covers — and what it never covers.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Allowed</h2>
+            <ul>
+              <li>Using your workspace for personal notes, documents, databases and files, on any of your devices.</li>
+              <li>Sharing pages with other account holders, and publishing your own content to the web.</li>
+              <li>Using the AI features, including opt-in web access, for lawful purposes.</li>
+              <li>Exporting your content at any time, in any offered format.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Not allowed</h2>
+            <ul>
+              <li>Storing, sharing or publishing content that is <strong>illegal</strong>, or that infringes someone else's rights.</li>
+              <li>Using any feature — including AI web search and page fetching — to seek or distribute illegal, sexually explicit or violently graphic material, or to harass, stalk, dox or impersonate anyone.</li>
+              <li>Attempting to bypass the safety checks, quotas, or access controls, or probing other users' data.</li>
+              <li>Reselling, renting out, or providing third-party access to the service; automated scraping or bulk extraction of anything that isn't yours.</li>
+              <li>Passing your account or invite codes to others without the operator's agreement.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Enforcement</h2>
+            <p>
+              Outgoing AI web activity is safety-checked and logged (see the
+              <a href="#privacy">Privacy Policy</a>). Misuse can mean losing
+              web access, AI access, or the account, depending on severity —
+              proportionate, but at the operator's discretion.
+            </p>
+
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                The Vellum software itself is source-visible on GitHub; this
+                page licenses your <em>use of the hosted service</em>, not the
+                code. The code's license is stated in its repository.
+              </p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer-inner">
+        <a class="wordmark" href="/">
+          <img src="./favicon.png" alt="" width="22" height="22" />
+          <span>Vellum</span>
+        </a>
+        <p class="footer-note">
+          Set in Newsreader &amp; Inter · Built with Convex + React
+        </p>
+        <nav class="footer-links" aria-label="Elsewhere">
+          <a href="/">Home</a>
+          <a href="/help">Help</a>
+          <a href="/legal#privacy">Privacy</a>
+          <a href="/legal#terms">Terms</a>
+          <a href="/legal#license">License</a>
+          <span>© <span data-year>2026</span></span>
+        </nav>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/legal/legal.ts"></script>
+  </body>
+</html>

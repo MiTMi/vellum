@@ -44,19 +44,25 @@ try {
   );
   check("sticky nav is present", (await page.locator(".nav").count()) === 1);
   check(
-    "six feature cards",
-    (await page.locator(".feature").count()) === 6,
+    "nine feature cards",
+    (await page.locator(".feature").count()) === 9,
     String(await page.locator(".feature").count()),
   );
   check(
-    "five deep-dive rows",
-    (await page.locator(".deep .row").count()) === 5,
+    "seven deep-dive rows",
+    (await page.locator(".deep .row").count()) === 7,
     String(await page.locator(".deep .row").count()),
   );
   check("footer renders", (await page.locator(".footer").count()) === 1);
+  check(
+    "footer links the legal pages",
+    (await page.locator('.footer-links a[href="/legal#privacy"]').count()) === 1 &&
+      (await page.locator('.footer-links a[href="/legal#terms"]').count()) === 1 &&
+      (await page.locator('.footer-links a[href="/legal#license"]').count()) === 1,
+  );
 
   // Anchor links in the nav must actually land somewhere.
-  for (const id of ["features", "vault", "sync", "publish"]) {
+  for (const id of ["features", "ai", "people", "vault", "sync", "publish", "helpcenter"]) {
     check(`#${id} section exists`, (await page.locator(`#${id}`).count()) === 1);
   }
 

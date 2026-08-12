@@ -13,6 +13,7 @@ import { resolve } from "node:path";
 const CLEAN_URLS: Record<string, string> = {
   "/app": "/app.html",
   "/help": "/help.html",
+  "/legal": "/legal.html",
 };
 
 function appRouteAlias(): Plugin {
@@ -73,6 +74,7 @@ function vellumPWA(): Plugin {
         "index.html": "/",
         "app.html": "/app",
         "help.html": "/help",
+        "legal.html": "/legal",
       };
       const emitted = Object.keys(bundle).filter((f) => !RUNTIME_CACHED.test(f));
       const precache = [
@@ -113,12 +115,13 @@ export default defineConfig({
     outDir: "dist",
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
-      // Three entries: the marketing landing at "/", the SPA at "/app" and
-      // the Help Center at "/help".
+      // Four entries: the marketing landing at "/", the SPA at "/app",
+      // the Help Center at "/help" and the legal pages at "/legal".
       input: {
         landing: resolve(__dirname, "index.html"),
         app: resolve(__dirname, "app.html"),
         help: resolve(__dirname, "help.html"),
+        legal: resolve(__dirname, "legal.html"),
       },
     },
   },

@@ -35,7 +35,7 @@ try {
   const links = await page.$$eval(".help-index a", (els) =>
     els.map((e) => e.getAttribute("href")),
   );
-  check("the index lists 19 guides", links.length === 19, String(links.length));
+  check("the index lists 21 guides", links.length === 21, String(links.length));
 
   const ids = await page.$$eval(".guide", (els) => els.map((e) => e.id));
   check("every index entry has a guide", links.every((h) => ids.includes(h.slice(1))),
@@ -88,7 +88,7 @@ try {
   );
   check("search finds guides by their body text, not just titles",
     visible.includes("The Vault"), visible.join(", "));
-  check("search hides the rest", visible.length < 19, `${visible.length} shown`);
+  check("search hides the rest", visible.length < 21, `${visible.length} shown`);
 
   await page.fill(".help-search input", "zzzzzz");
   await page.waitForTimeout(400);
@@ -96,7 +96,7 @@ try {
   await page.fill(".help-search input", "");
   await page.waitForTimeout(400);
   check("clearing the search restores every guide",
-    (await page.$$eval(".help-index a", (els) => els.filter((e) => !e.hidden).length)) === 19);
+    (await page.$$eval(".help-index a", (els) => els.filter((e) => !e.hidden).length)) === 21);
 
   /* --------------------------------------------------- links back out */
   const cta = await page.getAttribute("[data-cta]", "href");

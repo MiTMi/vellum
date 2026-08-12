@@ -6,7 +6,7 @@
     <title>Vellum Help — guides for every part of your workspace</title>
     <meta
       name="description"
-      content="How to use Vellum: writing with blocks, pages and links, databases and views, templates, publishing, the Vault, offline sync and every keyboard shortcut."
+      content="How to use Vellum: writing with blocks, databases and views, the AI assistant, sharing with people, templates, publishing, the Vault, offline sync and every keyboard shortcut."
     />
     <meta name="theme-color" content="#fbfaf7" />
     <link rel="icon" href="./favicon.png" />
@@ -50,7 +50,7 @@
         </p>
         <h1>Everything Vellum does, <em>plainly</em>.</h1>
         <p>
-          Nineteen short guides. Every step below was carried out in the app
+          Twenty-one short guides. Every step below was carried out in the app
           before it was written down &mdash; so if it says click it, it clicks.
         </p>
         <div class="help-search">
@@ -89,8 +89,10 @@
           <p class="help-index-group">Doing more</p>
           <a href="#templates">Templates</a>
           <a href="#history">Page history &amp; comments</a>
+          <a href="#ai-assistant">The AI assistant</a>
 
           <p class="help-index-group">Sharing</p>
+          <a href="#sharing-people">Sharing with people</a>
           <a href="#publishing">Publishing to the web</a>
           <a href="#exporting">Exporting &amp; importing</a>
 
@@ -979,6 +981,120 @@
           </article>
 
           <!-- ================================================= publishing -->
+          <!-- ============================================ sharing people -->
+          <article class="guide" id="sharing-people">
+            <h1>Sharing with people</h1>
+            <p class="guide-lead">
+              Vellum accounts are invite-only, and every workspace is private.
+              Sharing opens one page &mdash; and everything inside it &mdash; to
+              someone you choose, at the level you choose.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Sharing a page</h2>
+            <ol class="steps">
+              <li>Open the page and click <strong>Share</strong> in the top bar.</li>
+              <li>In the <strong>People</strong> section, type their account email and pick a role.</li>
+              <li><strong>Viewer</strong> can read everything; <strong>Editor</strong> can also write, add rows and create sub-pages.</li>
+            </ol>
+            <p>
+              The share covers the page <em>and its whole subtree</em> &mdash;
+              share a project page once and every note inside comes along.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>What they see</h2>
+            <ul>
+              <li>A <strong>Shared</strong> section appears in their sidebar, with the page at its root.</li>
+              <li>The Library gets a <strong>Shared</strong> tab listing everything shared with them.</li>
+              <li>Viewers see a read-only page; editors edit like their own &mdash; but moving, deleting, publishing and re-sharing stay yours alone.</li>
+            </ul>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Changing your mind</h2>
+            <p>
+              Back in the Share popover you can switch someone&rsquo;s role or
+              remove them. Removal is automatic and complete: the pages simply
+              disappear from their app on the next sync.
+            </p>
+
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                The Vault can never be shared with anyone &mdash; its pages are
+                end-to-end encrypted and stay yours alone, always.
+              </p>
+            </div>
+          </article>
+
+          <!-- =============================================== ai assistant -->
+          <article class="guide" id="ai-assistant">
+            <h1>The AI assistant</h1>
+            <p class="guide-lead">
+              Vellum&rsquo;s AI helps in three places: on a selection, in a
+              database column, and in a chat panel that can also
+              <em>build things for you</em> &mdash; always with your approval.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>On a selection</h2>
+            <ol class="steps">
+              <li>Select some text and press <kbd>⌘J</kbd> (or type <strong>/Ask AI</strong> on an empty line).</li>
+              <li>Pick an action &mdash; improve, fix grammar, shorten, translate, change tone, or a custom instruction.</li>
+              <li>The result shows as a <strong>preview first</strong>. Replace the selection, insert below, or discard &mdash; nothing changes until you choose.</li>
+            </ol>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>The chat panel</h2>
+            <p>
+              Press <kbd>⌘⇧J</kbd> or click the floating button in the corner.
+              Ask questions and the answers come from <strong>your own
+              notes</strong>, with citation chips that open the pages they came
+              from. The chip above the composer controls whether the open page
+              is used as context.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Asking it to build things</h2>
+            <ol class="steps">
+              <li>Describe what you want: <em>&ldquo;set up a meal-planning database with columns for day and recipe, and add this week&rdquo;</em>.</li>
+              <li>The assistant replies with a <strong>plan card</strong> listing exactly what it wants to create.</li>
+              <li>Click <strong>Apply</strong> and the pages, databases and rows appear instantly &mdash; or <strong>Dismiss</strong>, and nothing was written.</li>
+            </ol>
+            <p>
+              Plans can only <strong>create</strong> new things or add to a
+              page. The assistant cannot move, overwrite or delete anything
+              &mdash; the worst case is an unwanted new page you send to Trash.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>AI database columns</h2>
+            <p>
+              Give a database a column of type <strong>AI</strong> &mdash; a
+              summary, key topics, sentiment or a custom prompt &mdash; and fill
+              it per row with the <strong>Generate</strong> button in the cell.
+              Values are stored like any other property and sync normally.
+            </p>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Web access</h2>
+            <p>
+              The globe button in the chat composer is <strong>off by
+              default</strong>. Switch it on and the assistant may read a web
+              page you point it at, or search the web when a question needs it
+              &mdash; results come back as citation chips that open in a browser
+              tab.
+            </p>
+            <div class="note">
+              <span class="note-mark" aria-hidden="true">&para;</span>
+              <p>
+                Every outgoing search or fetch passes an independent safety
+                check that declines anything illegal or inappropriate, and is
+                logged for the workspace owner. Only the short search phrase is
+                ever sent &mdash; never your pages.
+              </p>
+            </div>
+
+            <h2><span class="pilcrow" aria-hidden="true">&para;</span>Where the AI never goes</h2>
+            <p>
+              The Vault. Its pages are end-to-end encrypted, so the AI cannot
+              read them &mdash; and every AI entrance is disabled there, so
+              nothing is ever sent by accident.
+            </p>
+          </article>
+
           <article class="guide" id="publishing">
             <h1>Publishing to the web</h1>
             <p class="guide-lead">
@@ -1290,6 +1406,9 @@
         </p>
         <nav class="footer-links" aria-label="Elsewhere">
           <a href="/">Home</a>
+          <a href="/legal#privacy">Privacy</a>
+          <a href="/legal#terms">Terms</a>
+          <a href="/legal#license">License</a>
           <a href="https://github.com/MiTMi/vellum" rel="noreferrer">GitHub</a>
           <span>© <span data-year>2026</span></span>
         </nav>
