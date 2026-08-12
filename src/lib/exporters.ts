@@ -20,8 +20,33 @@ const escapeHtml = (s: string) =>
  * stylesheet here is what makes an exported file (and the PDF rendered from
  * it) look like a document rather than a wall of unstyled text.
  */
-function printableHtml(title: string, body: string): string {
+/**
+ * Strip dangerous URL schemes from exported HTML (audit fix 2026-08-12):
+ * blocksToHTMLLossy escapes content but passes link hrefs through, and the
+ * browser print path document.writes the result into a SAME-ORIGIN window
+ * — a javascript: href planted by a shared-page editor or an HTML import
+ * would run with the app's origin. DOM-based, not regex: parse, walk,
+ * drop anything that isn't http(s)/mailto/anchor-relative.
+ */
+function sanitizeExportHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  for (const el of doc.querySelectorAll("[href]")) {
+    const href = el.getAttribute("href") ?? "";
+    if (!/^(https?:|mailto:|#)/i.test(href.trim())) el.removeAttribute("href");
+  }
+  for (const el of doc.querySelectorAll("[src]")) {
+    const src = el.getAttribute("src") ?? "";
+    if (!/^(https?:|data:image\/|blob:)/i.test(src.trim())) el.remove();
+  }
+  for (const el of doc.querySelectorAll("script, iframe, object, embed")) {
+    el.remove();
+  }
+  return doc.body.innerHTML;
+}
+
+function printableHtml(title: string, rawBody: string): string {
   const heading = escapeHtml(title || "Untitled");
+  const body = sanitizeExportHtml(rawBody);
   return `<!doctype html>
 <html>
 <head>

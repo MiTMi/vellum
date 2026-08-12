@@ -178,11 +178,13 @@ function createWindow() {
     return { action: "deny" };
   });
   mainWindow.webContents.on("will-navigate", (event, url) => {
+    // Default-deny (audit fix, 2026-08-12): only same-page reloads and the
+    // dev server may navigate the app window; external http(s) opens in
+    // the default browser; file:/custom schemes are simply refused.
     const current = mainWindow.webContents.getURL();
-    if (url !== current && url.startsWith("http") && !url.startsWith("http://localhost")) {
-      event.preventDefault();
-      shell.openExternal(url);
-    }
+    if (url === current || url.startsWith("http://localhost")) return;
+    event.preventDefault();
+    if (/^https?:/i.test(url)) shell.openExternal(url);
   });
 
   if (process.env.ELECTRON_START_URL) {

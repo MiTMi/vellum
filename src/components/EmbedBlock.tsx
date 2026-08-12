@@ -104,7 +104,15 @@ export const EmbedSpec = createReactBlockSpec(
               allowFullScreen={info.allowFullscreen}
               // The frame renders untrusted third-party content: allow it to
               // run and navigate itself, but never to reach this document.
-              sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox allow-forms"
+              // Known providers need allow-same-origin for their players;
+              // the arbitrary-URL fallback must NOT get it — with
+              // allow-scripts it voids the sandbox, and /p/* is proxied
+              // onto this very origin.
+              sandbox={
+                info.known === false
+                  ? "allow-scripts allow-presentation allow-popups allow-forms"
+                  : "allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox allow-forms"
+              }
               referrerPolicy="strict-origin-when-cross-origin"
             />
           </div>

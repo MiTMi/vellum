@@ -10,6 +10,11 @@
  */
 
 export interface EmbedInfo {
+  /** False only for the anything-else fallback: an arbitrary URL gets a
+   *  tighter iframe sandbox (no allow-same-origin — combined with
+   *  allow-scripts it voids the sandbox, and /p/* proxies onto our own
+   *  origin). Audit finding, 2026-08-12. */
+  known?: boolean;
   /** URL to put in the iframe. */
   src: string;
   /** Human label shown in the block's footer. */
@@ -198,6 +203,7 @@ export function toEmbed(raw: string): EmbedInfo | null {
     provider: h,
     aspect: 4 / 3,
     allowFullscreen: true,
+    known: false,
   };
 }
 

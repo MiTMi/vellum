@@ -203,8 +203,10 @@ export default defineSchema({
    * Audit log of OUTGOING web operations (agent webSearch/fetchUrl),
    * decided with Michael 2026-08-12: searches leave from his backend
    * under his Tavily account, so misuse must be attributable. Scope is
-   * deliberately narrow — web ops only, never workspace searches, chat,
-   * or note content. Owner-only (internal admin CLI), pruned after 90
+   * deliberately narrow — web ops only, never workspace searches or chat
+   * transcripts. Note: queries are model-composed, so FRAGMENTS of note
+   * content can appear in them; that is inherent to auditing what was
+   * sent (capped at 200 chars, retained 90 days). Owner-only (internal admin CLI), pruned after 90
    * days, disclosed in the globe toggle's UI, erased by wipeUser.
    */
   webAudit: defineTable({

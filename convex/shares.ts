@@ -14,7 +14,11 @@ import { readOwnedPage, requireUser, writeOwnedPage } from "./lib/auth";
 
 const role = v.union(v.literal("viewer"), v.literal("editor"));
 
-/** Exact-match email lookup; no autocomplete, no enumeration surface. */
+/** Exact-match email lookup; no autocomplete. The distinct "no account
+ *  with that email" error IS an enumeration oracle for authenticated
+ *  users — an accepted tradeoff at family scale (Phase 2 design doc:
+ *  the sharer needs to know "invite them first"), revisit if the user
+ *  base ever opens up. */
 async function userByEmail(
   ctx: QueryCtx,
   email: string,
