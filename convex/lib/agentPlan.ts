@@ -76,16 +76,44 @@ const COLUMN_TYPES: readonly string[] = [
  * brace span. Null means "this is not JSON" — callers treat the text
  * as a plain reply, never as an error.
  */
+/** The first complete, brace-balanced JSON object in `t`, or null.
+ *  String-aware, so braces inside quoted values don't confuse it. */
+function firstJsonObject(t: string): string | null {
+  const start = t.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < t.length; i++) {
+    const ch = t[i];
+    if (escaped) {
+      escaped = false;
+    } else if (ch === "\\") {
+      escaped = inString;
+    } else if (ch === '"') {
+      inString = !inString;
+    } else if (!inString) {
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) return t.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
 export function parseAgentJson(text: string): Record<string, unknown> | null {
   let t = text.trim();
   const fence = t.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
   if (fence) t = fence[1].trim();
+  // Whole text first; then the first balanced object — models sometimes
+  // emit a tool call AND a final reply in one turn (observed live), and
+  // taking the first means the tool executes and the premature reply is
+  // regenerated next round with the tool's result in hand.
   const candidates = [t];
-  const first = t.indexOf("{");
-  const last = t.lastIndexOf("}");
-  if (first > 0 || (first === 0 && last !== t.length - 1)) {
-    if (first !== -1 && last > first) candidates.push(t.slice(first, last + 1));
-  }
+  const balanced = firstJsonObject(t);
+  if (balanced && balanced !== t) candidates.push(balanced);
   for (const c of candidates) {
     try {
       const parsed = JSON.parse(c) as unknown;

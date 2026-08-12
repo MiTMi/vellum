@@ -264,3 +264,16 @@ test("describeOp renders one plain-language line per kind", () => {
   expect(describeOp({ kind: "createDatabase", title: "M", parent: "root", columns: [{ name: "A", type: "text" }] })).toContain("1 column");
   expect(describeOp({ kind: "appendToPage", target: "current", markdown: "x" })).toContain("open page");
 });
+
+test("two concatenated JSON objects parse as the first (observed live)", () => {
+  const doubled =
+    '{"tool":"fetchUrl","url":"https://en.wikipedia.org/wiki/X"}\n{"reply":"premature answer","plan":[]}';
+  expect(parseAgentJson(doubled)).toEqual({
+    tool: "fetchUrl",
+    url: "https://en.wikipedia.org/wiki/X",
+  });
+  // Braces inside string values don't break the balance scan.
+  expect(parseAgentJson('{"reply":"use {curly} braces"} trailing prose')).toEqual({
+    reply: "use {curly} braces",
+  });
+});
