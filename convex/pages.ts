@@ -625,9 +625,11 @@ export const move = mutation({
       // The destination must be the user's own page (parent-ownership
       // invariant) — checked before anything else.
       await writeOwnedPage(ctx, userId, args.parentId);
-      // Prevent moving a page inside its own subtree.
+      // Prevent moving a page inside its own subtree. Bounded like
+      // getAccessiblePage's walk — a corrupt parentId must not spin.
       let cursor: Id<"pages"> | undefined = args.parentId;
-      while (cursor) {
+      let guard = 0;
+      while (cursor && guard++ < 100) {
         if (cursor === args.id) return;
         const p: Doc<"pages"> | null = await ctx.db.get("pages", cursor);
         cursor = p?.parentId;
@@ -687,6 +689,20 @@ export const duplicate = mutation({
     const destParent = args.parentId;
     // Foreign destination parents throw (parent-ownership invariant).
     if (destParent) await writeOwnedPage(ctx, userId, destParent);
+    // The destination must not be the source or inside its subtree —
+    // without this, duplicate({id: X, parentId: X}) clones its own
+    // output forever (audit finding, 2026-08-12). Same walk as move's.
+    if (destParent) {
+      let cursor: Id<"pages"> | undefined = destParent;
+      let guard = 0;
+      while (cursor && guard++ < 100) {
+        if (cursor === args.id) {
+          throw new Error("A page can't be duplicated into its own subtree");
+        }
+        const p: Doc<"pages"> | null = await ctx.db.get("pages", cursor);
+        cursor = p?.parentId;
+      }
+    }
     // Quota: the copy adds the whole subtree's worth of pages.
     let subtreeSize = 0;
     await forSubtree(ctx, args.id, async () => {
@@ -720,6 +736,15 @@ export const duplicate = mutation({
     // the envelope. Vault copies keep their title verbatim.
     const suffix = src.vault ? "" : (args.suffix ?? " (copy)");
 
+    // Snapshot the whole source subtree before any insert: clones must
+    // walk the tree as it was, never their own freshly-written output.
+    const kidsOf = new Map<Id<"pages">, Doc<"pages">[]>();
+    await forSubtree(ctx, args.id, async (page) => {
+      const kids = await childrenOf(ctx, page._id);
+      kids.sort((a, b) => a.rank - b.rank);
+      kidsOf.set(page._id, kids);
+    });
+
     async function clone(
       page: Doc<"pages">,
       parentId: Id<"pages"> | undefined,
@@ -742,8 +767,11 @@ export const duplicate = mutation({
         ...(isRoot && args.asInstance ? { isTemplate: undefined } : {}),
         updatedAt: Date.now(),
       });
-      const kids = await childrenOf(ctx, page._id);
-      kids.sort((a, b) => a.rank - b.rank);
+      // Snapshot taken BEFORE the insert above could be visible to this
+      // read? Convex mutations read their own writes — so list the kids
+      // from the pre-captured map, never a live query that could include
+      // the fresh copy when source and destination subtrees overlap.
+      const kids = kidsOf.get(page._id) ?? [];
       for (const kid of kids) {
         await clone(kid, newId, kid.rank, "", false);
       }
@@ -928,11 +956,13 @@ export const setViews = mutation({
  * unguessable. 20 base-36 chars ≈ 103 bits.
  */
 function newPublicSlug(): string {
-  let out = "";
-  while (out.length < 20) {
-    out += Math.random().toString(36).slice(2);
-  }
-  return out.slice(0, 20);
+  // CSPRNG, not Math.random(): the slug IS the access control, so its
+  // bits must be unpredictable (audit finding, 2026-08-12). 20 chars
+  // from a 36-symbol alphabet ≈ 103 bits, now actually independent.
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => alphabet[b % 36]).join("");
 }
 
 /** Publish or unpublish. Unpublishing clears the slug, killing the old URL. */
@@ -996,7 +1026,16 @@ export const bySlug = internalQuery({
     // link block would read another user's page title through this route.
     const titles: Record<string, string> = {};
     for (const id of extractPageLinks(page.content)) {
-      const linked = await ctx.db.get("pages", id as Id<"pages">);
+      // extractPageLinks yields whatever the props held — including
+      // un-remapped offline temp ids, which make ctx.db.get THROW on a
+      // malformed id and 500 the whole public page (audit finding,
+      // 2026-08-12). Same try/catch the lib/auth.ts readers use.
+      let linked: Doc<"pages"> | null;
+      try {
+        linked = await ctx.db.get("pages", id as Id<"pages">);
+      } catch {
+        continue; // not a real id — the link renders as plain text
+      }
       if (linked && linked.ownerId === page.ownerId) {
         titles[id] = linked.title;
       }

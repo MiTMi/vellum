@@ -15,10 +15,12 @@ import { monthKey } from "./lib/quotas";
 
 function newInviteCode(): string {
   // 10 base-36 chars ≈ 51 bits: unguessable enough for a code that is also
-  // single-use and human-typeable.
-  let out = "";
-  while (out.length < 10) out += Math.random().toString(36).slice(2);
-  return out.slice(0, 10);
+  // single-use and human-typeable. CSPRNG (audit finding, 2026-08-12) —
+  // the code gates account creation on the deployment.
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = new Uint8Array(10);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => alphabet[b % 36]).join("");
 }
 
 /** The owner's real userId — CLI impersonation needs it in the subject

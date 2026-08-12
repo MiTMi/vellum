@@ -24,7 +24,16 @@ http.route({
       new URL(request.url).pathname.slice("/p/".length),
     ).replace(/\/$/, "");
 
-    const page = await ctx.runQuery(internal.pages.bySlug, { slug });
+    // Belt to bySlug's suspenders: any future throw inside the lookup
+    // must degrade to the not-found page, never a raw 500 on the one
+    // unauthenticated route.
+    let page;
+    try {
+      page = await ctx.runQuery(internal.pages.bySlug, { slug });
+    } catch (err) {
+      console.error("bySlug failed for a published page:", err);
+      page = null;
+    }
     if (!page) {
       return new Response(
         renderPublicPage({

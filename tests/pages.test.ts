@@ -1035,3 +1035,53 @@ test("account.me requires auth and reports the signed-in user's own email", asyn
   const ctx = await t();
   expect((await ctx.query(api.account.me, {})).email).toBe(OWNER_EMAIL);
 });
+
+/* ------------------- audit regressions (2026-08-12) ------------------- */
+
+test("a published page with a malformed pageLink id still renders", async () => {
+  const { tc: t, as } = await ownerBackend();
+  const id = await as.mutation(api.pages.create, { type: "doc", title: "Pub" });
+  await as.mutation(api.pages.updateContent, {
+    id,
+    content: [
+      // The documented store.remapId risk: an offline temp id that never
+      // got remapped rides the pageLink props into published content.
+      { type: "pageLink", props: { pageId: "tmp_abc123" }, content: [] },
+    ],
+    text: "",
+  });
+  const slug = await as.mutation(api.pages.setPublished, { id, value: true });
+  const page = await t.query(internal.pages.bySlug, { slug: slug! });
+  expect(page).not.toBeNull();
+  expect(page!.titles).toEqual({}); // the bogus link resolves to nothing
+});
+
+test("duplicate refuses its own subtree and terminates", async () => {
+  const { as } = await ownerBackend();
+  const root = await as.mutation(api.pages.create, { type: "doc", title: "R" });
+  const child = await as.mutation(api.pages.create, {
+    type: "doc",
+    title: "C",
+    parentId: root,
+  });
+  await expect(
+    as.mutation(api.pages.duplicate, { id: root, parentId: root }),
+  ).rejects.toThrow(/own subtree/);
+  await expect(
+    as.mutation(api.pages.duplicate, { id: root, parentId: child }),
+  ).rejects.toThrow(/own subtree/);
+  // A legal duplicate still works and copies the child exactly once.
+  const copy = await as.mutation(api.pages.duplicate, { id: root });
+  const all = await as.query(api.pages.list, {});
+  expect(copy).not.toBeNull();
+  expect(all.filter((p) => p.title === "C").length).toBe(2);
+});
+
+test("public slugs and invite codes come from the CSPRNG shape", async () => {
+  const { tc: t, as } = await ownerBackend();
+  const id = await as.mutation(api.pages.create, { type: "doc", title: "S" });
+  const slug = await as.mutation(api.pages.setPublished, { id, value: true });
+  expect(slug).toMatch(/^[a-z0-9]{20}$/);
+  const code = await t.mutation(internal.admin.mintInvite, {});
+  expect(code).toMatch(/^[a-z0-9]{10}$/);
+});
