@@ -199,6 +199,25 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_page_user", ["pageId", "userId"]),
 
+  /**
+   * Audit log of OUTGOING web operations (agent webSearch/fetchUrl),
+   * decided with Michael 2026-08-12: searches leave from his backend
+   * under his Tavily account, so misuse must be attributable. Scope is
+   * deliberately narrow — web ops only, never workspace searches, chat,
+   * or note content. Owner-only (internal admin CLI), pruned after 90
+   * days, disclosed in the globe toggle's UI, erased by wipeUser.
+   */
+  webAudit: defineTable({
+    userId: v.id("users"),
+    kind: v.union(v.literal("search"), v.literal("fetch")),
+    text: v.string(), // the query or URL, exactly as sent (or declined)
+    allowed: v.boolean(),
+    reason: v.optional(v.string()), // guard's reason when declined
+    at: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_at", ["at"]),
+
   pages: defineTable({
     // Optional only for the widen→backfill→narrow migration; after the
     // backfill every row has it and all code treats it as required.

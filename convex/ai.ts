@@ -656,6 +656,32 @@ const MAX_WEB_OPS = 3;
  * smuggled into a page has no path into the verdict. Fail-closed: an
  * unparseable or errored verdict declines the operation.
  */
+/** Audit-log retention. Old entries are pruned lazily on write. */
+const WEB_AUDIT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+const WEB_AUDIT_PRUNE_BATCH = 25;
+
+export const _recordWebOp = internalMutation({
+  args: {
+    userId: v.id("users"),
+    kind: v.union(v.literal("search"), v.literal("fetch")),
+    text: v.string(),
+    allowed: v.boolean(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await ctx.db.insert("webAudit", { ...args, at: now });
+    // Lazy prune: a few expired rows per write keeps the table bounded
+    // without a cron.
+    const cutoff = now - WEB_AUDIT_RETENTION_MS;
+    const stale = await ctx.db
+      .query("webAudit")
+      .withIndex("by_at", (q) => q.lt("at", cutoff))
+      .take(WEB_AUDIT_PRUNE_BATCH);
+    for (const row of stale) await ctx.db.delete("webAudit", row._id);
+  },
+});
+
 const WEB_GUARD_SYSTEM =
   "You are a safety filter for outgoing web requests from a note-taking " +
   "app used by families. You will be given one search query or URL. " +
@@ -668,6 +694,29 @@ const WEB_GUARD_SYSTEM =
   '{"allowed":true} or {"allowed":false,"reason":"<a few words>"}.';
 
 async function webOpAllowed(
+  ctx: ActionCtx,
+  userId: Id<"users">,
+  kind: "search" | "fetch",
+  text: string,
+): Promise<{ allowed: boolean; reason: string }> {
+  const verdict = await webGuardVerdict(ctx, userId, kind, text);
+  // Audit BOTH outcomes — declined attempts are the misuse evidence.
+  // Best-effort: a logging failure must not break the user's request.
+  try {
+    await ctx.runMutation(internal.ai._recordWebOp, {
+      userId,
+      kind,
+      text: text.slice(0, 500),
+      allowed: verdict.allowed,
+      ...(verdict.allowed ? {} : { reason: verdict.reason }),
+    });
+  } catch (err) {
+    console.warn("webAudit write failed:", err);
+  }
+  return verdict;
+}
+
+async function webGuardVerdict(
   ctx: ActionCtx,
   userId: Id<"users">,
   kind: "search" | "fetch",

@@ -149,6 +149,13 @@ export const wipeUser = internalMutation({
       await ctx.db.delete("pages", p._id);
     }
 
+    // Their web-ops audit trail goes with the account.
+    const audits = await ctx.db
+      .query("webAudit")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+    for (const a of audits) await ctx.db.delete("webAudit", a._id);
+
     // Shares: both directions — grants they made (their pages are being
     // deleted) and grants made to them (dangling recipient otherwise).
     const granted = await ctx.db.query("shares").collect();
@@ -197,6 +204,7 @@ async function wipeEverythingImpl(ctx: MutationCtx) {
     "pageVersions",
     "comments",
     "shares",
+    "webAudit",
     "files",
     "aiUsage",
     "invites",

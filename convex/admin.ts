@@ -24,6 +24,37 @@ function newInviteCode(): string {
 /** The owner's real userId — CLI impersonation needs it in the subject
  *  (`--identity '{"subject":"<userId>|cli"}'`) now that functions compare
  *  real ids. Used by scripts/e2e-offline.mjs and ad-hoc CLI work. */
+/** Recent outgoing web ops (agent webSearch/fetchUrl), newest first —
+ *  the misuse audit trail. Internal: owner CLI only.
+ *  npx convex run admin:webAuditRecent '{"limit":50}' --prod          */
+export const webAuditRecent = internalQuery({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("webAudit")
+      .withIndex("by_at")
+      .order("desc")
+      .take(Math.min(args.limit ?? 50, 200));
+    const emails = new Map<string, string>();
+    const out = [];
+    for (const row of rows) {
+      if (!emails.has(row.userId)) {
+        const user = await ctx.db.get("users", row.userId);
+        emails.set(row.userId, user?.email ?? "(deleted account)");
+      }
+      out.push({
+        at: new Date(row.at).toISOString(),
+        user: emails.get(row.userId)!,
+        kind: row.kind,
+        text: row.text,
+        allowed: row.allowed,
+        reason: row.reason ?? null,
+      });
+    }
+    return out;
+  },
+});
+
 export const ownerUserId = internalQuery({
   args: {},
   handler: async (ctx) => {

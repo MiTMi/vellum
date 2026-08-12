@@ -12,6 +12,7 @@ import schema from "../convex/schema";
  */
 
 import { modules, ownerBackend } from "./helpers";
+// (ownerBackend also returns the raw test instance for table assertions.)
 
 // Fresh backend with the owner signed in (a real users row — functions
 // stamp and compare Id<"users">). Owner is exempt from AI budgets, so
@@ -614,4 +615,49 @@ test("agent: a garbage guard verdict fails closed", async () => {
   expect(
     fetchMock.mock.calls.some((c) => String(c[0]).includes("tavily")),
   ).toBe(false);
+});
+
+test("agent: every gated web op lands in the audit log with its verdict", async () => {
+  process.env.TAVILY_API_KEY = "tvly-x";
+  const { tc, as, userId } = await ownerBackend();
+  fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (String(url).includes("api.tavily.com")) {
+      return ok0({ results: [] });
+    }
+    if (String(init?.body).includes("You are a safety filter")) {
+      // First guard call allows, second declines.
+      const guards = fetchMock.mock.calls.filter((c) =>
+        String(c[1]?.body).includes("You are a safety filter"),
+      ).length;
+      return ok(
+        guards <= 1 ? '{"allowed":true}' : '{"allowed":false,"reason":"explicit content"}',
+      );
+    }
+    const agentCalls = fetchMock.mock.calls.filter(
+      (c) => String(c[0]).includes("openrouter") && !String(c[1]?.body).includes("You are a safety filter"),
+    ).length;
+    if (agentCalls <= 1) return ok('{"tool":"webSearch","query":"family recipes"}');
+    if (agentCalls === 2) return ok('{"tool":"webSearch","query":"something nasty"}');
+    return ok('{"reply":"done"}');
+  });
+  function ok0(body: unknown) {
+    return {
+      ok: true, status: 200, headers: new Headers(),
+      json: async () => body,
+    } as unknown as Response;
+  }
+  await as.action(api.ai.agent, {
+    messages: [{ role: "user", content: "search twice" }],
+    allowWeb: true,
+  });
+  await tc.run(async (ctx) => {
+    const rows = await ctx.db.query("webAudit").collect();
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.userId === userId)).toBe(true);
+    const allowed = rows.find((r) => r.allowed);
+    const declined = rows.find((r) => !r.allowed);
+    expect(allowed?.text).toBe("family recipes");
+    expect(declined?.text).toBe("something nasty");
+    expect(declined?.reason).toBe("explicit content");
+  });
 });

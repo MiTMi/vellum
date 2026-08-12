@@ -528,8 +528,8 @@ export default function AiChatPanel({
             className={`icon-btn ${allowWeb ? "active" : ""}`}
             title={
               allowWeb
-                ? "Web access is on — the AI may search and read pages online"
-                : "Allow the AI to search and read the web"
+                ? "Web access is on — the AI may search and read pages online. Web searches are checked for safety and logged."
+                : "Allow the AI to search and read the web (searches are checked for safety and logged)"
             }
             onClick={toggleWeb}
           >
