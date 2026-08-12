@@ -16,6 +16,7 @@ export const modules = import.meta.glob([
   "../convex/versions.ts",
   "../convex/comments.ts",
   "../convex/migrate.ts",
+  "../convex/crons.ts",
   "../convex/schema.ts",
   "../convex/lib/*.ts",
   "../convex/_generated/*.js",

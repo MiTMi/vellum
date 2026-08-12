@@ -153,18 +153,32 @@ export default defineSchema({
 
   /**
    * Uploaded files, attributed to their uploader for the 50 MB quota
-   * (docs/multi-user-plan.md). Known v1 limitation: rows are never removed
-   * when pages are deleted (content may share URLs across duplicates), so
-   * quota counts lifetime uploads, not live usage.
+   * (docs/multi-user-plan.md).
+   *
+   * Reclaimed since 2026-08-12: deleting a page releases the storage keys
+   * its content held, and `files._reclaimKeys` drops any that no surviving
+   * page or version still references (the shared-URL-across-duplicates case
+   * that blocked naive deletion). A daily cron sweep catches whatever the
+   * targeted path can't see — uploads abandoned before their block was
+   * saved, and blobs predating this table.
    */
   files: defineTable({
     storageId: v.id("_storage"),
     ownerId: v.id("users"),
     size: v.number(),
     createdAt: v.number(),
+    /**
+     * The `/api/storage/<key>` segment of this file's serving URL — the
+     * host-independent identity that page content actually embeds, so the
+     * reclaim is an index lookup instead of a scan over all storage.
+     * Optional only for rows written before the column existed; the sweep
+     * backfills them.
+     */
+    storageKey: v.optional(v.string()),
   })
     .index("by_owner", ["ownerId"])
-    .index("by_storageId", ["storageId"]),
+    .index("by_storageId", ["storageId"])
+    .index("by_key", ["storageKey"]),
 
   /**
    * AI spend accounting, one row per (user, calendar month), cost in

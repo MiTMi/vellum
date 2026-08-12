@@ -5,8 +5,10 @@ import {
   MutationCtx,
 } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
+import { internal } from "./_generated/api";
 import { Id, Doc } from "./_generated/dataModel";
 import { activeView, dbProp, dbView } from "./schema";
+import { collectStorageKeys } from "./lib/fileRefs";
 import {
   getAccessiblePage,
   pagesOf,
@@ -44,13 +46,27 @@ async function nextRank(ctx: MutationCtx, parentId: Id<"pages"> | undefined) {
   return max + 1024;
 }
 
-/** Delete every history snapshot, comment, and share attached to a page. */
-async function deleteSidecarsOf(ctx: MutationCtx, pageId: Id<"pages">) {
+/**
+ * Delete every history snapshot, comment, and share attached to a page.
+ *
+ * `releasing` accumulates the storage keys the deleted rows referenced, so
+ * the caller can hand them to the file reclaim. History snapshots matter
+ * here as much as the page: an image removed from a page days ago still
+ * lives in its versions, and deleting the page is what finally frees it.
+ */
+async function deleteSidecarsOf(
+  ctx: MutationCtx,
+  pageId: Id<"pages">,
+  releasing?: Set<string>,
+) {
   const versions = await ctx.db
     .query("pageVersions")
     .withIndex("by_page", (q) => q.eq("pageId", pageId))
     .collect();
-  for (const v of versions) await ctx.db.delete("pageVersions", v._id);
+  for (const v of versions) {
+    if (releasing) collectStorageKeys(v, releasing);
+    await ctx.db.delete("pageVersions", v._id);
+  }
   const comments = await ctx.db
     .query("comments")
     .withIndex("by_page", (q) => q.eq("pageId", pageId))
@@ -834,19 +850,38 @@ export const restore = mutation({
   },
 });
 
+/**
+ * Hand the storage keys a deletion released to the file reclaim.
+ *
+ * Scheduled rather than inline: the reclaim scans every surviving page and
+ * version to prove nothing else still points at those blobs, and that work
+ * does not belong inside the user's delete transaction. `runAfter(0)` means
+ * it lands within seconds — "delete the page" really does delete the bytes
+ * (audit finding, 2026-08-12).
+ */
+async function scheduleReclaim(ctx: MutationCtx, releasing: Set<string>) {
+  if (releasing.size === 0) return;
+  await ctx.scheduler.runAfter(0, internal.files._reclaimKeys, {
+    keys: [...releasing],
+  });
+}
+
 export const deleteForever = mutation({
   args: { id: v.id("pages") },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     if (!(await writeOwnedPage(ctx, userId, args.id))) return;
     const ids: Id<"pages">[] = [];
+    const releasing = new Set<string>();
     await forSubtree(ctx, args.id, async (p) => {
       ids.push(p._id);
+      collectStorageKeys(p, releasing);
     });
     for (const id of ids) {
-      await deleteSidecarsOf(ctx, id);
+      await deleteSidecarsOf(ctx, id, releasing);
       await ctx.db.delete("pages", id);
     }
+    await scheduleReclaim(ctx, releasing);
   },
 });
 
@@ -855,12 +890,15 @@ export const emptyTrash = mutation({
   handler: async (ctx) => {
     const userId = await requireUser(ctx);
     const pages = await pagesOf(ctx, userId);
+    const releasing = new Set<string>();
     for (const p of pages) {
       if (p.inTrash) {
-        await deleteSidecarsOf(ctx, p._id);
+        collectStorageKeys(p, releasing);
+        await deleteSidecarsOf(ctx, p._id, releasing);
         await ctx.db.delete("pages", p._id);
       }
     }
+    await scheduleReclaim(ctx, releasing);
   },
 });
 

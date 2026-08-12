@@ -271,11 +271,51 @@ roll back the `storage.delete` reclaiming the refused file**); 2,000
 pages; AI $0.10/user/month + $0.85/month non-owner pool, metered in
 `ai.meteredChat` from OpenRouter's `usage.cost` (requested via
 `usage: {include: true}`; conservative estimate + console.warn when
-absent). Known v1 limitation: `files` rows are never reclaimed when pages
-are deleted — quota counts lifetime uploads.
+absent).
+
+### Storage reclamation (2026-08-12)
+
+Deleting a page now deletes its bytes. It did not until this landed:
+`deleteForever`/`emptyTrash` dropped rows and sidecars and **nothing ever
+called `ctx.storage.delete`**, so every upload outlived its page forever,
+invisible to the quota (two such orphans were found on prod — and on dev,
+which holds the same pre-migration copy). Mark-and-sweep, in two halves:
+
+- **`files._reclaimKeys` — targeted, immediate.** A deletion knows which
+  storage keys it released, so `deleteForever` / `emptyTrash` /
+  `account.wipeUser` collect them (from the pages **and their
+  `pageVersions`**) and `scheduler.runAfter(0, …)` hands them over. It
+  needs **no grace period**, and that is a load-bearing distinction: the
+  key set comes from deleted content, never from scanning storage, so an
+  upload still in flight for another page can't be caught by it.
+- **`files._sweep` — global, grace-guarded.** Daily cron (`convex/crons.ts`,
+  04:00 UTC) for what the targeted path structurally cannot see: uploads
+  abandoned before their block was saved, blobs predating the `files`
+  table, and references freed when a snapshot ages out past
+  `MAX_VERSIONS_PER_PAGE`. Here `SWEEP_GRACE_MS` (24 h) **is** required —
+  a brand-new upload legitimately has no referrer yet.
+
+Invariants, all of which have tests that fail loudly if broken:
+
+- **A file is kept unless proved unreferenced.** `referencedKeys` scans
+  live pages *and* `pageVersions` (history must survive a restore), and is
+  deliberately **global**, not per-owner — one workspace embedding
+  another's URL must not lose it when the first is deleted.
+- **Match on the key, never the URL.** `lib/fileRefs.ts` compares the
+  `/api/storage/<key>` segment, so `migrate.ts` rewriting the deployment
+  host can't strand every file.
+- **`collectStorageKeys` walks the whole document, not `content`.** Covers,
+  database row `props` and bookmark props all hold storage URLs; a
+  field-specific walker would delete live images the day a new block type
+  ships. Adding a block type needs no change here — that is the point.
+- Unresolvable blob → keep. `dryRun: true` reports without deleting.
+
+`admin:storageReport` is the answer to "is it really gone?" — it reads
+`_storage` (ground truth), unlike `usageOverview`'s `fileMB`, which reads
+the `files` table and therefore reported **0 MB while 555 KB sat on prod**.
 
 **Owner CLI tools** (`convex/admin.ts`, all internal — unreachable from
-clients): `mintInvite`, `listInvites`, `usageOverview`,
+clients): `mintInvite`, `listInvites`, `usageOverview`, `storageReport`,
 `backfillOwnerBatch` (migration; loop until `{done: true}`),
 `migrationGate` (all-zeros before minting invites), `ownerUserId`.
 

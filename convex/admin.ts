@@ -1,6 +1,8 @@
 import { v, ConvexError } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { monthKey } from "./lib/quotas";
+import { referencedKeys } from "./files";
+import { storageKeyFromUrl } from "./lib/fileRefs";
 
 /**
  * Owner tooling, CLI-only (internal functions are unreachable from
@@ -68,6 +70,51 @@ export const ownerUserId = internalQuery({
     );
     if (!user) throw new ConvexError("No user matches OWNER_EMAIL.");
     return user._id;
+  },
+});
+
+/**
+ * Every stored blob, and whether anything still points at it — the answer
+ * to "is it really deleted?", which used to be unanswerable.
+ *
+ * `usageOverview`'s fileMB reads the `files` table, so it reports zero for
+ * blobs uploaded before that table existed; this reads `_storage` itself,
+ * which is the ground truth. Anything listed as unreferenced will be
+ * removed by the next nightly sweep, or immediately by
+ *   npx convex run files:_sweep '{}' --prod
+ *
+ *   npx convex run admin:storageReport '{}' --prod
+ */
+export const storageReport = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const referenced = await referencedKeys(ctx);
+    const objects = await ctx.db.system.query("_storage").take(2000);
+    const rows = [];
+    let orphanBytes = 0;
+    for (const object of objects) {
+      const key = storageKeyFromUrl(await ctx.storage.getUrl(object._id));
+      const inUse = !!key && referenced.has(key);
+      if (!inUse) orphanBytes += object.size ?? 0;
+      const owner = await ctx.db
+        .query("files")
+        .withIndex("by_storageId", (q) => q.eq("storageId", object._id))
+        .unique();
+      rows.push({
+        storageId: object._id,
+        uploaded: new Date(object._creationTime).toISOString(),
+        contentType: object.contentType ?? null,
+        kb: Math.round((object.size ?? 0) / 1024),
+        referenced: inUse,
+        registered: !!owner,
+      });
+    }
+    return {
+      totalObjects: objects.length,
+      unreferenced: rows.filter((r) => !r.referenced).length,
+      unreferencedKB: Math.round(orphanBytes / 1024),
+      objects: rows,
+    };
   },
 });
 

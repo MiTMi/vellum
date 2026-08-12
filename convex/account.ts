@@ -16,6 +16,7 @@ import { internal } from "./_generated/api";
 import { Id, TableNames } from "./_generated/dataModel";
 import { requireUser } from "./lib/auth";
 import { assertPasswordPolicy } from "./lib/passwordPolicy";
+import { collectStorageKeys } from "./lib/fileRefs";
 
 /**
  * Account management, per user since Phase 1: change password, sign out of
@@ -130,17 +131,24 @@ export const wipeUser = internalMutation({
       return;
     }
 
-    // Pages + sidecars.
+    // Pages + sidecars. Storage keys are collected as we go: the `files`
+    // sweep below only knows about registered uploads, so anything older
+    // (or registered under a different row) is handed to the reclaim.
+    const releasing = new Set<string>();
     const pages = await ctx.db
       .query("pages")
       .withIndex("by_owner", (q) => q.eq("ownerId", args.userId))
       .collect();
     for (const p of pages) {
+      collectStorageKeys(p, releasing);
       const versions = await ctx.db
         .query("pageVersions")
         .withIndex("by_page", (q) => q.eq("pageId", p._id))
         .collect();
-      for (const ver of versions) await ctx.db.delete("pageVersions", ver._id);
+      for (const ver of versions) {
+        collectStorageKeys(ver, releasing);
+        await ctx.db.delete("pageVersions", ver._id);
+      }
       const comments = await ctx.db
         .query("comments")
         .withIndex("by_page", (q) => q.eq("pageId", p._id))
@@ -195,6 +203,14 @@ export const wipeUser = internalMutation({
       .collect();
     for (const s of sessions) await ctx.db.delete("authSessions", s._id);
     await ctx.db.delete("users", args.userId);
+
+    // Anything their pages embedded that the `files` sweep above didn't
+    // own — unregistered or pre-`files`-table blobs — is released here.
+    if (releasing.size > 0) {
+      await ctx.scheduler.runAfter(0, internal.files._reclaimKeys, {
+        keys: [...releasing],
+      });
+    }
   },
 });
 
