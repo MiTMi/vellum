@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BlockNoteSchema,
   defaultBlockSpecs,
@@ -143,11 +143,32 @@ export default function PageEditor({ page }: EditorProps) {
     [page._id],
   );
 
+  // The Vault's E2E guarantee covers title + content, not storage blobs —
+  // wrapVaultMutations never sees an upload (audit finding, 2026-08-12).
+  // Until vault files are client-encrypted, refuse them outright rather
+  // than silently storing plaintext bytes behind an encrypted page.
+  const uploadForPage = useCallback(
+    async (file: File) => {
+      if (isVaultPage(pageIdRef.current)) {
+        // Not a throw: BlockNote awaits uploadFile without a catch, so a
+        // rejection surfaces as an unhandled pageerror. An empty URL
+        // renders as an inert add-file placeholder instead — nothing is
+        // stored, and the alert says why.
+        window.alert(
+          "Files can't be added to Vault pages yet — they wouldn't be encrypted.",
+        );
+        return "";
+      }
+      return upload(file);
+    },
+    [upload],
+  );
+
   const editor = useCreateBlockNote(
     {
       schema,
       initialContent: initialContent as never,
-      uploadFile: upload,
+      uploadFile: uploadForPage,
       tables: {
         splitCells: true,
         cellBackgroundColor: true,

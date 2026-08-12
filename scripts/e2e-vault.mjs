@@ -140,6 +140,29 @@ try {
     (await page.textContent(".bn-editor")).includes(SECRET_BODY),
   );
 
+  /* -------------- vault refuses file uploads ---------------- */
+  // Storage blobs bypass the vault's encryption, so pasting an image into
+  // a vault page must never upload (audit fix 2026-08-12).
+  await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 60;
+    canvas.height = 60;
+    canvas.getContext("2d").fillRect(0, 0, 60, 60);
+    const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
+    const file = new File([blob], "secret.png", { type: "image/png" });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.querySelector(".bn-editor").dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }),
+    );
+  });
+  await page.waitForTimeout(1200);
+  check(
+    "vault page refuses image paste (no img rendered)",
+    (await page.locator(".bn-editor img").count()) === 0,
+  );
+
+
   /* ---------------- reload → locked again ---------------- */
 
   await page.reload();

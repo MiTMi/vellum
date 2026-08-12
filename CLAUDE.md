@@ -221,7 +221,11 @@ Layering (keep these boundaries):
 
 Known v1 limits (all deliberate): no databases inside the vault, no
 moving pages into/out of it (old plaintext history would leak; create
-inside instead), no comments, no cross-boundary mentions, trashed vault
+inside instead), no comments, no cross-boundary mentions, **no file or
+image uploads** (audit fix 2026-08-12: storage blobs bypass the
+encryption entirely, so `uploadForPage` in Editor.tsx throws on vault
+pages and CoverPicker hides Upload via `allowUpload={false}` — lift only
+by client-encrypting file bytes end-to-end), trashed vault
 pages list as "Locked page", and `pageVersions` snapshots are ciphertext
 (HistoryModal decrypts, and must keep decrypting before restore or the
 wrapper would double-encrypt).

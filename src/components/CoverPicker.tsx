@@ -7,9 +7,12 @@ interface CoverPickerProps {
   anchor: HTMLElement | null;
   onClose: () => void;
   onPick: (cover: string | null) => void;
+  /** False on Vault pages: uploaded covers are storage blobs the vault's
+   *  encryption never touches, so only gradient covers are offered. */
+  allowUpload?: boolean;
 }
 
-export default function CoverPicker({ anchor, onClose, onPick }: CoverPickerProps) {
+export default function CoverPicker({ anchor, onClose, onPick, allowUpload = true }: CoverPickerProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const upload = useFileUpload();
   const [uploading, setUploading] = useState(false);
@@ -30,15 +33,17 @@ export default function CoverPicker({ anchor, onClose, onPick }: CoverPickerProp
           />
         ))}
       </div>
-      <div className="cover-picker-section">Upload</div>
+      <div className="cover-picker-section">{allowUpload ? "Upload" : "Options"}</div>
       <div className="cover-picker-actions">
-        <button
-          className="btn"
-          disabled={uploading}
-          onClick={() => fileRef.current?.click()}
-        >
-          {uploading ? "Uploading…" : "Upload image"}
-        </button>
+        {allowUpload && (
+          <button
+            className="btn"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+          >
+            {uploading ? "Uploading…" : "Upload image"}
+          </button>
+        )}
         <button
           className="btn subtle"
           onClick={() => {

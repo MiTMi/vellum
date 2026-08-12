@@ -360,6 +360,7 @@ function PageBody({
         <CoverPicker
           anchor={coverAnchor}
           onClose={() => setCoverAnchor(null)}
+          allowUpload={!page.vault}
           onPick={(cover) => void mutations.setCover({ id: page._id, cover })}
         />
       )}
