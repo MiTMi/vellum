@@ -957,6 +957,21 @@ stricter because fills write back. `useGetDoc` on the DataApi is the
 executor's imperative replica read. Mock mode returns a canned plan for
 creation-shaped asks ("create/make/set up/build") so e2e can apply it.
 
+**Web access (2026-08-12, opt-in).** The composer's globe toggle (off by
+default, per-device `vellum:ai-web`) adds two more agent tools:
+`fetchUrl` (free — fetches one page's text server-side, same pattern as
+`linkPreview.fetchMeta`) and `webSearch`, which appears only when a
+provider key is configured. Providers live in `convex/lib/websearch.ts`:
+**random pick between Brave and Google so both free tiers wear evenly,
+with automatic failover** to the other on any error — an exhausted quota
+degrades to the other engine, never to a failed search. Keys are Convex
+env vars (never `VITE_*`): `BRAVE_SEARCH_API_KEY`, and
+`GOOGLE_SEARCH_API_KEY` + `GOOGLE_SEARCH_CX` (Programmable Search needs
+both). ≤3 web ops per request (`MAX_WEB_OPS`); web citations ride
+`AskSource.url` and render as open-in-tab chips. `tests/websearch.test.ts`
+covers the policy; the vault guarantee is untouched (web tools add
+outbound reads, no new access to workspace data).
+
 **Tests.** `tests/ai.test.ts` (18) stubs `fetch` and covers the guards —
 auth, the vault, empty/oversized input, error translation, env-driven model
 selection, and that only `content` is ever returned. `scripts/e2e-ai.mjs`

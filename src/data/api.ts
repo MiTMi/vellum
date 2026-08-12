@@ -101,6 +101,8 @@ export interface AiApi {
     messages: AiChatTurn[];
     pageId?: PageId;
     useWorkspace?: boolean;
+    /** The composer's globe toggle — web tools are off unless set. */
+    allowWeb?: boolean;
     persona?: string;
   }): Promise<AgentAnswer>;
 }

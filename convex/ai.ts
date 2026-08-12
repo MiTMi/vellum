@@ -15,6 +15,7 @@ import {
   monthKey,
 } from "./lib/quotas";
 import { AgentOp, parseAgentJson, validatePlan } from "./lib/agentPlan";
+import { configuredProviders, fetchUrlText, webSearch } from "./lib/websearch";
 import { Doc, Id } from "./_generated/dataModel";
 
 /**
@@ -361,6 +362,8 @@ export interface AskSource {
   pageId: string;
   title: string;
   icon: string | null;
+  /** Set on web citations (agent webSearch/fetchUrl) — opens in a tab. */
+  url?: string;
 }
 
 export interface AskResult {
@@ -642,6 +645,9 @@ const AGENT_TOOL_MAX_TOKENS = 600;
 const AGENT_FINAL_MAX_TOKENS = 4000;
 /** Body budget for the agent's `read` tool and search results. */
 const AGENT_READ_CHARS = 6000;
+/** Web tool calls per request — protects the search providers' free
+ *  tiers from a single runaway conversation. */
+const MAX_WEB_OPS = 3;
 
 export interface AgentResult {
   answer: string;
@@ -655,7 +661,7 @@ const AGENT_SYSTEM = `You are the AI assistant built into Vellum, a personal Not
 To consult the workspace first (optional, at most a few times), reply with exactly one of:
 {"tool":"search","query":"<keywords>"}
 {"tool":"read","pageId":"<id from a search result or the open page>"}
-
+{{WEB_TOOLS}}
 To finish, reply with:
 {"reply":"<your Markdown answer to the user>","plan":[...]}
 
@@ -682,6 +688,9 @@ export const agent = action({
     /** Ground in workspace retrieval up-front (the composer's toggle);
      *  the agent can also search on its own via the tool loop. */
     useWorkspace: v.optional(v.boolean()),
+    /** The composer's globe toggle: allow web tools this request. Off by
+     *  default — nothing touches the web unless the user opted in. */
+    allowWeb: v.optional(v.boolean()),
     persona: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<AgentResult> => {
@@ -740,9 +749,21 @@ export const agent = action({
       }
     }
 
+    // Web tools appear in the prompt only when the user opted in; the
+    // search tool additionally needs a configured provider key.
+    const webEnabled = args.allowWeb === true;
+    const searchEnabled = webEnabled && configuredProviders().length > 0;
+    const webToolLines = webEnabled
+      ? (searchEnabled
+          ? '{"tool":"webSearch","query":"<keywords>"} — search the public web\n'
+          : "") +
+        '{"tool":"fetchUrl","url":"<http(s) address>"} — read a web page\'s text\n'
+      : "";
+    let webOps = 0;
+
     const persona = args.persona?.trim().slice(0, MAX_PERSONA_CHARS);
     const system =
-      AGENT_SYSTEM +
+      AGENT_SYSTEM.replace("{{WEB_TOOLS}}", webToolLines) +
       (persona ? `\n\nThe user's instructions for you:\n${persona}` : "") +
       `\n\n---\n${pageNote}` +
       retrievedNote;
@@ -820,6 +841,56 @@ export const agent = action({
           // Malformed id — the model hallucinated one; tell it plainly.
         }
         convo.push(`Tool result for read ${parsed.pageId}:\n${result}`);
+        continue;
+      }
+
+      if (!finalRound && parsed.tool === "webSearch" && typeof parsed.query === "string") {
+        if (!searchEnabled || webOps >= MAX_WEB_OPS) {
+          convo.push(
+            `Tool result for webSearch: unavailable${webOps >= MAX_WEB_OPS ? " (web budget for this request is used up)" : ""} — answer from what you have.`,
+          );
+          continue;
+        }
+        webOps++;
+        let result = "The web search failed — answer from what you have.";
+        try {
+          const found = await webSearch(parsed.query);
+          if (found) {
+            result =
+              found.results.length === 0
+                ? "No results."
+                : found.results
+                    .map((r) => `- ${r.title} <${r.url}>: ${r.snippet}`)
+                    .join("\n");
+            for (const r of found.results) {
+              addSource({ pageId: r.url, title: r.title, icon: "🌐", url: r.url });
+            }
+          }
+        } catch {
+          // Every configured provider failed; the fallback text stands.
+        }
+        convo.push(`Tool result for webSearch "${parsed.query}":\n${result}`);
+        continue;
+      }
+
+      if (!finalRound && parsed.tool === "fetchUrl" && typeof parsed.url === "string") {
+        if (!webEnabled || webOps >= MAX_WEB_OPS) {
+          convo.push("Tool result for fetchUrl: unavailable — answer from what you have.");
+          continue;
+        }
+        webOps++;
+        const fetched = await fetchUrlText(parsed.url);
+        if (fetched) {
+          addSource({
+            pageId: fetched.url,
+            title: new URL(fetched.url).hostname,
+            icon: "🌐",
+            url: fetched.url,
+          });
+          convo.push(`Tool result for fetchUrl ${fetched.url}:\n${fetched.text}`);
+        } else {
+          convo.push(`Tool result for fetchUrl ${parsed.url}:\nThat page is not available.`);
+        }
         continue;
       }
 

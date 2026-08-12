@@ -21,7 +21,7 @@ import { useAi, useGetDoc, useMutations } from "../data";
 import { isVaultPage } from "../lib/vaultSession";
 import { describeOp, executePlan } from "../lib/agentPlan";
 import { markdownToBlocks } from "../lib/markdownBlocks";
-import { Check, ListChecks } from "lucide-react";
+import { Check, Globe, ListChecks } from "lucide-react";
 
 /**
  * The docked AI chat panel — Vellum's take on Notion's right-hand AI pane.
@@ -36,6 +36,9 @@ import { Check, ListChecks } from "lucide-react";
  *  preference, and routing it through the schema would sync a setting that
  *  only ever matters where it was typed. */
 const PERSONA_KEY = "vellum:ai-persona";
+/** The globe toggle. Off by default — nothing touches the web unless the
+ *  user opted in; remembered per device like the persona. */
+const WEB_KEY = "vellum:ai-web";
 
 function loadPersona(): string {
   try {
@@ -87,6 +90,22 @@ export default function AiChatPanel({
   /** The context chip is on by default when a page is open, and dismissible. */
   const [useContext, setUseContext] = useState(true);
   const [useWorkspace, setUseWorkspace] = useState(true);
+  const [allowWeb, setAllowWeb] = useState(() => {
+    try {
+      return localStorage.getItem(WEB_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleWeb = () =>
+    setAllowWeb((v) => {
+      try {
+        localStorage.setItem(WEB_KEY, v ? "0" : "1");
+      } catch {
+        /* private browsing — just don't persist */
+      }
+      return !v;
+    });
   const [personaOpen, setPersonaOpen] = useState(false);
   const [persona, setPersona] = useState(loadPersona);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -149,6 +168,7 @@ export default function AiChatPanel({
         messages: next.map(({ role, content }) => ({ role, content })),
         pageId: useContext && contextPage ? contextPage._id : undefined,
         useWorkspace,
+        allowWeb,
         persona: persona.trim() || undefined,
       });
       setMessages([
@@ -394,16 +414,29 @@ export default function AiChatPanel({
                 )}
                 {m.sources && m.sources.length > 0 && (
                   <div className="ai-msg-sources">
-                    {m.sources.map((s) => (
-                      <button
-                        key={s.pageId}
-                        className="ai-msg-source"
-                        onClick={() => onOpenPage(s.pageId)}
-                      >
-                        {s.icon ? <span>{s.icon}</span> : <FileText size={12} />}
-                        {s.title}
-                      </button>
-                    ))}
+                    {m.sources.map((s) =>
+                      s.url ? (
+                        <a
+                          key={s.pageId}
+                          className="ai-msg-source"
+                          href={s.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {s.icon ? <span>{s.icon}</span> : <Globe size={12} />}
+                          {s.title}
+                        </a>
+                      ) : (
+                        <button
+                          key={s.pageId}
+                          className="ai-msg-source"
+                          onClick={() => onOpenPage(s.pageId)}
+                        >
+                          {s.icon ? <span>{s.icon}</span> : <FileText size={12} />}
+                          {s.title}
+                        </button>
+                      ),
+                    )}
                   </div>
                 )}
               </div>
@@ -490,6 +523,17 @@ export default function AiChatPanel({
             onClick={() => setPersonaOpen((v) => !v)}
           >
             <SlidersHorizontal size={16} />
+          </button>
+          <button
+            className={`icon-btn ${allowWeb ? "active" : ""}`}
+            title={
+              allowWeb
+                ? "Web access is on — the AI may search and read pages online"
+                : "Allow the AI to search and read the web"
+            }
+            onClick={toggleWeb}
+          >
+            <Globe size={16} />
           </button>
           <span className="ai-composer-model">Auto</span>
           <button className="icon-btn" title="Voice input is not available yet" disabled>

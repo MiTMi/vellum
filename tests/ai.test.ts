@@ -45,6 +45,9 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   process.env.OPENROUTER_API_KEY = "sk-or-v1-test";
+  delete process.env.BRAVE_SEARCH_API_KEY;
+  delete process.env.GOOGLE_SEARCH_API_KEY;
+  delete process.env.GOOGLE_SEARCH_CX;
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -452,4 +455,91 @@ test("agent: the read tool refuses vault pages but allows normal ones", async ()
   const transcript = thirdBody.messages[1].content as string;
   expect(transcript).toContain("That page is not available."); // the vault read
   expect(transcript).toContain("milk and eggs"); // the normal read
+});
+
+/* ------------------------------------------------- agent web tools */
+
+test("agent: web tools stay out of the prompt without the globe opt-in", async () => {
+  fetchMock
+    .mockResolvedValueOnce(ok('{"tool":"webSearch","query":"news"}'))
+    .mockResolvedValueOnce(ok('{"reply":"ok, no web"}'));
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "what's new?" }],
+  });
+  const firstBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+  expect(firstBody.messages[0].content).not.toContain("webSearch");
+  expect(firstBody.messages[0].content).not.toContain("fetchUrl");
+  // The uninvited tool call degrades to "unavailable", not an error.
+  const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+  expect(secondBody.messages[1].content).toContain("unavailable");
+  expect(res.answer).toBe("ok, no web");
+});
+
+test("agent: webSearch round-trips a provider and cites web sources", async () => {
+  process.env.BRAVE_SEARCH_API_KEY = "b";
+  fetchMock.mockImplementation(async (url: string) => {
+    if (String(url).includes("api.search.brave.com")) {
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({
+          web: {
+            results: [
+              { title: "Vellum docs", url: "https://docs.example", description: "the manual" },
+            ],
+          },
+        }),
+      } as unknown as Response;
+    }
+    // OpenRouter: first a search, then the final reply.
+    const isFirst = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes("openrouter"),
+    ).length <= 1;
+    return ok(
+      isFirst
+        ? '{"tool":"webSearch","query":"vellum manual"}'
+        : '{"reply":"Found it."}',
+    );
+  });
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "find the vellum manual online" }],
+    allowWeb: true,
+  });
+  expect(res.answer).toBe("Found it.");
+  const web = res.sources.find((s) => (s as { url?: string }).url);
+  expect((web as { url?: string })?.url).toBe("https://docs.example");
+  const lastOr = fetchMock.mock.calls.filter((c) => String(c[0]).includes("openrouter")).pop()!;
+  expect(JSON.parse(lastOr[1].body as string).messages[1].content).toContain("the manual");
+});
+
+test("agent: fetchUrl works with no search keys and feeds page text back", async () => {
+  fetchMock.mockImplementation(async (url: string) => {
+    if (String(url).includes("site.example")) {
+      return {
+        ok: true,
+        status: 200,
+        url: "https://site.example/article",
+        headers: new Headers({ "content-type": "text/html" }),
+        arrayBuffer: async () =>
+          new TextEncoder().encode("<h1>Big news</h1><p>details here</p>").buffer,
+      } as unknown as Response;
+    }
+    const isFirst = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes("openrouter"),
+    ).length <= 1;
+    return ok(
+      isFirst
+        ? '{"tool":"fetchUrl","url":"https://site.example/article"}'
+        : '{"reply":"Summarized."}',
+    );
+  });
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "summarize https://site.example/article" }],
+    allowWeb: true,
+  });
+  expect(res.answer).toBe("Summarized.");
+  const lastOr = fetchMock.mock.calls.filter((c) => String(c[0]).includes("openrouter")).pop()!;
+  expect(JSON.parse(lastOr[1].body as string).messages[1].content).toContain("Big news details here");
+  expect(res.sources.some((s) => (s as { url?: string }).url === "https://site.example/article")).toBe(true);
 });

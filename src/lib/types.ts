@@ -286,6 +286,8 @@ export interface AiSource {
   pageId: PageId;
   title: string;
   icon: string | null;
+  /** Set on web citations (agent webSearch/fetchUrl) — opens in a tab. */
+  url?: string;
 }
 
 export interface AiAnswer {
