@@ -488,9 +488,13 @@ test("agent: webSearch round-trips a provider and cites web sources", async () =
         }),
       } as unknown as Response;
     }
-    // OpenRouter: first a search, then the final reply.
-    const isFirst = fetchMock.mock.calls.filter((c) =>
-      String(c[0]).includes("openrouter"),
+    // OpenRouter: the agent round, then the guard verdict, then the final.
+    const init = fetchMock.mock.calls[fetchMock.mock.calls.length - 1]?.[1];
+    if (init && String(init.body).includes("You are a safety filter")) {
+      return ok('{"allowed":true}');
+    }
+    const isFirst = fetchMock.mock.calls.filter(
+      (c) => String(c[0]).includes("openrouter") && !String(c[1]?.body).includes("You are a safety filter"),
     ).length <= 1;
     return ok(
       isFirst
@@ -521,8 +525,12 @@ test("agent: fetchUrl works with no search keys and feeds page text back", async
           new TextEncoder().encode("<h1>Big news</h1><p>details here</p>").buffer,
       } as unknown as Response;
     }
-    const isFirst = fetchMock.mock.calls.filter((c) =>
-      String(c[0]).includes("openrouter"),
+    const init = fetchMock.mock.calls[fetchMock.mock.calls.length - 1]?.[1];
+    if (init && String(init.body).includes("You are a safety filter")) {
+      return ok('{"allowed":true}');
+    }
+    const isFirst = fetchMock.mock.calls.filter(
+      (c) => String(c[0]).includes("openrouter") && !String(c[1]?.body).includes("You are a safety filter"),
     ).length <= 1;
     return ok(
       isFirst
@@ -547,4 +555,63 @@ test("agent: an empty plan list reads as no plan, not a malformed one", async ()
   });
   expect(res.answer).toBe("Just an answer.");
   expect(res.plan).toBeNull();
+});
+
+/* --------------------------------------------------- web-op guard */
+
+test("agent: a blocked query never reaches the search provider", async () => {
+  process.env.TAVILY_API_KEY = "tvly-x";
+  fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+    if (String(init?.body).includes("You are a safety filter")) {
+      return ok('{"allowed":false,"reason":"illegal purchase"}');
+    }
+    const agentCalls = fetchMock.mock.calls.filter(
+      (c) => !String(c[1]?.body).includes("You are a safety filter"),
+    ).length;
+    return ok(
+      agentCalls <= 1
+        ? '{"tool":"webSearch","query":"buy illegal things"}'
+        : '{"reply":"I can\'t help with that search."}',
+    );
+  });
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "find me something dodgy" }],
+    allowWeb: true,
+  });
+  // Tavily was never contacted.
+  expect(
+    fetchMock.mock.calls.some((c) => String(c[0]).includes("tavily")),
+  ).toBe(false);
+  // The decline (with reason) reached the model's transcript.
+  const last = fetchMock.mock.calls
+    .filter((c) => !String(c[1]?.body).includes("You are a safety filter"))
+    .pop()!;
+  expect(JSON.parse(last[1].body as string).messages[1].content).toContain(
+    "declined by the safety filter (illegal purchase)",
+  );
+  expect(res.answer).toContain("can't help");
+});
+
+test("agent: a garbage guard verdict fails closed", async () => {
+  process.env.TAVILY_API_KEY = "tvly-x";
+  fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+    if (String(init?.body).includes("You are a safety filter")) {
+      return ok("hmm, let me think about whether this is okay...");
+    }
+    const agentCalls = fetchMock.mock.calls.filter(
+      (c) => !String(c[1]?.body).includes("You are a safety filter"),
+    ).length;
+    return ok(
+      agentCalls <= 1
+        ? '{"tool":"webSearch","query":"anything"}'
+        : '{"reply":"done"}',
+    );
+  });
+  await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "search something" }],
+    allowWeb: true,
+  });
+  expect(
+    fetchMock.mock.calls.some((c) => String(c[0]).includes("tavily")),
+  ).toBe(false);
 });

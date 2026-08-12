@@ -649,6 +649,55 @@ const AGENT_READ_CHARS = 6000;
  *  tiers from a single runaway conversation. */
 const MAX_WEB_OPS = 3;
 
+/**
+ * The safety gate on OUTGOING web operations (decided with Michael
+ * 2026-08-12): an independent model call that sees ONLY the query/URL
+ * string — never the conversation — so a jailbreak in the chat or text
+ * smuggled into a page has no path into the verdict. Fail-closed: an
+ * unparseable or errored verdict declines the operation.
+ */
+const WEB_GUARD_SYSTEM =
+  "You are a safety filter for outgoing web requests from a note-taking " +
+  "app used by families. You will be given one search query or URL. " +
+  "Judge ONLY that string. Set allowed=false if it seeks illegal " +
+  "content or activity (buying drugs or weapons, exploitation, fraud, " +
+  "harming someone), sexually explicit or gory content, or targets a " +
+  "private person for harassment or doxxing. Otherwise set " +
+  "allowed=true — including medical, legal, news, and sensitive but " +
+  "lawful topics, which must NOT be blocked. Reply with ONLY " +
+  '{"allowed":true} or {"allowed":false,"reason":"<a few words>"}.';
+
+async function webOpAllowed(
+  ctx: ActionCtx,
+  userId: Id<"users">,
+  kind: "search" | "fetch",
+  text: string,
+): Promise<{ allowed: boolean; reason: string }> {
+  try {
+    const verdict = await meteredChat(
+      ctx,
+      userId,
+      [
+        { role: "system", content: WEB_GUARD_SYSTEM },
+        { role: "user", content: `${kind === "search" ? "Search query" : "URL"}: ${text.slice(0, 500)}` },
+      ],
+      { maxTokens: 60 },
+    );
+    const parsed = parseAgentJson(verdict);
+    if (parsed && parsed.allowed === true) return { allowed: true, reason: "" };
+    return {
+      allowed: false,
+      reason:
+        parsed && typeof parsed.reason === "string"
+          ? parsed.reason
+          : "the safety check could not approve it",
+    };
+  } catch {
+    // Guard call failed → fail closed, never open.
+    return { allowed: false, reason: "the safety check was unavailable" };
+  }
+}
+
 export interface AgentResult {
   answer: string;
   plan: AgentOp[] | null;
@@ -672,7 +721,7 @@ Include "plan" ONLY when the user asked to create something; omit it for questio
 {"kind":"addRow","target":"#N"|"<database page id>","title":"...","props":{"<column name>":<value>}}
 {"kind":"appendToPage","target":"current"|"<page id>","markdown":"..."}
 
-Rules: prop values are strings, numbers, booleans, or string lists keyed by COLUMN NAME; dates are "YYYY-MM-DD"; "parent":"current" needs an open page (you are told when one is open); markdown supports #/##/### headings, - bullets, 1. numbered lists, - [ ] checkboxes, and plain paragraphs.`;
+Rules: web queries and URLs must be lawful and family-appropriate — an independent safety check declines anything else, so do not attempt it; prop values are strings, numbers, booleans, or string lists keyed by COLUMN NAME; dates are "YYYY-MM-DD"; "parent":"current" needs an open page (you are told when one is open); markdown supports #/##/### headings, - bullets, 1. numbered lists, - [ ] checkboxes, and plain paragraphs.`;
 
 /**
  * The propose-then-apply workspace agent. Runs a bounded read-tool loop
@@ -852,6 +901,13 @@ export const agent = action({
           continue;
         }
         webOps++;
+        const searchVerdict = await webOpAllowed(ctx, userId, "search", parsed.query);
+        if (!searchVerdict.allowed) {
+          convo.push(
+            `Tool result for webSearch "${parsed.query}": declined by the safety filter (${searchVerdict.reason}). Do not rephrase or retry — answer without the web and tell the user plainly that the search was declined.`,
+          );
+          continue;
+        }
         let result = "The web search failed — answer from what you have.";
         try {
           const found = await webSearch(parsed.query);
@@ -879,6 +935,13 @@ export const agent = action({
           continue;
         }
         webOps++;
+        const fetchVerdict = await webOpAllowed(ctx, userId, "fetch", parsed.url);
+        if (!fetchVerdict.allowed) {
+          convo.push(
+            `Tool result for fetchUrl ${parsed.url}: declined by the safety filter (${fetchVerdict.reason}). Do not retry — answer without it and tell the user plainly.`,
+          );
+          continue;
+        }
         const fetched = await fetchUrlText(parsed.url);
         if (fetched) {
           addSource({

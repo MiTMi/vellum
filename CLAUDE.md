@@ -973,7 +973,14 @@ the account exists, may improve their service, may be shared with
 third-party indexes** — only model-composed query strings ever go
 there, never page content wholesale, and only with the globe on. ≤3 web
 ops per request (`MAX_WEB_OPS`); web citations ride `AskSource.url` and
-render as open-in-tab chips. `tests/websearch.test.ts`
+render as open-in-tab chips. **Every outgoing web op passes a guard
+model first** (`webOpAllowed`, decided 2026-08-12): an independent
+metered call that sees ONLY the query/URL string — never the
+conversation, so chat jailbreaks and page-smuggled text can't reach the
+verdict — blocking illegal/explicit/harassment lookups while explicitly
+allowing medical/legal/news topics. Fail-closed: an errored or
+unparseable verdict declines the op, and the model is told not to
+rephrase-and-retry. `tests/websearch.test.ts`
 covers the policy; the vault guarantee is untouched (web tools add
 outbound reads, no new access to workspace data).
 
