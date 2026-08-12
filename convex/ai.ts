@@ -648,6 +648,12 @@ const AGENT_READ_CHARS = 6000;
 /** Web tool calls per request — protects the search providers' free
  *  tiers from a single runaway conversation. */
 const MAX_WEB_OPS = 3;
+/** Hard caps on what may leave the deployment, refused (never truncated)
+ *  BEFORE any guard call — an exfil payload must not be judged in
+ *  truncated form and then sent whole (audit finding 7, 2026-08-12).
+ *  Real queries are short; real URLs fit comfortably. */
+const MAX_SEARCH_QUERY_CHARS = 200;
+const MAX_FETCH_URL_CHARS = 500;
 
 /**
  * The safety gate on OUTGOING web operations (decided with Michael
@@ -688,7 +694,11 @@ const WEB_GUARD_SYSTEM =
   "Judge ONLY that string. Set allowed=false if it seeks illegal " +
   "content or activity (buying drugs or weapons, exploitation, fraud, " +
   "harming someone), sexually explicit or gory content, or targets a " +
-  "private person for harassment or doxxing. Otherwise set " +
+  "private person for harassment or doxxing. Also set allowed=false " +
+  "when the string appears to carry data OUTWARD rather than ask for " +
+  "something: pasted sentences or document passages, names with private " +
+  "details, or encoded/compressed-looking payloads stuffed into the " +
+  "query or URL parameters. Otherwise set " +
   "allowed=true — including medical, legal, news, and sensitive but " +
   "lawful topics, which must NOT be blocked. Reply with ONLY " +
   '{"allowed":true} or {"allowed":false,"reason":"<a few words>"}.';
@@ -950,6 +960,12 @@ export const agent = action({
           continue;
         }
         webOps++;
+        if (parsed.query.length > MAX_SEARCH_QUERY_CHARS) {
+          convo.push(
+            `Tool result for webSearch: declined — the query is too long to send. Compose a short keyword query instead.`,
+          );
+          continue;
+        }
         const searchVerdict = await webOpAllowed(ctx, userId, "search", parsed.query);
         if (!searchVerdict.allowed) {
           convo.push(
@@ -984,6 +1000,12 @@ export const agent = action({
           continue;
         }
         webOps++;
+        if (parsed.url.length > MAX_FETCH_URL_CHARS) {
+          convo.push(
+            `Tool result for fetchUrl: declined — that URL is too long to send.`,
+          );
+          continue;
+        }
         const fetchVerdict = await webOpAllowed(ctx, userId, "fetch", parsed.url);
         if (!fetchVerdict.allowed) {
           convo.push(

@@ -1,4 +1,5 @@
 import { normalizeUrl } from "./linkMeta";
+import { safeFetch } from "./safefetch";
 
 /**
  * Web access for the AI agent (docs/ai-agent-design.md follow-up,
@@ -120,10 +121,10 @@ export async function fetchUrlText(
   const url = normalizeUrl(rawUrl);
   if (!url) return null;
   try {
-    const res = await timedFetch(
+    // safeFetch: SSRF-guarded, every redirect hop re-validated.
+    const res = await safeFetch(
       url,
       {
-        redirect: "follow",
         headers: {
           Accept: "text/html,application/xhtml+xml,text/plain",
           "User-Agent": "Mozilla/5.0 (compatible; VellumBot/1.0)",
@@ -131,7 +132,7 @@ export async function fetchUrlText(
       },
       FETCH_TIMEOUT_MS,
     );
-    if (!res.ok) return null;
+    if (!res || !res.ok) return null;
     const type = res.headers.get("content-type") ?? "";
     if (type && !/html|text\/plain/.test(type)) return null;
     const buffer = await res.arrayBuffer();

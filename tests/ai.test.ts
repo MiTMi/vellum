@@ -661,3 +661,29 @@ test("agent: every gated web op lands in the audit log with its verdict", async 
     expect(declined?.reason).toBe("explicit content");
   });
 });
+
+test("agent: over-length queries are refused before any guard or send", async () => {
+  process.env.TAVILY_API_KEY = "tvly-x";
+  const longQuery = "leak ".repeat(60); // ~300 chars
+  fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+    const agentCalls = fetchMock.mock.calls.filter(
+      (c) => !String(c[1]?.body).includes("You are a safety filter"),
+    ).length;
+    return ok(
+      agentCalls <= 1
+        ? JSON.stringify({ tool: "webSearch", query: longQuery })
+        : '{"reply":"ok"}',
+    );
+  });
+  await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "search" }],
+    allowWeb: true,
+  });
+  // No guard call (deterministic refusal) and no Tavily call.
+  expect(
+    fetchMock.mock.calls.some((c) => String(c[1]?.body).includes("You are a safety filter")),
+  ).toBe(false);
+  expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("tavily"))).toBe(false);
+  const last = fetchMock.mock.calls.pop()!;
+  expect(JSON.parse(last[1].body as string).messages[1].content).toContain("too long to send");
+});

@@ -2,6 +2,7 @@ import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { requireUser } from "./lib/auth";
 import { extractLinkMeta, normalizeUrl } from "./lib/linkMeta";
+import { safeFetch } from "./lib/safefetch";
 
 /**
  * Fetch Open Graph metadata for a bookmark block. Lives server-side because
@@ -19,19 +20,22 @@ export const fetchMeta = action({
     const url = normalizeUrl(args.url);
     if (!url) return null;
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
-      const res = await fetch(url, {
-        signal: controller.signal,
-        redirect: "follow",
-        headers: {
-          // Plenty of sites serve a stub to unknown agents; ask for HTML.
-          Accept: "text/html,application/xhtml+xml",
-          "User-Agent": "Mozilla/5.0 (compatible; VellumBot/1.0)",
+      // safeFetch: SSRF-guarded with per-hop redirect validation (audit
+      // finding, 2026-08-12) — this fetcher needs no globe toggle, so it
+      // must never be a proxy into private address space.
+      const res = await safeFetch(
+        url,
+        {
+          headers: {
+            // Plenty of sites serve a stub to unknown agents; ask for HTML.
+            Accept: "text/html,application/xhtml+xml",
+            "User-Agent": "Mozilla/5.0 (compatible; VellumBot/1.0)",
+          },
         },
-      });
-      if (!res.ok) return null;
+        FETCH_TIMEOUT_MS,
+      );
+      if (!res || !res.ok) return null;
       const type = res.headers.get("content-type") ?? "";
       if (type && !type.includes("html")) return null;
 
@@ -46,8 +50,6 @@ export const fetchMeta = action({
       // Unreachable host, timeout, TLS failure — the block falls back to a
       // plain link card, so a null here is a normal outcome, not an error.
       return null;
-    } finally {
-      clearTimeout(timer);
     }
   },
 });
