@@ -106,18 +106,27 @@ const search = document.querySelector<HTMLInputElement>(".help-search input");
 const empty = document.querySelector<HTMLElement>(".help-index-empty");
 
 if (search && empty) {
-  // Every guide's own text is the haystack, so searching "formula" finds the
-  // database guide even though the word isn't in its title.
+  // Two tiers: a query that matches any guide TITLE shows only the
+  // title matches ("vault" → The Vault, not the dozen guides that merely
+  // mention it); only when no title matches does the search widen to the
+  // guides' full text, so "passphrase" still finds the Vault guide.
+  const titles = new Map(guides.map((g) => [g.id, titleOf(g.id).toLowerCase()]));
   const haystack = new Map(
     guides.map((g) => [g.id, `${titleOf(g.id)} ${g.textContent ?? ""}`.toLowerCase()]),
   );
 
   search.addEventListener("input", () => {
     const q = search.value.trim().toLowerCase();
+    const anyTitleHit =
+      !!q && [...titles.values()].some((t) => t.includes(q));
     let matches = 0;
     for (const link of links) {
       const id = link.hash.replace(/^#/, "");
-      const hit = !q || (haystack.get(id) ?? "").includes(q);
+      const hit =
+        !q ||
+        (anyTitleHit
+          ? (titles.get(id) ?? "").includes(q)
+          : (haystack.get(id) ?? "").includes(q));
       link.hidden = !hit;
       if (hit) matches++;
     }

@@ -81,6 +81,20 @@ try {
   check("Next moves on", (await page.locator(".guide.is-open").getAttribute("id")) === "templates");
 
   /* ------------------------------------------------------------ search */
+  // Tier 1: a title match shows ONLY title matches — "vault" is mentioned
+  // in a dozen guides but must surface just The Vault.
+  await page.fill(".help-search input", "vault");
+  await page.waitForTimeout(400);
+  const titleTier = await page.$$eval(".help-index a", (els) =>
+    els.filter((e) => !e.hidden).map((e) => e.textContent.trim()),
+  );
+  check(
+    "a title match shows only title matches",
+    titleTier.length === 1 && titleTier[0] === "The Vault",
+    titleTier.join(", "),
+  );
+
+  // Tier 2: no title contains "passphrase" → full-text fallback.
   await page.fill(".help-search input", "passphrase");
   await page.waitForTimeout(400);
   const visible = await page.$$eval(".help-index a", (els) =>
