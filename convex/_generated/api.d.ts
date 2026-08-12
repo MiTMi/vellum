@@ -27,6 +27,7 @@ import type * as lib_quotas from "../lib/quotas.js";
 import type * as lib_sharing from "../lib/sharing.js";
 import type * as lib_snippet from "../lib/snippet.js";
 import type * as lib_versions from "../lib/versions.js";
+import type * as lib_websearch from "../lib/websearch.js";
 import type * as linkPreview from "../linkPreview.js";
 import type * as migrate from "../migrate.js";
 import type * as pages from "../pages.js";
@@ -59,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sharing": typeof lib_sharing;
   "lib/snippet": typeof lib_snippet;
   "lib/versions": typeof lib_versions;
+  "lib/websearch": typeof lib_websearch;
   linkPreview: typeof linkPreview;
   migrate: typeof migrate;
   pages: typeof pages;

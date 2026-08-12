@@ -899,8 +899,14 @@ export const agent = action({
       const reply = typeof parsed.reply === "string" ? parsed.reply.trim() : text.trim();
       let plan: AgentOp[] | null = null;
       let note = "";
-      if (parsed.plan !== undefined) {
-        const validated = validatePlan(parsed.plan);
+      // An empty list is the model saying "nothing to create" — treat it
+      // like an absent plan, not a malformed one (observed live).
+      const rawPlan =
+        Array.isArray(parsed.plan) && parsed.plan.length === 0
+          ? undefined
+          : parsed.plan;
+      if (rawPlan !== undefined) {
+        const validated = validatePlan(rawPlan);
         if (validated.ok) plan = validated.plan;
         else note = `\n\n_(I drafted a plan but it was malformed — ${validated.error}. Try asking again.)_`;
       }

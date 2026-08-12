@@ -543,3 +543,12 @@ test("agent: fetchUrl works with no search keys and feeds page text back", async
   expect(JSON.parse(lastOr[1].body as string).messages[1].content).toContain("Big news details here");
   expect(res.sources.some((s) => (s as { url?: string }).url === "https://site.example/article")).toBe(true);
 });
+
+test("agent: an empty plan list reads as no plan, not a malformed one", async () => {
+  fetchMock.mockResolvedValue(ok('{"reply":"Just an answer.","plan":[]}'));
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "tell me something" }],
+  });
+  expect(res.answer).toBe("Just an answer.");
+  expect(res.plan).toBeNull();
+});
