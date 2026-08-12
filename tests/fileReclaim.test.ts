@@ -289,6 +289,51 @@ test("dryRun reports what it would remove without removing it", async () => {
   expect(await storedObjects(tc)).toBe(1); // still there
 });
 
+test("a backlog larger than one pass finishes without waiting for tomorrow", async () => {
+  // One pass is capped to stay inside a mutation's limits. If it stopped
+  // there, clearing a real backlog would take one nightly cron per 200
+  // files — so a full pass continues itself.
+  const { tc } = await ownerBackend();
+  const BACKLOG = 250; // > MAX_DELETES_PER_PASS (200)
+  await tc.run(async (ctx) => {
+    for (let i = 0; i < BACKLOG; i++) {
+      await ctx.storage.store(new Blob([`orphan-${i}`], { type: "image/png" }));
+    }
+  });
+  expect(await storedObjects(tc)).toBe(BACKLOG);
+
+  ageClock();
+  const first = await tc.mutation(internal.files._sweep, { graceMs: 0 });
+  expect(first.deleted).toBe(200);
+  expect(first.done).toBe(false);
+  expect(first.continued).toBe(true); // scheduled its own continuation
+  expect(await storedObjects(tc)).toBe(BACKLOG - 200);
+
+  await settle(tc);
+  expect(await storedObjects(tc)).toBe(0);
+});
+
+test("a dry run never chains — it would recurse forever", async () => {
+  // Nothing is deleted in a dry run, so the next pass would see the exact
+  // same set and schedule another, without end.
+  const { tc } = await ownerBackend();
+  await tc.run(async (ctx) => {
+    for (let i = 0; i < 250; i++) {
+      await ctx.storage.store(new Blob([`orphan-${i}`], { type: "image/png" }));
+    }
+  });
+
+  ageClock();
+  const report = await tc.mutation(internal.files._sweep, {
+    graceMs: 0,
+    dryRun: true,
+  });
+  expect(report.done).toBe(false);
+  expect(report.continued).toBe(false);
+  await settle(tc);
+  expect(await storedObjects(tc)).toBe(250); // untouched
+});
+
 test("storageReport distinguishes referenced from orphaned", async () => {
   const { tc, as } = await ownerBackend();
   const page = await as.mutation(api.pages.create, { type: "doc", title: "Live" });

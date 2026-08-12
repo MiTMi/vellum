@@ -5,6 +5,7 @@ import {
   QueryCtx,
 } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
+import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { isOwnerUser, requireUser } from "./lib/auth";
 import { FILE_QUOTA_BYTES, fileBytesOf } from "./lib/quotas";
@@ -251,13 +252,33 @@ export const _reclaimKeys = internalMutation({
  * The safety net, run daily by cron and invocable by the owner. `graceMs`
  * is overridable only so tests can exercise the delete path without
  * waiting a day — it is internal, so no client can reach it.
+ *
+ * A pass is capped (MAX_DELETES_PER_PASS) to stay inside one mutation's
+ * limits, so it **continues itself** when it fills that cap rather than
+ * waiting for tomorrow's cron: a backlog of thousands must not take
+ * thousands of days to clear. Progress is guaranteed because every pass
+ * removes rows from `_storage`, and `pass` bounds the chain regardless.
+ * A dry run never continues — nothing is deleted, so the next pass would
+ * see the identical set and recurse forever.
  */
+const MAX_SWEEP_PASSES = 25;
+
 export const _sweep = internalMutation({
-  args: { graceMs: v.optional(v.number()), dryRun: v.optional(v.boolean()) },
+  args: {
+    graceMs: v.optional(v.number()),
+    dryRun: v.optional(v.boolean()),
+    pass: v.optional(v.number()),
+  },
   handler: async (
     ctx,
     args,
-  ): Promise<{ scanned: number; deleted: number; bytes: number; done: boolean }> => {
+  ): Promise<{
+    scanned: number;
+    deleted: number;
+    bytes: number;
+    done: boolean;
+    continued: boolean;
+  }> => {
     const grace = args.graceMs ?? SWEEP_GRACE_MS;
     const cutoff = Date.now() - grace;
     const referenced = await referencedKeys(ctx);
@@ -291,11 +312,22 @@ export const _sweep = internalMutation({
       deleted++;
     }
 
-    return {
-      scanned: objects.length,
-      deleted,
-      bytes,
-      done: deleted < MAX_DELETES_PER_PASS,
-    };
+    const pass = args.pass ?? 0;
+    const done = deleted < MAX_DELETES_PER_PASS;
+    const continued = !done && !args.dryRun && pass + 1 < MAX_SWEEP_PASSES;
+    if (continued) {
+      await ctx.scheduler.runAfter(0, internal.files._sweep, {
+        graceMs: args.graceMs,
+        pass: pass + 1,
+      });
+    } else if (!done && !args.dryRun) {
+      // Hit the chain bound with work still outstanding: the cron picks it
+      // up tomorrow, but say so rather than reporting a clean finish.
+      console.warn(
+        `files._sweep stopped after ${MAX_SWEEP_PASSES} passes with deletions still pending.`,
+      );
+    }
+
+    return { scanned: objects.length, deleted, bytes, done, continued };
   },
 });
