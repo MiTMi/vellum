@@ -20,6 +20,7 @@ import { AiChatMessage, PageId, PageMeta } from "../lib/types";
 import { useAi, useGetDoc, useMutations } from "../data";
 import { isVaultPage } from "../lib/vaultSession";
 import { describeOp, executePlan } from "../lib/agentPlan";
+import { markdownToBlocks } from "../lib/markdownBlocks";
 import { Check, ListChecks } from "lucide-react";
 
 /**
@@ -193,21 +194,13 @@ export default function AiChatPanel({
         title: `${contextPage?.title ?? "Deck"} — slides`,
         icon: "📊",
       });
-      // Heading + bullets per slide, mapped straight onto BlockNote blocks.
-      const blocks = outline
-        .split("\n")
-        .filter((l) => l.trim())
-        .map((line) =>
-          line.startsWith("## ")
-            ? { type: "heading", props: { level: 2 }, content: line.slice(3).trim() }
-            : line.startsWith("- ")
-              ? { type: "bulletListItem", content: line.slice(2).trim() }
-              : { type: "paragraph", content: line.trim() },
-        );
+      // Heading + bullets per slide, mapped straight onto BlockNote blocks
+      // by the same helper the agent's plan executor uses.
+      const { blocks, text } = markdownToBlocks(outline);
       await mutations.updateContent({
         id,
         content: blocks,
-        text: outline,
+        text,
       });
       setMessages((m) => [
         ...m,

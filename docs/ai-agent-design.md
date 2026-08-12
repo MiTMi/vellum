@@ -7,6 +7,10 @@ create pages/databases, add rows, append content. It can never move,
 overwrite, or delete anything; the worst case is an unwanted new page
 you trash.*
 
+*Status: **built as designed 2026-08-12** (commit 8475de4) and
+live-verified on dev and prod — the real flash-lite model followed the
+JSON protocol first try. As-built summary in CLAUDE.md's AI section.*
+
 Goal: the chat panel stops being answer-only. "Set up a meal-planning
 database with columns for day and recipe, and add this week" produces a
 plan card; Apply makes it real, instantly, through the same mutations

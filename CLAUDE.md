@@ -935,6 +935,28 @@ and ⌘⇧J (chat panel, `App.tsx`) — the editor handler *must* test `!e.shift
 because `"J".toLowerCase() === "j"` and `preventDefault()` doesn't stop
 propagation, so ⌘⇧J would otherwise open both surfaces at once.
 
+**Workspace agent (2026-08-12, docs/ai-agent-design.md).** The chat
+panel's send path now goes through **`ai.agent`**, not `converse`
+(`converse` remains for API compatibility and its tests). The agent runs
+a bounded read-tool loop server-side — `search`/`read` via a
+prompt-engineered JSON protocol, ≤4 metered calls, no provider function
+calling (guardrail/model support uncertain) — and may return an
+**additive-only plan**: createPage / createDatabase / addRow /
+appendToPage, validated by `convex/lib/agentPlan.ts`. Destructive ops
+are unrepresentable in the vocabulary, not merely hidden. The panel
+renders a plan as an Apply/Dismiss card; **Apply executes client-side
+through the ordinary mutations** (`src/lib/agentPlan.ts` executor +
+`src/lib/markdownBlocks.ts`, which `makeDeck` also uses), so writes are
+replica-instant, outbox-synced, and pass Phase 1/2 auth at the real
+choke points. Sharp edges the executor owns: column-name→id resolution
+(case-insensitive, unknown names skipped), select-option minting,
+`vellum:flush-edits` before appends, and repainting a mounted editor via
+`getActiveEditorFor`. `_rowForRead` (read-scoped, viewer-role allowed)
+grounds the agent and converse's context chip; `_rowForFill` stays
+stricter because fills write back. `useGetDoc` on the DataApi is the
+executor's imperative replica read. Mock mode returns a canned plan for
+creation-shaped asks ("create/make/set up/build") so e2e can apply it.
+
 **Tests.** `tests/ai.test.ts` (18) stubs `fetch` and covers the guards —
 auth, the vault, empty/oversized input, error translation, env-driven model
 selection, and that only `content` is ever returned. `scripts/e2e-ai.mjs`
