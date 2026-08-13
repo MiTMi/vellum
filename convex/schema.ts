@@ -211,6 +211,9 @@ export default defineSchema({
   })
     .index("by_page", ["pageId"])
     .index("by_user", ["userId"])
+    // Account deletion needs both directions of a grant without scanning
+    // every share on the deployment.
+    .index("by_owner", ["ownerId"])
     .index("by_page_user", ["pageId", "userId"]),
 
   /**

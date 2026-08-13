@@ -174,7 +174,10 @@ function createWindow() {
 
   // Open external links in the default browser, not inside the app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("http")) shell.openExternal(url);
+    // Exact scheme match, same as will-navigate below: startsWith("http")
+    // also accepts "httpx:" or "http-foo:", handing an arbitrary registered
+    // protocol to the OS.
+    if (/^https?:/i.test(url)) shell.openExternal(url);
     return { action: "deny" };
   });
   mainWindow.webContents.on("will-navigate", (event, url) => {

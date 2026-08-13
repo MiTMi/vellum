@@ -103,12 +103,61 @@ export const deleteAccount = action({
 });
 
 /**
+ * Documents touched per batch. Erasing an account has to stay inside one
+ * transaction's limits *whatever the workspace grew to* — a `.collect()`
+ * over pages plus their versions and comments stops working somewhere past
+ * a few thousand documents, and the failure mode is a user who cannot
+ * delete their account at all.
+ */
+const WIPE_BATCH = 50;
+/** Storage keys carried in scheduler args before being flushed early. */
+const MAX_CARRIED_KEYS = 2000;
+
+/** Auth records + shares: small, bounded by indexes, and what actually
+ *  makes the account stop working. Done in the caller's transaction so the
+ *  credentials die immediately, whatever the content erase does after. */
+async function killAccount(ctx: MutationCtx, userId: Id<"users">) {
+  const accounts = await ctx.db
+    .query("authAccounts")
+    .withIndex("userIdAndProvider", (q) => q.eq("userId", userId))
+    .collect();
+  for (const a of accounts) await ctx.db.delete("authAccounts", a._id);
+  const sessions = await ctx.db
+    .query("authSessions")
+    .withIndex("userId", (q) => q.eq("userId", userId))
+    .collect();
+  for (const s of sessions) await ctx.db.delete("authSessions", s._id);
+
+  // Shares in both directions: grants they made (their pages are going) and
+  // grants made to them (a dangling recipient otherwise). Indexed rather
+  // than scanned — `by_owner` exists for exactly this.
+  const asOwner = await ctx.db
+    .query("shares")
+    .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+    .collect();
+  const asRecipient = await ctx.db
+    .query("shares")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  for (const s of [...asOwner, ...asRecipient]) {
+    await ctx.db.delete("shares", s._id);
+  }
+
+  await ctx.db.delete("users", userId);
+}
+
+/**
  * Erase one user: their pages (with version/comment sidecars), uploaded
  * files, AI usage, and auth records. When the caller is the deployment
  * owner it refuses while other accounts exist — the owner deleting
  * themselves must not take the friends' workspaces down with them; once
  * they're the last account it falls through to the full factory reset
  * (which restores the original single-user re-creation flow).
+ *
+ * The account dies in this transaction; the content is erased by a chain of
+ * scheduled batches behind it. That split is deliberate — "my account is
+ * gone" must be true the moment this returns, but the content is unbounded
+ * and cannot be.
  */
 export const wipeUser = internalMutation({
   args: { userId: v.id("users") },
@@ -119,7 +168,7 @@ export const wipeUser = internalMutation({
       !!owner && (user?.email ?? "").toLowerCase().trim() === owner;
 
     if (isOwner) {
-      const others = (await ctx.db.query("users").collect()).filter(
+      const others = (await ctx.db.query("users").take(2)).filter(
         (u) => u._id !== args.userId,
       );
       if (others.length > 0) {
@@ -131,135 +180,193 @@ export const wipeUser = internalMutation({
       return;
     }
 
-    // Pages + sidecars. Storage keys are collected as we go: the `files`
-    // sweep below only knows about registered uploads, so anything older
-    // (or registered under a different row) is handed to the reclaim.
-    const releasing = new Set<string>();
-    const pages = await ctx.db
-      .query("pages")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.userId))
-      .collect();
-    for (const p of pages) {
-      collectStorageKeys(p, releasing);
-      const versions = await ctx.db
-        .query("pageVersions")
-        .withIndex("by_page", (q) => q.eq("pageId", p._id))
-        .collect();
-      for (const ver of versions) {
-        collectStorageKeys(ver, releasing);
-        await ctx.db.delete("pageVersions", ver._id);
+    await killAccount(ctx, args.userId);
+    await ctx.scheduler.runAfter(0, internal.account._wipeUserContent, {
+      userId: args.userId,
+      phase: "pages",
+      releasing: [],
+      pass: 0,
+    });
+  },
+});
+
+/**
+ * One batch of a user's content. Each pass deletes at most WIPE_BATCH pages
+ * (with their versions and comments), files, or audit rows, then schedules
+ * the next — so the work is bounded per transaction and unbounded in total.
+ *
+ * Storage keys ride along in `releasing` and are handed to the reclaim once,
+ * at the end: `files._reclaimKeys` walks the workspace to prove them
+ * unreferenced, and doing that per batch would repeat the expensive part
+ * dozens of times. A workspace with more keys than fit in scheduler args
+ * flushes early instead.
+ *
+ * That early flush lets a prove chain run *while* later batches are still
+ * deleting pages. Both directions of that race are safe, and both err the
+ * way this module always errs — toward keeping a file. A page deleted
+ * mid-scan can no longer reference anything; a page not yet deleted still
+ * counts as a referrer, so its key is merely kept until tonight's sweep.
+ * Neither can turn a live reference into a deletion.
+ */
+export const _wipeUserContent = internalMutation({
+  args: {
+    userId: v.id("users"),
+    phase: v.union(
+      v.literal("pages"),
+      v.literal("files"),
+      v.literal("traces"),
+    ),
+    releasing: v.array(v.string()),
+    pass: v.number(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const releasing = new Set(args.releasing);
+    let phase = args.phase;
+    let more = false;
+
+    if (phase === "pages") {
+      const pages = await ctx.db
+        .query("pages")
+        .withIndex("by_owner", (q) => q.eq("ownerId", args.userId))
+        .take(WIPE_BATCH);
+      for (const p of pages) {
+        collectStorageKeys(p, releasing);
+        const versions = await ctx.db
+          .query("pageVersions")
+          .withIndex("by_page", (q) => q.eq("pageId", p._id))
+          .collect(); // bounded by MAX_VERSIONS_PER_PAGE
+        for (const ver of versions) {
+          collectStorageKeys(ver, releasing);
+          await ctx.db.delete("pageVersions", ver._id);
+        }
+        const comments = await ctx.db
+          .query("comments")
+          .withIndex("by_page", (q) => q.eq("pageId", p._id))
+          .collect();
+        for (const c of comments) await ctx.db.delete("comments", c._id);
+        await ctx.db.delete("pages", p._id);
       }
-      const comments = await ctx.db
-        .query("comments")
-        .withIndex("by_page", (q) => q.eq("pageId", p._id))
-        .collect();
-      for (const c of comments) await ctx.db.delete("comments", c._id);
-      await ctx.db.delete("pages", p._id);
-    }
-
-    // Their web-ops audit trail goes with the account.
-    const audits = await ctx.db
-      .query("webAudit")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
-    for (const a of audits) await ctx.db.delete("webAudit", a._id);
-
-    // Shares: both directions — grants they made (their pages are being
-    // deleted) and grants made to them (dangling recipient otherwise).
-    const granted = await ctx.db.query("shares").collect();
-    for (const s of granted) {
-      if (s.ownerId === args.userId || s.userId === args.userId) {
-        await ctx.db.delete("shares", s._id);
+      more = pages.length === WIPE_BATCH;
+      if (!more) phase = "files";
+    } else if (phase === "files") {
+      const files = await ctx.db
+        .query("files")
+        .withIndex("by_owner", (q) => q.eq("ownerId", args.userId))
+        .take(WIPE_BATCH);
+      for (const f of files) {
+        // The blobs are released by the reclaim, never deleted by owner
+        // here: referencing is global, so a page someone else copied an
+        // image into must not lose it when this account closes. Rows
+        // written before `storageKey` existed resolve through storage.
+        const key =
+          f.storageKey ?? storageKeyFromUrl(await ctx.storage.getUrl(f.storageId));
+        if (key) releasing.add(key);
+        await ctx.db.delete("files", f._id);
+      }
+      more = files.length === WIPE_BATCH;
+      if (!more) phase = "traces";
+    } else {
+      const audits = await ctx.db
+        .query("webAudit")
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
+        .take(WIPE_BATCH);
+      for (const a of audits) await ctx.db.delete("webAudit", a._id);
+      if (audits.length === WIPE_BATCH) {
+        more = true;
+      } else {
+        const usage = await ctx.db
+          .query("aiUsage")
+          .withIndex("by_user_month", (q) => q.eq("userId", args.userId))
+          .take(WIPE_BATCH);
+        for (const u of usage) await ctx.db.delete("aiUsage", u._id);
+        more = usage.length === WIPE_BATCH;
       }
     }
 
-    // Files: this user's bookkeeping rows go now, but the *blobs* are only
-    // released through the reclaim below, which consults `referencedKeys`.
-    // Deleting them here by owner would skip that check — and referencing
-    // is deliberately global, not per-owner: someone this user shared a
-    // page with may have copied an image block into their own workspace,
-    // and closing an account must not reach into theirs. Their storage
-    // quota is freed by the row deletion either way.
-    const files = await ctx.db
-      .query("files")
-      .withIndex("by_owner", (q) => q.eq("ownerId", args.userId))
-      .collect();
-    for (const f of files) {
-      // Rows written before `storageKey` existed still resolve through
-      // storage, so the reclaim sees them too.
-      const key =
-        f.storageKey ?? storageKeyFromUrl(await ctx.storage.getUrl(f.storageId));
-      if (key) releasing.add(key);
-      await ctx.db.delete("files", f._id);
+    const done = !more && phase === "traces";
+    const overflowing = releasing.size >= MAX_CARRIED_KEYS;
+    if (done || overflowing) {
+      if (releasing.size > 0) {
+        await ctx.scheduler.runAfter(0, internal.files._reclaimKeys, {
+          keys: [...releasing],
+        });
+      }
+      releasing.clear();
     }
-
-    // AI usage rows.
-    const usage = await ctx.db
-      .query("aiUsage")
-      .withIndex("by_user_month", (q) => q.eq("userId", args.userId))
-      .collect();
-    for (const u of usage) await ctx.db.delete("aiUsage", u._id);
-
-    // Auth records: accounts and sessions by user (refresh tokens die with
-    // their sessions), then the user doc. Redeemed invites stay as audit.
-    const accounts = await ctx.db
-      .query("authAccounts")
-      .withIndex("userIdAndProvider", (q) => q.eq("userId", args.userId))
-      .collect();
-    for (const a of accounts) await ctx.db.delete("authAccounts", a._id);
-    const sessions = await ctx.db
-      .query("authSessions")
-      .withIndex("userId", (q) => q.eq("userId", args.userId))
-      .collect();
-    for (const s of sessions) await ctx.db.delete("authSessions", s._id);
-    await ctx.db.delete("users", args.userId);
-
-    // Anything their pages embedded that the `files` sweep above didn't
-    // own — unregistered or pre-`files`-table blobs — is released here.
-    if (releasing.size > 0) {
-      await ctx.scheduler.runAfter(0, internal.files._reclaimKeys, {
-        keys: [...releasing],
+    if (!done) {
+      await ctx.scheduler.runAfter(0, internal.account._wipeUserContent, {
+        userId: args.userId,
+        phase,
+        releasing: [...releasing],
+        pass: args.pass + 1,
       });
     }
   },
 });
 
+/**
+ * Factory reset, batched for the same reason as wipeUser.
+ *
+ * The auth tables that decide who can sign in (and whether sign-up works
+ * again) are cleared synchronously; everything else drains behind it. The
+ * deployment is therefore usable the moment this returns, rather than after
+ * the last batch.
+ */
 async function wipeEverythingImpl(ctx: MutationCtx) {
-  const tables: TableNames[] = [
-    "pages",
-    "pageVersions",
-    "comments",
-    "shares",
-    "webAudit",
-    "files",
-    "aiUsage",
-    "invites",
-    // Auth state last; order within these doesn't matter — the whole
-    // wipe is one transaction.
-    "authSessions",
-    "authRefreshTokens",
-    "authVerificationCodes",
-    "authVerifiers",
-    "authRateLimits",
-    "authAccounts",
-    "users",
-  ];
-  for (const table of tables) {
-    const docs = await ctx.db.query(table).collect();
-    for (const doc of docs) {
+  for (const table of ["authAccounts", "authSessions", "users"] as const) {
+    for (const doc of await ctx.db.query(table).collect()) {
       await ctx.db.delete(table, doc._id);
     }
   }
-  const files = await ctx.db.system.query("_storage").collect();
-  for (const file of files) {
-    await ctx.storage.delete(file._id);
-  }
+  await ctx.scheduler.runAfter(0, internal.account._wipeEverythingBatch, {
+    table: 0,
+    pass: 0,
+  });
 }
 
-/**
- * Full factory reset. Internal and reachable only through wipeUser's
- * owner-and-alone path (or ad-hoc CLI use in an emergency).
- */
+/** Tables the factory reset drains in the background, in order. */
+const RESET_TABLES: TableNames[] = [
+  "pages",
+  "pageVersions",
+  "comments",
+  "shares",
+  "webAudit",
+  "files",
+  "aiUsage",
+  "invites",
+  "authRefreshTokens",
+  "authVerificationCodes",
+  "authVerifiers",
+  "authRateLimits",
+];
+
+export const _wipeEverythingBatch = internalMutation({
+  args: { table: v.number(), pass: v.number() },
+  handler: async (ctx, args): Promise<void> => {
+    if (args.table >= RESET_TABLES.length) {
+      // Content is gone; the blobs go last and unconditionally — this is a
+      // factory reset, so there is nothing left that could reference them.
+      const objects = await ctx.db.system.query("_storage").take(WIPE_BATCH);
+      for (const o of objects) await ctx.storage.delete(o._id);
+      if (objects.length === WIPE_BATCH) {
+        await ctx.scheduler.runAfter(0, internal.account._wipeEverythingBatch, {
+          table: args.table,
+          pass: args.pass + 1,
+        });
+      }
+      return;
+    }
+    const table = RESET_TABLES[args.table];
+    const docs = await ctx.db.query(table).take(WIPE_BATCH);
+    for (const doc of docs) await ctx.db.delete(table, doc._id);
+    await ctx.scheduler.runAfter(0, internal.account._wipeEverythingBatch, {
+      // A full batch means there may be more in this table; otherwise move on.
+      table: docs.length === WIPE_BATCH ? args.table : args.table + 1,
+      pass: args.pass + 1,
+    });
+  },
+});
+
 export const wipeEverything = internalMutation({
   args: {},
   handler: async (ctx) => {

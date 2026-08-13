@@ -187,7 +187,7 @@ test("a blob still referenced by page history is not reclaimed", async () => {
   ageClock();
   const pass = await tc.mutation(internal.files._sweep, { graceMs: 0 });
   expect(pass.scanned).toBe(1);
-  expect(pass.deleted).toBe(0);
+  await settle(tc);
   expect(await storedObjects(tc)).toBe(1);
 
   // Deleting the page takes the history with it — now it's free.
@@ -209,7 +209,7 @@ test("the sweep never touches a blob a live page references", async () => {
   ageClock();
   const result = await tc.mutation(internal.files._sweep, { graceMs: 0 });
   expect(result.scanned).toBe(1);
-  expect(result.deleted).toBe(0);
+  await settle(tc);
   expect(await storedObjects(tc)).toBe(1);
 });
 
@@ -250,12 +250,13 @@ test("an abandoned upload is swept once it is past the grace period", async () =
   // Inside the grace window it is protected: a just-uploaded file has no
   // referrer yet, and reaping it would break the save that's about to land.
   const guarded = await tc.mutation(internal.files._sweep, {});
-  expect(guarded.deleted).toBe(0);
+  expect(guarded.candidates).toBe(0); // nothing even nominated
+  await settle(tc);
   expect(await storedObjects(tc)).toBe(1);
 
   ageClock();
-  const swept = await tc.mutation(internal.files._sweep, { graceMs: 0 });
-  expect(swept.deleted).toBe(1);
+  await tc.mutation(internal.files._sweep, { graceMs: 0 });
+  await settle(tc);
   expect(await storedObjects(tc)).toBe(0);
   expect(await fileRows(tc)).toBe(0);
 });
@@ -271,8 +272,8 @@ test("the sweep reclaims blobs that predate the files table", async () => {
   expect(await fileRows(tc)).toBe(0);
 
   ageClock();
-  const swept = await tc.mutation(internal.files._sweep, { graceMs: 0 });
-  expect(swept.deleted).toBe(1);
+  await tc.mutation(internal.files._sweep, { graceMs: 0 });
+  await settle(tc);
   expect(await storedObjects(tc)).toBe(0);
 });
 
@@ -284,9 +285,10 @@ test("dryRun reports what it would remove without removing it", async () => {
     graceMs: 0,
     dryRun: true,
   });
-  expect(report.deleted).toBe(1);
-  expect(report.bytes).toBeGreaterThan(0);
+  expect(report.candidates).toBe(1);
+  await settle(tc);
   expect(await storedObjects(tc)).toBe(1); // still there
+  expect(await fileRows(tc)).toBe(1);
 });
 
 test("a backlog larger than one pass finishes without waiting for tomorrow", async () => {
@@ -304,11 +306,9 @@ test("a backlog larger than one pass finishes without waiting for tomorrow", asy
 
   ageClock();
   const first = await tc.mutation(internal.files._sweep, { graceMs: 0 });
-  expect(first.deleted).toBe(200);
-  expect(first.done).toBe(false);
-  expect(first.continued).toBe(true); // scheduled its own continuation
-  expect(await storedObjects(tc)).toBe(BACKLOG - 200);
-
+  expect(first.candidates).toBe(BACKLOG); // all nominated in one scan
+  // Destroying is capped per pass and continues itself, so the whole
+  // backlog clears within this chain rather than over 2 nightly crons.
   await settle(tc);
   expect(await storedObjects(tc)).toBe(0);
 });
@@ -328,8 +328,7 @@ test("a dry run never chains — it would recurse forever", async () => {
     graceMs: 0,
     dryRun: true,
   });
-  expect(report.done).toBe(false);
-  expect(report.continued).toBe(false);
+  expect(report.candidates).toBe(250);
   await settle(tc);
   expect(await storedObjects(tc)).toBe(250); // untouched
 });
@@ -394,7 +393,9 @@ test("reclaiming the same keys twice is harmless", async () => {
   // A duplicate schedule (retry, replay) must not throw.
   await expect(
     tc.mutation(internal.files._reclaimKeys, { keys: [key] }),
-  ).resolves.toEqual({ deleted: 0 });
+  ).resolves.toEqual({ candidates: 1 });
+  await settle(tc);
+  expect(await storedObjects(tc)).toBe(0);
 });
 
 /* ------------------- the vault ciphertext blind spot ---------------- */
@@ -426,8 +427,8 @@ test("a blob is not swept while vault ciphertext could be referencing it", async
   });
 
   vi.setSystemTime(new Date("2026-08-14T00:00:00Z"));
-  const guarded = await tc.mutation(internal.files._sweep, { graceMs: 0 });
-  expect(guarded.deleted).toBe(0);
+  await tc.mutation(internal.files._sweep, { graceMs: 0 });
+  await settle(tc);
   expect(await storedObjects(tc)).toBe(1);
 
   // The targeted path consults the same scan and must hold the same line.
@@ -436,6 +437,7 @@ test("a blob is not swept while vault ciphertext could be referencing it", async
     return row.storageKey!;
   });
   await tc.mutation(internal.files._reclaimKeys, { keys: [key] });
+  await settle(tc);
   expect(await storedObjects(tc)).toBe(1);
 
   // Once no unreadable vault content remains, the orphan is reclaimable
@@ -444,8 +446,8 @@ test("a blob is not swept while vault ciphertext could be referencing it", async
     const page = (await ctx.db.query("pages").collect())[0];
     await ctx.db.delete("pages", page._id);
   });
-  const swept = await tc.mutation(internal.files._sweep, { graceMs: 0 });
-  expect(swept.deleted).toBe(1);
+  await tc.mutation(internal.files._sweep, { graceMs: 0 });
+  await settle(tc);
   expect(await storedObjects(tc)).toBe(0);
   expect(storageId).toBeTruthy();
 });
@@ -470,7 +472,83 @@ test("vault ciphertext does not protect blobs uploaded after the ban", async () 
   vi.setSystemTime(new Date("2026-09-01T00:00:00Z"));
   await upload(tc, as, "after-the-ban");
   ageClock();
-  const swept = await tc.mutation(internal.files._sweep, { graceMs: 0 });
-  expect(swept.deleted).toBe(1);
+  await tc.mutation(internal.files._sweep, { graceMs: 0 });
+  await settle(tc);
   expect(await storedObjects(tc)).toBe(0);
+});
+
+/* ------------------ batched scanning (the read limit) --------------- */
+
+test("a reference in the LAST batch still saves the blob", async () => {
+  // The whole reason the scan is chained: proving a key unreferenced means
+  // reading every page, and one transaction can't. If a batch boundary is
+  // mishandled — a cursor that skips ties, a decision taken before the walk
+  // finishes — the symptom is exactly this: a live image deleted because
+  // the page referencing it was never reached. Putting the only reference
+  // in the final batch is what makes that failure visible.
+  const { tc, as } = await ownerBackend();
+  const { url } = await upload(tc, as, "referenced-late");
+  const PAGES = 60; // > SCAN_BATCH (50), so at least two passes
+
+  let last: string | null = null;
+  for (let i = 0; i < PAGES; i++) {
+    last = await as.mutation(api.pages.create, { type: "doc", title: `P${i}` });
+  }
+  await as.mutation(api.pages.updateContent, {
+    id: last as never,
+    content: imageBlock(url),
+    text: "",
+  });
+  expect(await storedObjects(tc)).toBe(1);
+
+  ageClock();
+  await tc.mutation(internal.files._sweep, { graceMs: 0 });
+  await settle(tc);
+  expect(await storedObjects(tc)).toBe(1); // survived the batch boundary
+});
+
+test("the batched scan still reclaims once the last reference is gone", async () => {
+  // The other half: batching must not make the sweep so timid it never
+  // deletes anything. Same shape, reference removed.
+  const { tc, as } = await ownerBackend();
+  const { url } = await upload(tc, as, "briefly-referenced");
+  let last: string | null = null;
+  for (let i = 0; i < 60; i++) {
+    last = await as.mutation(api.pages.create, { type: "doc", title: `P${i}` });
+  }
+  await as.mutation(api.pages.updateContent, {
+    id: last as never,
+    content: imageBlock(url),
+    text: "",
+  });
+  await as.mutation(api.pages.trash, { id: last as never });
+  await as.mutation(api.pages.deleteForever, { id: last as never });
+  await settle(tc);
+  expect(await storedObjects(tc)).toBe(0);
+});
+
+test("a reference held only by a version in a later batch is honoured", async () => {
+  // pageVersions is walked as a second phase after pages. A snapshot deep
+  // in that table is the same hazard one table over.
+  const { tc, as } = await ownerBackend();
+  const { url } = await upload(tc, as, "in-history");
+  const page = await as.mutation(api.pages.create, { type: "doc", title: "Edited" });
+  await as.mutation(api.pages.updateContent, { id: page, content: imageBlock(url), text: "" });
+  // Push the image out of the live page; only the snapshot still holds it.
+  ageClock(11 * 60 * 1000);
+  await as.mutation(api.pages.updateContent, {
+    id: page,
+    content: [{ type: "paragraph", content: [] }],
+    text: "",
+  });
+  // Bulk up both tables so the snapshot isn't in the first batch.
+  for (let i = 0; i < 60; i++) {
+    const p = await as.mutation(api.pages.create, { type: "doc", title: `P${i}` });
+    await as.mutation(api.pages.updateContent, { id: p, content: [], text: "x" });
+  }
+
+  ageClock();
+  await tc.mutation(internal.files._sweep, { graceMs: 0 });
+  await settle(tc);
+  expect(await storedObjects(tc)).toBe(1); // history must survive a restore
 });

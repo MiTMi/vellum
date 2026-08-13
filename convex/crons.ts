@@ -19,9 +19,11 @@ import { internal } from "./_generated/api";
  */
 const crons = cronJobs();
 
-crons.daily(
+// `crons.cron`, not the `crons.daily` helper: convex/_generated/ai/
+// guidelines.md allows only `interval` and `cron`.
+crons.cron(
   "reclaim unreferenced files",
-  { hourUTC: 4, minuteUTC: 0 },
+  "0 4 * * *", // 04:00 UTC daily
   internal.files._sweep,
   {},
 );

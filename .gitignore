@@ -8,3 +8,10 @@ release/
 .convex/
 _to_delete/
 backup-*.zip
+
+# Agent skills installed locally by tooling (`npx convex ai-files update`,
+# skill bundles). Kept on this machine, not part of the app — the handful
+# already committed stay tracked, since .gitignore doesn't apply to those.
+.claude/skills/
+.agents/skills/
+.codex/

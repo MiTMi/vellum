@@ -1053,6 +1053,10 @@ test("vault: duplication is fenced and never copies a slug", async () => {
 /* ---------------------------------------------------------------- account */
 
 test("wipeEverything erases pages, sidecars, and auth state", async () => {
+  // The reset now drains in scheduled batches, so the test has to let them
+  // run — and convex-test only advances scheduled work under fake timers
+  // installed before the mutation.
+  vi.useFakeTimers();
   const ctx = await t();
   const pageId = await ctx.mutation(api.pages.create, { type: "doc", title: "Doomed" });
   await ctx.mutation(api.pages.updateContent, {
@@ -1076,6 +1080,8 @@ test("wipeEverything erases pages, sidecars, and auth state", async () => {
     await c.db.insert("users", { email: "owner@example.com" });
   });
   await ctx.mutation(internal.account.wipeEverything, {});
+  // Auth state dies in the mutation, content drains in scheduled batches.
+  await ctx.finishAllScheduledFunctions(vi.runAllTimers);
   await ctx.run(async (c) => {
     expect(await c.db.query("pages").collect()).toHaveLength(0);
     expect(await c.db.query("pageVersions").collect()).toHaveLength(0);
@@ -1084,6 +1090,7 @@ test("wipeEverything erases pages, sidecars, and auth state", async () => {
     expect(await c.db.query("authAccounts").collect()).toHaveLength(0);
     expect(await c.db.query("authSessions").collect()).toHaveLength(0);
   });
+  vi.useRealTimers();
 });
 
 test("account.me requires auth and reports the signed-in user's own email", async () => {

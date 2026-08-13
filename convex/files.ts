@@ -165,19 +165,24 @@ export const getFileUrl = mutation({
  */
 export const SWEEP_GRACE_MS = 24 * 60 * 60 * 1000;
 
-/** Ceiling on one sweep pass, so a pathological workspace can't blow the
- *  mutation's read limit. The cron re-runs, so progress still converges. */
+/** Ceiling on one storage scan, so a pathological workspace can't blow the
+ *  mutation's read limit. The sweep re-runs, so progress still converges. */
 const MAX_STORAGE_SCAN = 2000;
-const MAX_DELETES_PER_PASS = 200;
 
 /**
- * Every storage key any surviving document still points at.
+ * Every storage key any surviving document still points at, in one pass.
  *
  * Scans live pages AND `pageVersions` — history snapshots hold older
  * content whose images must keep working through a restore. Deliberately
  * global rather than per-owner: if one workspace embeds another's URL,
- * deleting the first must not break the second. Correctness over speed,
- * and the page quota bounds the work.
+ * deleting the first must not break the second.
+ *
+ * **Unbounded on purpose, and therefore CLI-only.** Two `.collect()`s over
+ * whole tables blow a transaction's read limit somewhere past a couple of
+ * thousand documents, so the reclaim paths do NOT use this — they walk the
+ * same two tables in scheduled batches (`_prove` below). It survives for
+ * `admin:storageReport`, which is an owner CLI query run by hand on a
+ * workspace whose size the owner already knows.
  */
 export async function scanReferences(ctx: QueryCtx): Promise<ReferenceScan> {
   const keys = new Set<string>();
@@ -220,8 +225,8 @@ export async function referencedKeys(ctx: QueryCtx): Promise<Set<string>> {
  * grows. Lifting the vault upload ban means encrypting file bytes
  * client-side, at which point this needs revisiting rather than deleting.
  */
-function opaqueToScan(scan: ReferenceScan, createdAt: number): boolean {
-  return scan.opaqueVault && createdAt < VAULT_UPLOADS_BLOCKED_MS;
+function opaqueToScan(opaqueVault: boolean, createdAt: number): boolean {
+  return opaqueVault && createdAt < VAULT_UPLOADS_BLOCKED_MS;
 }
 
 /** Drop a blob and its bookkeeping row together. */
@@ -237,28 +242,190 @@ async function destroy(
 }
 
 /**
+ * ## Why reclamation is a chain of scheduled batches
+ *
+ * Proving a key unreferenced means reading every page and every version —
+ * a reference can be anywhere, which is the whole point of the
+ * field-agnostic walker in `lib/fileRefs.ts`. Doing that in one
+ * transaction (two `.collect()`s) works for a small workspace and then
+ * stops working: past a few thousand documents it exceeds a mutation's
+ * read limit and throws. Deleting a page would still succeed — the
+ * reclaim is scheduled separately — but the bytes would never be freed
+ * again, silently.
+ *
+ * So the scan is split across scheduled passes carrying their state in
+ * arguments: a candidate list that only ever shrinks, the table and cursor
+ * reached so far, and whether unreadable vault content has been seen. The
+ * decisive property is preserved exactly: **nothing is destroyed until
+ * both tables have been walked to the end**, so a delete is never made on
+ * partial information. A pass that finds every candidate referenced stops
+ * the chain early.
+ *
+ * Accepted cost, stated rather than engineered around: the single
+ * transaction was serializable, and a chain is not. For the seconds the
+ * chain runs there is a window where someone could paste a candidate's raw
+ * `/api/storage/…` URL into a page that has already been scanned, and the
+ * final pass would delete a now-live reference. That requires pasting the
+ * raw URL of a file deleted moments earlier; not worth a locking scheme.
+ */
+
+/** Documents read per pass. Bounded by BYTES, not count — page content can
+ *  be hundreds of KB, so the 8 MiB read limit binds long before any
+ *  document ceiling would. */
+const SCAN_BATCH = 50;
+/** Blobs destroyed per pass, and the bound on the whole chain. */
+const MAX_DELETES_PER_PASS = 200;
+const MAX_CHAIN_PASSES = 200;
+
+/**
  * Reclaim specific storage keys released by a deletion.
  *
- * Scheduled by `pages.deleteForever` / `pages.emptyTrash`. A key survives
- * if ANY remaining page or version still references it — which is what
- * makes this safe for duplicated pages, where two docs share one blob.
+ * Scheduled by `pages.deleteForever` / `pages.emptyTrash` /
+ * `account.wipeUser`. A key survives if ANY remaining page or version
+ * still references it — which is what makes this safe for duplicated
+ * pages, where two docs share one blob.
+ *
+ * Needs no grace period, unlike `_sweep`: the candidates come from content
+ * that was just deleted, never from scanning storage, so an upload still
+ * in flight for another page cannot be caught by it.
  */
 export const _reclaimKeys = internalMutation({
   args: { keys: v.array(v.string()) },
-  handler: async (ctx, args): Promise<{ deleted: number }> => {
+  handler: async (ctx, args): Promise<{ candidates: number }> => {
     const candidates = [...new Set(args.keys)];
-    if (candidates.length === 0) return { deleted: 0 };
+    if (candidates.length === 0) return { candidates: 0 };
+    await ctx.scheduler.runAfter(0, internal.files._prove, {
+      candidates,
+      phase: "pages",
+      cursor: null,
+      opaqueVault: false,
+      pass: 0,
+    });
+    return { candidates: candidates.length };
+  },
+});
 
-    const scan = await scanReferences(ctx);
-    const orphaned = candidates.filter((k) => !scan.keys.has(k));
-    if (orphaned.length === 0) return { deleted: 0 };
+/**
+ * One batch of the mark phase: narrow the candidate list against a slice of
+ * `pages`, then of `pageVersions`, then destroy whatever is left.
+ *
+ * `.paginate()` rather than a hand-rolled `_creationTime` cursor: several
+ * documents can share a creation timestamp (trivially so under the test
+ * suite's frozen clock), and a strict-greater-than cursor would skip the
+ * ties — silently leaving pages unscanned, which is precisely how a live
+ * file gets deleted.
+ */
+export const _prove = internalMutation({
+  args: {
+    candidates: v.array(v.string()),
+    phase: v.union(v.literal("pages"), v.literal("versions")),
+    cursor: v.union(v.string(), v.null()),
+    opaqueVault: v.boolean(),
+    dryRun: v.optional(v.boolean()),
+    /** Set by `_sweep` when its storage scan filled up, so another sweep
+     *  is started once this chain has finished clearing the backlog. */
+    resweepGraceMs: v.optional(v.number()),
+    resweep: v.optional(v.boolean()),
+    pass: v.number(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    if (args.candidates.length === 0) return;
+    if (args.pass >= MAX_CHAIN_PASSES) {
+      // Out of budget with the scan incomplete: keeping the files is the
+      // only safe end, and the daily cron will try again.
+      console.warn(
+        `files._prove hit ${MAX_CHAIN_PASSES} passes with the scan incomplete — nothing deleted.`,
+      );
+      return;
+    }
 
+    const remaining = new Set(args.candidates);
+    let opaqueVault = args.opaqueVault;
+    const found = new Set<string>();
+
+    const batch =
+      args.phase === "pages"
+        ? await ctx.db
+            .query("pages")
+            .paginate({ numItems: SCAN_BATCH, cursor: args.cursor })
+        : await ctx.db
+            .query("pageVersions")
+            .paginate({ numItems: SCAN_BATCH, cursor: args.cursor });
+
+    for (const doc of batch.page) {
+      // The whole document, not just `content`: covers, database row
+      // `props`, bookmark/embed props and anything a future block adds.
+      collectStorageKeys(doc, found);
+      if (isOpaqueVaultContent(doc)) opaqueVault = true;
+    }
+    for (const key of found) remaining.delete(key);
+
+    // Every candidate turned out to be referenced — nothing to delete, and
+    // no reason to read the rest of the workspace.
+    if (remaining.size === 0) return;
+
+    const next = { ...args, candidates: [...remaining], opaqueVault, pass: args.pass + 1 };
+    if (!batch.isDone) {
+      await ctx.scheduler.runAfter(0, internal.files._prove, {
+        ...next,
+        cursor: batch.continueCursor,
+      });
+      return;
+    }
+    if (args.phase === "pages") {
+      await ctx.scheduler.runAfter(0, internal.files._prove, {
+        ...next,
+        phase: "versions",
+        cursor: null,
+      });
+      return;
+    }
+
+    // Both tables walked to the end: these keys are genuinely unreferenced.
+    await ctx.scheduler.runAfter(0, internal.files._destroy, {
+      keys: [...remaining],
+      opaqueVault,
+      dryRun: args.dryRun,
+      resweep: args.resweep,
+      resweepGraceMs: args.resweepGraceMs,
+      pass: args.pass + 1,
+    });
+  },
+});
+
+/**
+ * The sweep half: destroy keys a completed scan proved unreferenced.
+ *
+ * Capped per pass and continued, so a large backlog clears in minutes
+ * rather than one nightly cron per 200 files. Re-proving is deliberately
+ * NOT repeated for the continuation — the chain already proved this exact
+ * set, and re-reading both tables per 200 deletions is what this whole
+ * restructure exists to avoid.
+ */
+export const _destroy = internalMutation({
+  args: {
+    keys: v.array(v.string()),
+    opaqueVault: v.boolean(),
+    dryRun: v.optional(v.boolean()),
+    resweep: v.optional(v.boolean()),
+    resweepGraceMs: v.optional(v.number()),
+    pass: v.number(),
+  },
+  handler: async (ctx, args): Promise<{ deleted: number; bytes: number }> => {
     let deleted = 0;
-    // Registered files resolve through the index; anything left over
-    // (uploads predating the `files` table) needs storage itself, which is
-    // scanned once and only if still needed.
+    let bytes = 0;
+    /** Ran out of per-pass budget — must be carried to a continuation, or
+     *  the tail of a backlog is silently abandoned. */
+    const leftover: string[] = [];
+    /** Uploads predating the `files` table resolve only through storage,
+     *  which is scanned once and only if still needed. */
     const unresolved: string[] = [];
-    for (const key of orphaned) {
+
+    for (const key of args.keys) {
+      if (deleted >= MAX_DELETES_PER_PASS) {
+        leftover.push(key);
+        continue;
+      }
       const rows = await ctx.db
         .query("files")
         .withIndex("by_key", (q) => q.eq("storageKey", key))
@@ -268,124 +435,121 @@ export const _reclaimKeys = internalMutation({
         continue;
       }
       // Old enough to be referenced from inside vault ciphertext the scan
-      // can't read — "not in the set" doesn't prove unreferenced here.
-      if (opaqueToScan(scan, rows[0].createdAt)) continue;
-      await destroy(
-        ctx,
-        rows[0].storageId,
-        rows.map((r) => r._id),
-      );
+      // can't read — "not in the set" doesn't prove unreferenced here. A
+      // final decision, so it never returns as leftover.
+      if (opaqueToScan(args.opaqueVault, rows[0].createdAt)) continue;
+      bytes += rows.reduce((n, r) => n + r.size, 0);
+      if (!args.dryRun) {
+        await destroy(
+          ctx,
+          rows[0].storageId,
+          rows.map((r) => r._id),
+        );
+      }
       deleted++;
     }
 
     if (unresolved.length > 0) {
-      const wanted = new Set(unresolved);
-      const objects = await ctx.db.system
-        .query("_storage")
-        .take(MAX_STORAGE_SCAN);
-      for (const object of objects) {
-        const key = storageKeyFromUrl(await ctx.storage.getUrl(object._id));
-        if (!key || !wanted.has(key)) continue;
-        if (opaqueToScan(scan, object._creationTime)) continue;
-        await destroy(ctx, object._id, []);
-        deleted++;
+      if (deleted >= MAX_DELETES_PER_PASS) {
+        // No budget left to even look them up.
+        leftover.push(...unresolved);
+      } else {
+        const wanted = new Set(unresolved);
+        const objects = await ctx.db.system
+          .query("_storage")
+          .take(MAX_STORAGE_SCAN);
+        for (const object of objects) {
+          const key = storageKeyFromUrl(await ctx.storage.getUrl(object._id));
+          if (!key || !wanted.has(key)) continue;
+          if (deleted >= MAX_DELETES_PER_PASS) {
+            leftover.push(key);
+            continue;
+          }
+          if (opaqueToScan(args.opaqueVault, object._creationTime)) continue;
+          bytes += object.size ?? 0;
+          if (!args.dryRun) await destroy(ctx, object._id, []);
+          deleted++;
+        }
+        // Anything in `unresolved` that matched no storage object has no
+        // blob to delete — a finished decision, not a leftover.
       }
     }
 
-    return { deleted };
+    if (args.dryRun) {
+      console.log(
+        `files: dry run — would remove ${deleted} blob(s), ${Math.round(bytes / 1024)} KB.`,
+      );
+    }
+
+    // A dry run never continues: it deletes nothing, so the next pass would
+    // see the identical set and recurse forever.
+    if (leftover.length > 0 && !args.dryRun && args.pass < MAX_CHAIN_PASSES) {
+      await ctx.scheduler.runAfter(0, internal.files._destroy, {
+        ...args,
+        keys: leftover,
+        pass: args.pass + 1,
+      });
+    } else if (args.resweep && !args.dryRun) {
+      // The storage scan that produced these candidates filled its cap, so
+      // there is more to look at than one sweep could see.
+      await ctx.scheduler.runAfter(0, internal.files._sweep, {
+        graceMs: args.resweepGraceMs,
+      });
+    }
+    return { deleted, bytes };
   },
 });
 
 /**
- * Global mark-and-sweep: delete every stored blob no document references.
+ * Global mark-and-sweep: the safety net for what the targeted path
+ * structurally cannot see — uploads abandoned before their block was ever
+ * saved, blobs predating the `files` table, and references freed when a
+ * snapshot ages out past MAX_VERSIONS_PER_PAGE.
  *
- * The safety net, run daily by cron and invocable by the owner. `graceMs`
- * is overridable only so tests can exercise the delete path without
- * waiting a day — it is internal, so no client can reach it.
+ * This half only *nominates* candidates: every blob older than the grace
+ * period. Proving them unreferenced and destroying them is the shared
+ * `_prove` → `_destroy` chain, so a sweep reads only storage and never
+ * walks a whole workspace in one transaction.
  *
- * A pass is capped (MAX_DELETES_PER_PASS) to stay inside one mutation's
- * limits, so it **continues itself** when it fills that cap rather than
- * waiting for tomorrow's cron: a backlog of thousands must not take
- * thousands of days to clear. Progress is guaranteed because every pass
- * removes rows from `_storage`, and `pass` bounds the chain regardless.
- * A dry run never continues — nothing is deleted, so the next pass would
- * see the identical set and recurse forever.
+ * `graceMs` is overridable only so tests can exercise the delete path
+ * without waiting a day — internal, so no client can reach it. `dryRun`
+ * runs the whole chain and destroys nothing, reporting to the log.
  */
-const MAX_SWEEP_PASSES = 25;
-
 export const _sweep = internalMutation({
   args: {
     graceMs: v.optional(v.number()),
     dryRun: v.optional(v.boolean()),
-    pass: v.optional(v.number()),
   },
   handler: async (
     ctx,
     args,
-  ): Promise<{
-    scanned: number;
-    deleted: number;
-    bytes: number;
-    done: boolean;
-    continued: boolean;
-  }> => {
+  ): Promise<{ scanned: number; candidates: number }> => {
     const grace = args.graceMs ?? SWEEP_GRACE_MS;
     const cutoff = Date.now() - grace;
-    const scan = await scanReferences(ctx);
 
     const objects = await ctx.db.system.query("_storage").take(MAX_STORAGE_SCAN);
-    let deleted = 0;
-    let bytes = 0;
-
+    const candidates = new Set<string>();
     for (const object of objects) {
-      if (deleted >= MAX_DELETES_PER_PASS) break;
       if (object._creationTime >= cutoff) continue; // still in its grace window
       const key = storageKeyFromUrl(await ctx.storage.getUrl(object._id));
-      // A blob whose URL we can't resolve is never deleted — unknown means
-      // keep, always.
-      if (!key || scan.keys.has(key)) continue;
-
-      const rows = await ctx.db
-        .query("files")
-        .withIndex("by_key", (q) => q.eq("storageKey", key))
-        .collect();
-      // Rows written before `storageKey` existed won't match by key; find
-      // them by storageId so their bookkeeping dies with the blob.
-      const byId = await ctx.db
-        .query("files")
-        .withIndex("by_storageId", (q) => q.eq("storageId", object._id))
-        .collect();
-      const rowIds = [...new Set([...rows, ...byId].map((r) => r._id))];
-
-      // Old enough to be referenced from inside vault ciphertext the mark
-      // phase can't read? Then "not in the set" doesn't prove unreferenced.
-      // The upload's own record of when it happened is preferred over the
-      // platform's — it is what `_reclaimKeys` compares, and the two paths
-      // must not disagree about the same blob.
-      const uploadedAt = [...rows, ...byId][0]?.createdAt ?? object._creationTime;
-      if (opaqueToScan(scan, uploadedAt)) continue;
-
-      bytes += object.size ?? 0;
-      if (!args.dryRun) await destroy(ctx, object._id, rowIds);
-      deleted++;
+      // A blob whose URL we can't resolve is never nominated — unknown
+      // means keep, always.
+      if (key) candidates.add(key);
     }
+    if (candidates.size === 0) return { scanned: objects.length, candidates: 0 };
 
-    const pass = args.pass ?? 0;
-    const done = deleted < MAX_DELETES_PER_PASS;
-    const continued = !done && !args.dryRun && pass + 1 < MAX_SWEEP_PASSES;
-    if (continued) {
-      await ctx.scheduler.runAfter(0, internal.files._sweep, {
-        graceMs: args.graceMs,
-        pass: pass + 1,
-      });
-    } else if (!done && !args.dryRun) {
-      // Hit the chain bound with work still outstanding: the cron picks it
-      // up tomorrow, but say so rather than reporting a clean finish.
-      console.warn(
-        `files._sweep stopped after ${MAX_SWEEP_PASSES} passes with deletions still pending.`,
-      );
-    }
-
-    return { scanned: objects.length, deleted, bytes, done, continued };
+    await ctx.scheduler.runAfter(0, internal.files._prove, {
+      candidates: [...candidates],
+      phase: "pages",
+      cursor: null,
+      opaqueVault: false,
+      dryRun: args.dryRun,
+      // More blobs than one scan could see: go round again once this chain
+      // has finished, rather than waiting for tomorrow's cron.
+      resweep: objects.length >= MAX_STORAGE_SCAN,
+      resweepGraceMs: args.graceMs,
+      pass: 0,
+    });
+    return { scanned: objects.length, candidates: candidates.size };
   },
 });

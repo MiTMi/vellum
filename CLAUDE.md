@@ -312,28 +312,56 @@ Deleting a page now deletes its bytes. It did not until this landed:
 `deleteForever`/`emptyTrash` dropped rows and sidecars and **nothing ever
 called `ctx.storage.delete`**, so every upload outlived its page forever,
 invisible to the quota (two such orphans were found on prod — and on dev,
-which holds the same pre-migration copy). Mark-and-sweep, in two halves:
+which holds the same pre-migration copy). Mark-and-sweep. Two entry points
+nominate candidate keys; a shared chain proves and destroys them:
 
-- **`files._reclaimKeys` — targeted, immediate.** A deletion knows which
-  storage keys it released, so `deleteForever` / `emptyTrash` /
-  `account.wipeUser` collect them (from the pages **and their
-  `pageVersions`**) and `scheduler.runAfter(0, …)` hands them over. It
-  needs **no grace period**, and that is a load-bearing distinction: the
-  key set comes from deleted content, never from scanning storage, so an
-  upload still in flight for another page can't be caught by it.
+- **`files._reclaimKeys` — targeted.** A deletion knows which storage keys
+  it released, so `deleteForever` / `emptyTrash` / `account.wipeUser`
+  collect them (from the pages **and their `pageVersions`**) and
+  `scheduler.runAfter(0, …)` hands them over. It needs **no grace
+  period**, and that is a load-bearing distinction: the key set comes from
+  deleted content, never from scanning storage, so an upload still in
+  flight for another page can't be caught by it.
 - **`files._sweep` — global, grace-guarded.** Daily cron (`convex/crons.ts`,
-  04:00 UTC) for what the targeted path structurally cannot see: uploads
+  `crons.cron("0 4 * * *", …)` — the guidelines forbid the `crons.daily`
+  helper) for what the targeted path structurally cannot see: uploads
   abandoned before their block was saved, blobs predating the `files`
   table, and references freed when a snapshot ages out past
   `MAX_VERSIONS_PER_PAGE`. Here `SWEEP_GRACE_MS` (24 h) **is** required —
   a brand-new upload legitimately has no referrer yet.
 
+**Both halves only nominate candidates** (2026-08-13). Proving a key
+unreferenced means reading every page and every version, which no single
+transaction can do past a few thousand documents — the old one-transaction
+scan worked on a small workspace and would then have started throwing,
+leaving bytes unreclaimable forever and silently. So the mark phase is a
+chain of scheduled batches carrying its state in arguments:
+`_reclaimKeys` / `_sweep` → **`_prove`** (paginated over `pages`, then
+`pageVersions`) → **`_destroy`**. The decisive property is unchanged:
+**nothing is destroyed until both tables have been walked to the end**, so
+a delete is never made on partial information; a pass that finds every
+candidate referenced stops the chain early. Consequences: `_sweep` returns
+`{scanned, candidates}` and *not* a deletion count, so
+`npx convex run files:_sweep '{}' --prod` returns before the deleting
+finishes (check with `admin:storageReport` after), and tests assert state
+after `finishAllScheduledFunctions` rather than a return value. Accepted
+cost, stated rather than engineered around: a chain isn't serializable, so
+there is a seconds-wide window in which pasting a candidate's raw
+`/api/storage/…` URL into an already-scanned page would lose it.
+`scanReferences` survives unbatched for `admin:storageReport` only — an
+owner CLI query, run by hand.
+
 Invariants, all of which have tests that fail loudly if broken:
 
-- **A file is kept unless proved unreferenced.** `referencedKeys` scans
-  live pages *and* `pageVersions` (history must survive a restore), and is
+- **A file is kept unless proved unreferenced.** The scan covers live
+  pages *and* `pageVersions` (history must survive a restore), and is
   deliberately **global**, not per-owner — one workspace embedding
-  another's URL must not lose it when the first is deleted.
+  another's URL must not lose it when the first is deleted. The batch
+  boundary is part of this invariant: `tests/fileReclaim.test.ts` puts the
+  only reference in the *last* batch, which is the shape of every
+  scanning bug (`.paginate()` rather than a `_creationTime` cursor,
+  because ties would be skipped — trivially so under the suite's frozen
+  clock).
 - **Match on the key, never the URL.** `lib/fileRefs.ts` compares the
   `/api/storage/<key>` segment, so `migrate.ts` rewriting the deployment
   host can't strand every file.
@@ -493,10 +521,20 @@ credential removal, Vault lock), Appearance (theme), and a danger zone
   the sign-up policy) and the client re-seals Touch ID credentials after a
   successful change so the biometric button doesn't go stale.
 - `deleteAccount` → `wipeEverything` (**must stay `internalMutation`**):
-  one transaction deleting pages, pageVersions, comments, every `_storage`
-  file, and all auth tables — after it, the deployment is factory-fresh
-  and the sign-up flow works again. The client then clears the Touch ID
-  keychain entry, the session flag, and the IndexedDB replica.
+  deletes pages, pageVersions, comments, every `_storage` file and all
+  auth tables — after it, the deployment is factory-fresh and the sign-up
+  flow works again. The client then clears the Touch ID keychain entry,
+  the session flag, and the IndexedDB replica.
+- **The erase is split, deliberately** (2026-08-13): the auth records and
+  the `users` row go in the caller's transaction, so the account stops
+  working the moment the call returns; the *content* drains in scheduled
+  batches of 50 (`_wipeUserContent`, `_wipeEverythingBatch`). One
+  transaction over every page, version and comment a user owned stops
+  working once a workspace is big enough, and the failure mode was a user
+  unable to delete their account at all. `shares` gained a `by_owner`
+  index so both directions of a grant resolve without scanning the table.
+  Tests must `finishAllScheduledFunctions` — and convex-test only advances
+  scheduled work under fake timers installed **before** the mutation.
 - Account calls flow through `useAccount()` on the DataApi (offline mode:
   `convexClient()` + connected gate; mock: `available: false`, Settings
   shows a demo note and hides the auth-provider-dependent sections — they
@@ -1158,10 +1196,11 @@ persistence.
   deployment; defaults to whatever `.env.local` names, i.e. dev (vite on port
   5201, no mock flag; push functions first with `npx convex dev --once`).
   Sign-in is required: pass the owner's password as `VELLUM_E2E_PASSWORD`.
-- **`npx vitest run` reports one failing *file*, `_to_delete/pages.test.ts`.**
-  It's a stale copy in a gitignored scratch folder whose `./_generated/api`
-  import can't resolve. Pre-existing and unrelated — don't chase it. The real
-  count is what matters: all tests in `tests/` pass.
+- `npx vitest run` is clean with no path filter. It used to report one
+  failing *file*, the stale `_to_delete/pages.test.ts` scratch copy whose
+  `./_generated/api` import can't resolve; `test.exclude` in
+  `vite.config.ts` now skips that folder, so a red run means a real
+  failure again (2026-08-13 — every fresh audit had been re-reporting it).
 
 ### Convex CLI gotchas
 

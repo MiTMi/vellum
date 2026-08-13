@@ -1,4 +1,5 @@
-import { defineConfig, Plugin } from "vite";
+import { Plugin } from "vite";
+import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -107,6 +108,13 @@ export default defineConfig({
   // (The one bad case, "/app/", is ruled out by trailingSlash:false in
   // vercel.json — and by the dev alias above.)
   base: "./",
+  test: {
+    // `_to_delete/` is a gitignored scratch copy whose stale
+    // `./_generated/api` import can't resolve. Vitest discovered it and
+    // failed the run, so `npx vitest run` reported a failure that had
+    // nothing to do with the code — and every fresh audit re-reported it.
+    exclude: [...configDefaults.exclude, "_to_delete/**"],
+  },
   server: {
     port: 5173,
     strictPort: true,

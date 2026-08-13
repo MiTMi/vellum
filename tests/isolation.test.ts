@@ -7,7 +7,7 @@
  * Read rule: foreign pages are indistinguishable from missing (null/empty).
  * Write rule: foreign pages throw "Not authorized" (loud, deterministic).
  */
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { api, internal } from "../convex/_generated/api";
 import { addUser, freshBackend, OWNER_EMAIL } from "./helpers";
 import { redeemInviteForNewUser } from "../convex/lib/invites";
@@ -414,6 +414,9 @@ test("AI budget: user cap, pool cap, owner exemption", async () => {
 /* --------------------------- account wipe ---------------------------- */
 
 test("deleting a regular user erases only their data; owner blocked while others exist", async () => {
+  // Content is erased by scheduled batches; convex-test only advances them
+  // under fake timers installed before the mutation.
+  vi.useFakeTimers();
   const tc = freshBackend();
   const a = await addUser(tc, "alice@vellum.test");
   const owner = await addUser(tc, OWNER_EMAIL);
@@ -427,15 +430,66 @@ test("deleting a regular user erases only their data; owner blocked while others
     }),
   ).rejects.toThrow(/Other accounts exist/);
 
-  // Wiping Alice removes her page and user, leaves the owner's.
+  // Wiping Alice removes her page and user, leaves the owner's. The
+  // account dies in the mutation; the content drains in scheduled batches
+  // behind it, so an unbounded workspace can't blow a transaction.
   await tc.mutation(internal.account.wipeUser, {
     userId: a.userId as Id<"users">,
   });
+  await tc.finishAllScheduledFunctions(vi.runAllTimers);
   await tc.run(async (ctx) => {
     expect(await ctx.db.get("pages", pageA)).toBeNull();
     expect(await ctx.db.get("pages", pageO)).not.toBeNull();
     expect(await ctx.db.get("users", a.userId as Id<"users">)).toBeNull();
   });
+  vi.useRealTimers();
+});
+
+test("a workspace larger than one batch is still erased completely", async () => {
+  // The erase used to be one transaction over every page, version and
+  // comment the user owned — which stops working once a workspace is big
+  // enough, and the failure mode is a user who cannot delete their account
+  // at all. It now drains in batches; this is the test that the batching
+  // finishes rather than stopping after the first one.
+  vi.useFakeTimers();
+  const tc = freshBackend();
+  const a = await addUser(tc, "alice@vellum.test");
+  const PAGES = 60; // > WIPE_BATCH (50)
+  for (let i = 0; i < PAGES; i++) {
+    const id = await a.as.mutation(api.pages.create, { type: "doc", title: `P${i}` });
+    await a.as.mutation(api.pages.updateContent, {
+      id,
+      content: [{ type: "paragraph" }],
+      text: `body ${i}`,
+    });
+    // A snapshot is only taken of *previous* content, so a page needs a
+    // second edit before `pageVersions` has anything in it — without this
+    // the version assertion below would pass on an empty table.
+    if (i % 10 === 0) {
+      await a.as.mutation(api.pages.updateContent, {
+        id,
+        content: [{ type: "paragraph" }],
+        text: `revised ${i}`,
+        clientUpdatedAt: Date.now() + 1,
+      });
+    }
+  }
+  await tc.run(async (ctx) => {
+    expect((await ctx.db.query("pageVersions").collect()).length).toBeGreaterThan(0);
+  });
+  await tc.mutation(internal.account.wipeUser, {
+    userId: a.userId as Id<"users">,
+  });
+  // The account is dead in the mutation itself, before any batch runs.
+  await tc.run(async (ctx) => {
+    expect(await ctx.db.get("users", a.userId as Id<"users">)).toBeNull();
+  });
+  await tc.finishAllScheduledFunctions(vi.runAllTimers);
+  await tc.run(async (ctx) => {
+    expect(await ctx.db.query("pages").collect()).toHaveLength(0);
+    expect(await ctx.db.query("pageVersions").collect()).toHaveLength(0);
+  });
+  vi.useRealTimers();
 });
 
 /* ----------------------- Phase 2: sharing ---------------------------- */
