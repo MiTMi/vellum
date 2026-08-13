@@ -35,6 +35,67 @@ function inRange(ip: number, base: number, maskBits: number): boolean {
   return (ip & mask) === (base & mask);
 }
 
+/**
+ * Expand an IPv6 literal to its eight 16-bit groups, or null if it isn't
+ * one. Necessary because the address that reaches us has already been
+ * through the WHATWG URL parser, which *canonicalizes* — so the textual
+ * form we were given is not the form we get. `[::ffff:127.0.0.1]` arrives
+ * as `::ffff:7f00:1`, and prefix-matching on the original spelling misses
+ * it entirely. Working on the numbers instead makes the spelling
+ * irrelevant.
+ */
+function expandIpv6(raw: string): number[] | null {
+  // Zone ids (`%25eth0` once percent-encoded) name an interface, not an
+  // address; they can't change which address this is.
+  const addr = raw.split("%")[0];
+  if (!addr.includes(":")) return null;
+
+  const [headText, tailText, ...rest] = addr.split("::");
+  if (rest.length > 0) return null; // at most one "::" run
+
+  const parseGroups = (text: string): number[] | null => {
+    if (!text) return [];
+    const out: number[] = [];
+    const parts = text.split(":");
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      // A trailing dotted quad (`::ffff:127.0.0.1`) occupies two groups.
+      if (part.includes(".")) {
+        if (i !== parts.length - 1) return null;
+        const v4 = ipv4ToInt(part);
+        if (v4 === null || !part.includes(".")) return null;
+        out.push(v4 >>> 16, v4 & 0xffff);
+        continue;
+      }
+      if (!/^[0-9a-f]{1,4}$/.test(part)) return null;
+      out.push(parseInt(part, 16));
+    }
+    return out;
+  };
+
+  const head = parseGroups(headText);
+  const tail = tailText === undefined ? [] : parseGroups(tailText);
+  if (head === null || tail === null) return null;
+
+  if (tailText === undefined) return head.length === 8 ? head : null;
+  const fill = 8 - head.length - tail.length;
+  if (fill < 0) return null;
+  return [...head, ...Array(fill).fill(0), ...tail];
+}
+
+/** The embedded IPv4 of an IPv4-mapped (::ffff:0:0/96) address, if any. */
+function mappedIpv4(groups: number[]): number | null {
+  const mapped =
+    groups[0] === 0 &&
+    groups[1] === 0 &&
+    groups[2] === 0 &&
+    groups[3] === 0 &&
+    groups[4] === 0 &&
+    groups[5] === 0xffff;
+  if (!mapped) return null;
+  return (((groups[6] << 16) >>> 0) + groups[7]) >>> 0;
+}
+
 /** True for hosts that must never be fetched server-side. */
 export function isForbiddenHost(rawHost: string): boolean {
   const host = rawHost.toLowerCase().replace(/\.$/, "");
@@ -45,19 +106,29 @@ export function isForbiddenHost(rawHost: string): boolean {
 
   // Bracketed IPv6 literals.
   if (host.startsWith("[") || host.includes(":")) {
-    const v6 = host.replace(/^\[|\]$/g, "");
-    if (v6 === "::" || v6 === "::1") return true;
-    if (/^fe[89ab]/i.test(v6)) return true; // link-local fe80::/10
-    if (/^f[cd]/i.test(v6)) return true; // unique-local fc00::/7
-    if (v6.startsWith("::ffff:")) {
-      // IPv4-mapped — judge the embedded IPv4.
-      return isForbiddenHost(v6.slice("::ffff:".length));
+    const groups = expandIpv6(host.replace(/^\[|\]$/g, ""));
+    // Unparseable as IPv6 — not something we can vouch for.
+    if (!groups) return true;
+    // An IPv4-mapped address is an IPv4 destination wearing v6 spelling,
+    // and must be judged by the same ranges.
+    const mapped = mappedIpv4(groups);
+    if (mapped !== null) return isForbiddenIpv4(mapped);
+    if (groups.every((g) => g === 0)) return true; // ::
+    if (groups.slice(0, 7).every((g) => g === 0) && groups[7] === 1) {
+      return true; // ::1 loopback
     }
+    if ((groups[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+    if ((groups[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
     return false;
   }
 
   const ip = ipv4ToInt(host);
   if (ip === null) return false; // a hostname — DNS residual risk, allowed
+  return isForbiddenIpv4(ip);
+}
+
+/** True for IPv4 addresses in private, loopback or otherwise reserved space. */
+function isForbiddenIpv4(ip: number): boolean {
   return (
     inRange(ip, 0x00000000, 8) || // 0.0.0.0/8
     inRange(ip, 0x0a000000, 8) || // 10/8

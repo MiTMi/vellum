@@ -16,7 +16,7 @@ import { internal } from "./_generated/api";
 import { Id, TableNames } from "./_generated/dataModel";
 import { requireUser } from "./lib/auth";
 import { assertPasswordPolicy } from "./lib/passwordPolicy";
-import { collectStorageKeys } from "./lib/fileRefs";
+import { collectStorageKeys, storageKeyFromUrl } from "./lib/fileRefs";
 
 /**
  * Account management, per user since Phase 1: change password, sign out of
@@ -173,13 +173,23 @@ export const wipeUser = internalMutation({
       }
     }
 
-    // Files: rows and the stored objects themselves.
+    // Files: this user's bookkeeping rows go now, but the *blobs* are only
+    // released through the reclaim below, which consults `referencedKeys`.
+    // Deleting them here by owner would skip that check — and referencing
+    // is deliberately global, not per-owner: someone this user shared a
+    // page with may have copied an image block into their own workspace,
+    // and closing an account must not reach into theirs. Their storage
+    // quota is freed by the row deletion either way.
     const files = await ctx.db
       .query("files")
       .withIndex("by_owner", (q) => q.eq("ownerId", args.userId))
       .collect();
     for (const f of files) {
-      await ctx.storage.delete(f.storageId).catch(() => {});
+      // Rows written before `storageKey` existed still resolve through
+      // storage, so the reclaim sees them too.
+      const key =
+        f.storageKey ?? storageKeyFromUrl(await ctx.storage.getUrl(f.storageId));
+      if (key) releasing.add(key);
       await ctx.db.delete("files", f._id);
     }
 

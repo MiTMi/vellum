@@ -26,6 +26,35 @@ test("private, loopback, metadata, and mapped hosts are forbidden", () => {
   }
 });
 
+// Regression: the guard receives `url.hostname`, which the WHATWG parser has
+// already canonicalized — `[::ffff:127.0.0.1]` reaches us as `::ffff:7f00:1`.
+// Prefix-matching the human spelling missed every such address, so the mapped
+// forms have to be tested the way they actually arrive, through a URL.
+test("IPv4-mapped IPv6 is judged after URL canonicalization", () => {
+  for (const raw of [
+    "http://[::ffff:127.0.0.1]/",
+    "http://[::ffff:169.254.169.254]/",
+    "http://[::ffff:10.0.0.1]/",
+    "http://[::ffff:192.168.1.1]/",
+    "http://[0:0:0:0:0:ffff:127.0.0.1]/",
+    "http://[::1]/",
+    "http://[0:0:0:0:0:0:0:1]/",
+  ]) {
+    const host = new URL(raw).hostname;
+    expect(isForbiddenHost(host), `${raw} → ${host}`).toBe(true);
+  }
+  // A mapped *public* address is still fine.
+  expect(isForbiddenHost(new URL("http://[::ffff:8.8.8.8]/").hostname)).toBe(
+    false,
+  );
+});
+
+test("unparseable IPv6 literals are refused rather than waved through", () => {
+  for (const host of ["[::ffff:zz]", "[1:2:3:4:5:6:7:8:9]", "[::1::2]", "[gg::1]"]) {
+    expect(isForbiddenHost(host), host).toBe(true);
+  }
+});
+
 test("ordinary public hosts pass", () => {
   for (const host of ["example.com", "en.wikipedia.org", "8.8.8.8", "172.32.0.1", "2606:4700::1111"]) {
     expect(isForbiddenHost(host), host).toBe(false);

@@ -3,6 +3,7 @@ import {
   OutboxOp,
   StoredOp,
   coalesceKey,
+  isStampedOp,
   mergeOps,
   opPageId,
 } from "./ops";
@@ -50,6 +51,20 @@ export async function createOutbox(db: OfflineDb): Promise<Outbox> {
   let writeChain: Promise<void> = Promise.resolve();
   const listeners = new Set<() => void>();
 
+  /**
+   * In-memory seq → the key that op actually occupies on disk.
+   *
+   * The two used to be the same number, which is what let two tabs collide
+   * (see `OfflineDb.addOp`). The durable key is now assigned by the store
+   * itself, asynchronously, while `enqueue` stays synchronous — so the
+   * in-memory seq remains this tab's ordering handle and this map is how a
+   * later put/delete finds the right row. Every mirror write runs on one
+   * serialized chain, so an op's key is always recorded before anything
+   * that needs it.
+   */
+  const durableKeys = new Map<number, number>();
+  for (const o of ops) durableKeys.set(o.seq, o.seq);
+
   function notify() {
     for (const l of [...listeners]) l();
   }
@@ -69,6 +84,8 @@ export async function createOutbox(db: OfflineDb): Promise<Outbox> {
     enqueue(op) {
       const key = coalesceKey(op);
       if (key) {
+        const pageId = opPageId(op);
+        const stamped = isStampedOp(op);
         for (let i = ops.length - 1; i >= 0; i--) {
           // Never coalesce past an order-sensitive op (create/trash/…):
           // merging would move this op's effect to before the barrier —
@@ -79,22 +96,40 @@ export async function createOutbox(db: OfflineDb): Promise<Outbox> {
             const merged = mergeOps(ops[i].op, op);
             ops[i] = { seq: ops[i].seq, op: merged };
             const seq = ops[i].seq;
-            mirror(() => db.putOp(seq, merged));
+            mirror(async () => {
+              const key = durableKeys.get(seq);
+              if (key !== undefined) await db.putOp(key, merged);
+            });
             notify();
             return;
+          }
+          // A differently-keyed but timestamped op on the SAME page is also
+          // a barrier: rename and updateContent coalesce independently yet
+          // share one server-side clock, so merging past one another moves
+          // a newer stamp in front of an older op, which the server then
+          // discards as stale — silently, and invisibly to reconcile. See
+          // isStampedOp.
+          if (stamped && isStampedOp(ops[i].op) && opPageId(ops[i].op) === pageId) {
+            break;
           }
         }
       }
       const stored: StoredOp = { seq: nextSeq++, op };
       ops.push(stored);
-      mirror(() => db.addOp(stored.seq, stored.op));
+      mirror(async () => {
+        durableKeys.set(stored.seq, await db.addOp(stored.op));
+      });
       notify();
     },
 
     complete(seq) {
       const idx = ops.findIndex((o) => o.seq === seq);
       if (idx !== -1) ops.splice(idx, 1);
-      mirror(() => db.deleteOp(seq));
+      mirror(async () => {
+        const key = durableKeys.get(seq);
+        durableKeys.delete(seq);
+        if (key !== undefined) await db.deleteOp(key);
+      });
       notify();
     },
 
@@ -109,7 +144,11 @@ export async function createOutbox(db: OfflineDb): Promise<Outbox> {
       for (const d of dropped) {
         const idx = ops.indexOf(d);
         if (idx !== -1) ops.splice(idx, 1);
-        mirror(() => db.deleteOp(d.seq));
+        mirror(async () => {
+          const key = durableKeys.get(d.seq);
+          durableKeys.delete(d.seq);
+          if (key !== undefined) await db.deleteOp(key);
+        });
       }
       notify();
       return true;

@@ -110,6 +110,22 @@ export function coalesceKey(op: OutboxOp): string | null {
   }
 }
 
+/**
+ * Ops that carry a client timestamp the server compares against the page's
+ * `contentUpdatedAt` (see `lwwStamps` in convex/pages.ts).
+ *
+ * They coalesce under *separate* keys but share ONE clock, so reordering
+ * them past each other is silent data loss: a rename stamped t3 merged in
+ * front of a content op stamped t2 replays first, sets contentUpdatedAt to
+ * t3, and the content op then loses the comparison and returns success
+ * without writing. The local `updatedAt` ends at t3 too, so reconcile sees
+ * no difference and never re-pushes — the body text lives on that one
+ * device and nowhere else.
+ */
+export function isStampedOp(op: OutboxOp): boolean {
+  return op.kind === "rename" || op.kind === "updateContent";
+}
+
 /** Merge a newer coalescible op into an older one with the same key. */
 export function mergeOps(prev: OutboxOp, next: OutboxOp): OutboxOp {
   if (

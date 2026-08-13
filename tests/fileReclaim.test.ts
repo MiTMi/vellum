@@ -396,3 +396,81 @@ test("reclaiming the same keys twice is harmless", async () => {
     tc.mutation(internal.files._reclaimKeys, { keys: [key] }),
   ).resolves.toEqual({ deleted: 0 });
 });
+
+/* ------------------- the vault ciphertext blind spot ---------------- */
+
+test("a blob is not swept while vault ciphertext could be referencing it", async () => {
+  // The mark phase reads plaintext. A storage URL sealed inside a vault
+  // page's {__venc, iv, data} envelope is base64 — collectStorageKeys sees
+  // no /api/storage/ and reports nothing, and "nothing" must not be read as
+  // "unreferenced" or the sweep deletes an image the user can still see.
+  const { tc, as, userId } = await ownerBackend();
+  // Uploaded back when the Vault still accepted uploads.
+  vi.setSystemTime(new Date("2026-08-01T00:00:00Z"));
+  const { storageId } = await upload(tc, as, "sealed-in-the-vault");
+  expect(await storedObjects(tc)).toBe(1);
+
+  // A vault page the server cannot read. Its ciphertext may or may not
+  // mention that blob — the point is that nothing here can tell.
+  await tc.run(async (ctx) => {
+    await ctx.db.insert("pages", {
+      ownerId: userId as Id<"users">,
+      title: "venc1:aXY=:c2VjcmV0",
+      type: "doc",
+      rank: 1,
+      vault: true,
+      searchText: "",
+      updatedAt: Date.now(),
+      content: { __venc: 1, iv: "aXY=", data: "Y2lwaGVydGV4dA==" },
+    });
+  });
+
+  vi.setSystemTime(new Date("2026-08-14T00:00:00Z"));
+  const guarded = await tc.mutation(internal.files._sweep, { graceMs: 0 });
+  expect(guarded.deleted).toBe(0);
+  expect(await storedObjects(tc)).toBe(1);
+
+  // The targeted path consults the same scan and must hold the same line.
+  const key = await tc.run(async (ctx) => {
+    const row = (await ctx.db.query("files").collect())[0];
+    return row.storageKey!;
+  });
+  await tc.mutation(internal.files._reclaimKeys, { keys: [key] });
+  expect(await storedObjects(tc)).toBe(1);
+
+  // Once no unreadable vault content remains, the orphan is reclaimable
+  // again — the guard is a "can't prove it", not a permanent exemption.
+  await tc.run(async (ctx) => {
+    const page = (await ctx.db.query("pages").collect())[0];
+    await ctx.db.delete("pages", page._id);
+  });
+  const swept = await tc.mutation(internal.files._sweep, { graceMs: 0 });
+  expect(swept.deleted).toBe(1);
+  expect(await storedObjects(tc)).toBe(0);
+  expect(storageId).toBeTruthy();
+});
+
+test("vault ciphertext does not protect blobs uploaded after the ban", async () => {
+  // Uploads into the Vault have been refused since 2026-08-12, so a newer
+  // blob provably isn't sealed in one. Without that bound, one encrypted
+  // page would switch the sweep off for the whole workspace forever.
+  const { tc, as, userId } = await ownerBackend();
+  await tc.run(async (ctx) => {
+    await ctx.db.insert("pages", {
+      ownerId: userId as Id<"users">,
+      title: "venc1:aXY=:c2VjcmV0",
+      type: "doc",
+      rank: 1,
+      vault: true,
+      searchText: "",
+      updatedAt: Date.now(),
+      content: { __venc: 1, iv: "aXY=", data: "Y2lwaGVydGV4dA==" },
+    });
+  });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00Z"));
+  await upload(tc, as, "after-the-ban");
+  ageClock();
+  const swept = await tc.mutation(internal.files._sweep, { graceMs: 0 });
+  expect(swept.deleted).toBe(1);
+  expect(await storedObjects(tc)).toBe(0);
+});

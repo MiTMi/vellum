@@ -181,3 +181,79 @@ test("setTemplate does not coalesce across an order-sensitive op", async () => {
     "setTemplate",
   ]);
 });
+
+test("a rename never coalesces back past an edit to the same page", async () => {
+  // rename and updateContent have different coalesce keys but share one
+  // server-side clock (contentUpdatedAt). Merging the newer rename into the
+  // earlier rename's slot would replay [rename@3, content@2] — the server
+  // stamps 3, then drops the content op as stale and returns success. The
+  // outbox deletes it, local updatedAt is already 3 so reconcile sees no
+  // difference, and the typed text exists on that one device only.
+  const outbox = await createOutbox(createMemoryDb());
+  outbox.enqueue({ kind: "rename", id: "a", title: "First", clientUpdatedAt: 1 });
+  outbox.enqueue(edit("a", "body", 2));
+  outbox.enqueue({ kind: "rename", id: "a", title: "Second", clientUpdatedAt: 3 });
+
+  const kinds = outbox.list().map((o) => o.op.kind);
+  expect(kinds).toEqual(["rename", "updateContent", "rename"]);
+  // Timestamps only ever increase down the queue — that is the invariant
+  // the server's last-writer-wins guard depends on.
+  const stamps = outbox
+    .list()
+    .map((o) => (o.op as { clientUpdatedAt?: number }).clientUpdatedAt!);
+  expect(stamps).toEqual([...stamps].sort((x, y) => x - y));
+});
+
+test("edits still coalesce across an unstamped op on the same page", async () => {
+  // The barrier is only about the shared clock. setIcon carries no stamp,
+  // so it must not cost the queue its coalescing.
+  const outbox = await createOutbox(createMemoryDb());
+  outbox.enqueue(edit("a", "one", 1));
+  outbox.enqueue({ kind: "setIcon", id: "a", icon: "🔥" });
+  outbox.enqueue(edit("a", "two", 2));
+  expect(outbox.size()).toBe(2);
+  const first = outbox.peek()!.op;
+  expect(first.kind === "updateContent" && first.text).toBe("two");
+});
+
+test("a rename coalesces past ops on a different page", async () => {
+  const outbox = await createOutbox(createMemoryDb());
+  outbox.enqueue({ kind: "rename", id: "a", title: "First", clientUpdatedAt: 1 });
+  outbox.enqueue(edit("b", "elsewhere", 2));
+  outbox.enqueue({ kind: "rename", id: "a", title: "Second", clientUpdatedAt: 3 });
+  expect(outbox.size()).toBe(2);
+  const first = outbox.peek()!.op;
+  expect(first.kind === "rename" && first.title).toBe("Second");
+});
+
+test("two tabs sharing one store neither lose nor delete each other's ops", async () => {
+  // The outbox is one IndexedDB store per origin, but each tab counts its
+  // own seq from what it loaded. They used to land on the same number:
+  // one tab's add() failed with a ConstraintError that mirror() swallowed
+  // into a console.error (that op silently never persisted), and either
+  // tab's complete() deleted the other's row.
+  const db = createMemoryDb();
+  const tabA = await createOutbox(db);
+  const tabB = await createOutbox(db);
+
+  tabA.enqueue(edit("a", "from tab A", 1));
+  tabB.enqueue(edit("b", "from tab B", 2));
+  await tabA.flushed();
+  await tabB.flushed();
+
+  // Both survived — a fresh tab (i.e. a reload) sees the whole queue.
+  const persisted = await db.loadOps();
+  expect(persisted).toHaveLength(2);
+  expect(
+    persisted.map((o) => (o.op.kind === "updateContent" ? o.op.text : "")).sort(),
+  ).toEqual(["from tab A", "from tab B"]);
+
+  // Tab A replaying its own op must not remove tab B's.
+  tabA.complete(tabA.peek()!.seq);
+  await tabA.flushed();
+  const left = await db.loadOps();
+  expect(left).toHaveLength(1);
+  expect(left[0].op.kind === "updateContent" && left[0].op.text).toBe(
+    "from tab B",
+  );
+});

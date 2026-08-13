@@ -1,7 +1,7 @@
 import { v, ConvexError } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { monthKey } from "./lib/quotas";
-import { referencedKeys } from "./files";
+import { scanReferences } from "./files";
 import { storageKeyFromUrl } from "./lib/fileRefs";
 
 /**
@@ -88,7 +88,8 @@ export const ownerUserId = internalQuery({
 export const storageReport = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const referenced = await referencedKeys(ctx);
+    const scan = await scanReferences(ctx);
+    const referenced = scan.keys;
     const objects = await ctx.db.system.query("_storage").take(2000);
     const rows = [];
     let orphanBytes = 0;
@@ -113,6 +114,10 @@ export const storageReport = internalQuery({
       totalObjects: objects.length,
       unreferenced: rows.filter((r) => !r.referenced).length,
       unreferencedKB: Math.round(orphanBytes / 1024),
+      // The workspace holds vault ciphertext the mark phase can't read, so
+      // "unreferenced" above is a floor, not a verdict — pre-ban uploads
+      // are held rather than swept. See files.ts `opaqueToScan`.
+      vaultOpaque: scan.opaqueVault,
       objects: rows,
     };
   },

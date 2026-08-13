@@ -9,7 +9,21 @@ import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { isOwnerUser, requireUser } from "./lib/auth";
 import { FILE_QUOTA_BYTES, fileBytesOf } from "./lib/quotas";
-import { collectStorageKeys, storageKeyFromUrl } from "./lib/fileRefs";
+import {
+  collectStorageKeys,
+  isOpaqueVaultContent,
+  storageKeyFromUrl,
+  VAULT_UPLOADS_BLOCKED_MS,
+} from "./lib/fileRefs";
+
+/**
+ * What one mark pass learned: the keys still referenced, and whether the
+ * workspace holds vault ciphertext the mark phase could not read through.
+ */
+export interface ReferenceScan {
+  keys: Set<string>;
+  opaqueVault: boolean;
+}
 
 /**
  * File uploads and their reclamation.
@@ -165,17 +179,49 @@ const MAX_DELETES_PER_PASS = 200;
  * deleting the first must not break the second. Correctness over speed,
  * and the page quota bounds the work.
  */
-export async function referencedKeys(ctx: QueryCtx): Promise<Set<string>> {
+export async function scanReferences(ctx: QueryCtx): Promise<ReferenceScan> {
   const keys = new Set<string>();
+  let opaqueVault = false;
   for (const page of await ctx.db.query("pages").collect()) {
     // The whole document, not just `content`: covers, database row `props`,
     // bookmark/embed block props and anything a future block type adds.
     collectStorageKeys(page, keys);
+    if (isOpaqueVaultContent(page)) opaqueVault = true;
   }
   for (const version of await ctx.db.query("pageVersions").collect()) {
     collectStorageKeys(version, keys);
+    if (isOpaqueVaultContent(version)) opaqueVault = true;
   }
-  return keys;
+  return { keys, opaqueVault };
+}
+
+/** The "mark" half on its own, for callers that don't delete anything. */
+export async function referencedKeys(ctx: QueryCtx): Promise<Set<string>> {
+  return (await scanReferences(ctx)).keys;
+}
+
+/**
+ * True when this scan cannot prove `key` unreferenced, because the
+ * workspace holds vault ciphertext old enough to have swallowed a
+ * reference to it.
+ *
+ * The mark phase reads plaintext. A storage URL sealed inside a vault
+ * page's `{__venc, iv, data}` envelope is base64 — `collectStorageKeys`
+ * sees no `/api/storage/` and reports nothing, so "not in the set" stops
+ * meaning "not referenced" and the sweep would delete a live image. That
+ * inverts this module's one rule: every ambiguity resolves toward keeping
+ * a file.
+ *
+ * The exposure is bounded and closed at both ends. Uploads inside the
+ * vault have been refused since 2026-08-12 (`uploadForPage` throws,
+ * CoverPicker passes `allowUpload={false}`), so no blob created after that
+ * can be hidden in ciphertext; and if there is no encrypted vault content
+ * at all, nothing is hidden. Only the overlap is protected, and it never
+ * grows. Lifting the vault upload ban means encrypting file bytes
+ * client-side, at which point this needs revisiting rather than deleting.
+ */
+function opaqueToScan(scan: ReferenceScan, createdAt: number): boolean {
+  return scan.opaqueVault && createdAt < VAULT_UPLOADS_BLOCKED_MS;
 }
 
 /** Drop a blob and its bookkeeping row together. */
@@ -203,8 +249,8 @@ export const _reclaimKeys = internalMutation({
     const candidates = [...new Set(args.keys)];
     if (candidates.length === 0) return { deleted: 0 };
 
-    const referenced = await referencedKeys(ctx);
-    const orphaned = candidates.filter((k) => !referenced.has(k));
+    const scan = await scanReferences(ctx);
+    const orphaned = candidates.filter((k) => !scan.keys.has(k));
     if (orphaned.length === 0) return { deleted: 0 };
 
     let deleted = 0;
@@ -221,6 +267,9 @@ export const _reclaimKeys = internalMutation({
         unresolved.push(key);
         continue;
       }
+      // Old enough to be referenced from inside vault ciphertext the scan
+      // can't read — "not in the set" doesn't prove unreferenced here.
+      if (opaqueToScan(scan, rows[0].createdAt)) continue;
       await destroy(
         ctx,
         rows[0].storageId,
@@ -237,6 +286,7 @@ export const _reclaimKeys = internalMutation({
       for (const object of objects) {
         const key = storageKeyFromUrl(await ctx.storage.getUrl(object._id));
         if (!key || !wanted.has(key)) continue;
+        if (opaqueToScan(scan, object._creationTime)) continue;
         await destroy(ctx, object._id, []);
         deleted++;
       }
@@ -281,7 +331,7 @@ export const _sweep = internalMutation({
   }> => {
     const grace = args.graceMs ?? SWEEP_GRACE_MS;
     const cutoff = Date.now() - grace;
-    const referenced = await referencedKeys(ctx);
+    const scan = await scanReferences(ctx);
 
     const objects = await ctx.db.system.query("_storage").take(MAX_STORAGE_SCAN);
     let deleted = 0;
@@ -293,7 +343,7 @@ export const _sweep = internalMutation({
       const key = storageKeyFromUrl(await ctx.storage.getUrl(object._id));
       // A blob whose URL we can't resolve is never deleted — unknown means
       // keep, always.
-      if (!key || referenced.has(key)) continue;
+      if (!key || scan.keys.has(key)) continue;
 
       const rows = await ctx.db
         .query("files")
@@ -306,6 +356,14 @@ export const _sweep = internalMutation({
         .withIndex("by_storageId", (q) => q.eq("storageId", object._id))
         .collect();
       const rowIds = [...new Set([...rows, ...byId].map((r) => r._id))];
+
+      // Old enough to be referenced from inside vault ciphertext the mark
+      // phase can't read? Then "not in the set" doesn't prove unreferenced.
+      // The upload's own record of when it happened is preferred over the
+      // platform's — it is what `_reclaimKeys` compares, and the two paths
+      // must not disagree about the same blob.
+      const uploadedAt = [...rows, ...byId][0]?.createdAt ?? object._creationTime;
+      if (opaqueToScan(scan, uploadedAt)) continue;
 
       bytes += object.size ?? 0;
       if (!args.dryRun) await destroy(ctx, object._id, rowIds);

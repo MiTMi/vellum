@@ -291,6 +291,14 @@ export const create = mutation({
       throw new ConvexError("Parent page not found");
     }
     const parent = parentAccess?.page ?? null;
+    // A trashed parent is not a place to put a page. `inTrash` is stamped
+    // across the whole subtree by `trash`, so this covers its descendants
+    // too. Without it the new page is live but unreachable — hidden from
+    // the tree (which filters `inTrash`) *and* from Trash (which lists
+    // only `trashRoot`) — and is then destroyed with the trash root.
+    if (parent?.inTrash) {
+      throw new ConvexError("That page is in the Trash");
+    }
     const ownerId = parent?.ownerId ?? userId;
     // Only the vault's owner may create inside it; a shared parent is
     // never vault (getAccessiblePage refuses vault for non-owners), and a
@@ -426,11 +434,61 @@ export const createWithDoc = mutation({
       vault,
       contentText: vault ? "" : doc.contentText,
       searchText: vault ? "" : doc.searchText,
+      // The parent was trashed while this create sat in the outbox: inherit
+      // the trash rather than inserting a live page under a dead one. Such
+      // a page is hidden from the tree (which filters `inTrash`) *and* from
+      // Trash (which lists only `trashRoot`), then destroyed with the root
+      // it hangs from. Inheriting instead means restoring the parent brings
+      // it back, which is what the user would expect. Unlike `create`, this
+      // can't throw — that would drop the op and lose the page outright.
+      ...(parent?.inTrash
+        ? {
+            inTrash: true,
+            trashRoot: false,
+            trashedAt: parent.trashedAt ?? Date.now(),
+          }
+        : {}),
       clientKey,
-      contentUpdatedAt: args.updatedAt,
+      // Same clamp the edit path applies (`lwwStamps`): a page born with a
+      // far-future stamp from a fast clock would lose every subsequent
+      // edit's comparison and arrive frozen.
+      updatedAt: Math.min(args.updatedAt, Date.now()),
+      contentUpdatedAt: Math.min(args.updatedAt, Date.now()),
     });
   },
 });
+
+/**
+ * The two stamps the content last-writer-wins comparison runs on.
+ *
+ * A client clock is trusted to run *behind* — that is the whole reason LWW
+ * exists — but never ahead. An edit carrying a far-future `clientUpdatedAt`
+ * would park `contentUpdatedAt` beyond every stamp any real clock will
+ * produce for years, and every later edit would then lose the comparison
+ * and return *successfully* without writing: the outbox marks it complete,
+ * reconcile pulls the server copy back over the local one, and the page is
+ * frozen on every device. One wrong system clock — or one shared editor —
+ * is enough. So both stamps are clamped to server time, which also heals a
+ * row a bad clock already poisoned, since the stored one is read back
+ * through here too.
+ */
+function lwwStamps(
+  clientUpdatedAt: number | undefined,
+  contentUpdatedAt: number | undefined,
+): { now: number; seen: number } {
+  const serverNow = Date.now();
+  const stored = contentUpdatedAt ?? 0;
+  return {
+    now: Math.min(clientUpdatedAt ?? serverNow, serverNow),
+    // A *stored* stamp in the future can't have come from a real edit, so
+    // it carries no information about who wrote last — treat it as no
+    // stamp at all rather than clamping it to now. Clamping wouldn't heal
+    // anything: an offline edit's stamp is always a little behind server
+    // time, so it would still lose to `serverNow` and be dropped, and the
+    // writes that would heal the row are exactly the ones being dropped.
+    seen: stored > serverNow ? 0 : stored,
+  };
+}
 
 export const rename = mutation({
   args: {
@@ -447,14 +505,8 @@ export const rename = mutation({
     const access = await getAccessiblePage(ctx, userId, args.id, "write");
     if (!access) return;
     const page = access.page;
-    if (
-      args.clientUpdatedAt !== undefined &&
-      page.contentUpdatedAt !== undefined &&
-      args.clientUpdatedAt < page.contentUpdatedAt
-    ) {
-      return;
-    }
-    const now = args.clientUpdatedAt ?? Date.now();
+    const { now, seen } = lwwStamps(args.clientUpdatedAt, page.contentUpdatedAt);
+    if (args.clientUpdatedAt !== undefined && now < seen) return;
     await ctx.db.patch("pages", args.id, {
       title: args.title,
       // Vault titles arrive encrypted — keep them out of the search index.
@@ -480,14 +532,8 @@ export const updateContent = mutation({
     const access = await getAccessiblePage(ctx, userId, args.id, "write");
     if (!access) return;
     const page = access.page;
-    if (
-      args.clientUpdatedAt !== undefined &&
-      page.contentUpdatedAt !== undefined &&
-      args.clientUpdatedAt < page.contentUpdatedAt
-    ) {
-      return;
-    }
-    const now = args.clientUpdatedAt ?? Date.now();
+    const { now, seen } = lwwStamps(args.clientUpdatedAt, page.contentUpdatedAt);
+    if (args.clientUpdatedAt !== undefined && now < seen) return;
 
     // Snapshot the *previous* content before overwriting it, at most once
     // per SNAPSHOT_INTERVAL_MS — so a typing session leaves one restorable
@@ -665,6 +711,11 @@ export const move = mutation({
     const oldParent = page.parentId
       ? await ctx.db.get("pages", page.parentId)
       : null;
+    // Never move a live page under a trashed one: it would vanish from the
+    // tree without ever appearing in Trash, and die with the trash root.
+    if (newParent?.inTrash) {
+      throw new ConvexError("That page is in the Trash");
+    }
     const isVaultRoot = (page.vault ?? false) && !(oldParent?.vault ?? false);
     if (!isVaultRoot) {
       if ((page.vault ?? false) !== (newParent?.vault ?? false)) {
@@ -705,6 +756,12 @@ export const duplicate = mutation({
     const destParent = args.parentId;
     // Foreign destination parents throw (parent-ownership invariant).
     if (destParent) await writeOwnedPage(ctx, userId, destParent);
+    // A trashed destination would make the copy invisible — live, but
+    // filtered out of the tree and absent from Trash (see `create`).
+    if (destParent) {
+      const dest = await ctx.db.get("pages", destParent);
+      if (dest?.inTrash) throw new ConvexError("That page is in the Trash");
+    }
     // The destination must not be the source or inside its subtree —
     // without this, duplicate({id: X, parentId: X}) clones its own
     // output forever (audit finding, 2026-08-12). Same walk as move's.

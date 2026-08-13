@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 // Lives outside convex/ so the Convex CLI doesn't typecheck/bundle it.
 import { convexTest } from "convex-test";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { api, internal } from "../convex/_generated/api";
 import schema from "../convex/schema";
 
@@ -570,26 +570,83 @@ test("updateContent snapshots the previous content, throttled", async () => {
 test("a write past the throttle window captures another snapshot", async () => {
   const ctx = await t();
   const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
-  // clientUpdatedAt drives `now`. It must stay monotonically ahead of the
-  // first write's wall-clock stamp or last-writer-wins discards it.
-  const t0 = Date.now() + 1000;
-  await ctx.mutation(api.pages.updateContent, { id, content: para("a"), text: "a" });
-  await ctx.mutation(api.pages.updateContent, {
-    id,
-    content: para("b"),
-    text: "b",
-    clientUpdatedAt: t0,
-  });
-  await ctx.mutation(api.pages.updateContent, {
-    id,
-    content: para("c"),
-    text: "c",
-    clientUpdatedAt: t0 + 11 * 60 * 1000,
-  });
+  // The throttle spaces snapshots by wall-clock time, so the clock is what
+  // has to move. Forging a future `clientUpdatedAt` no longer works — it is
+  // clamped to server time, precisely so a bad clock can't freeze a page.
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    await ctx.mutation(api.pages.updateContent, { id, content: para("a"), text: "a" });
+    await ctx.mutation(api.pages.updateContent, { id, content: para("b"), text: "b" });
+    vi.setSystemTime(new Date("2026-01-01T00:11:00Z"));
+    await ctx.mutation(api.pages.updateContent, { id, content: para("c"), text: "c" });
+  } finally {
+    vi.useRealTimers();
+  }
   const versions = await ctx.query(api.versions.list, { pageId: id });
   expect(versions).toHaveLength(2);
   // Newest first.
   expect(versions[0].savedAt).toBeGreaterThan(versions[1].savedAt);
+});
+
+test("a future client clock can't freeze a page (LWW clamp)", async () => {
+  const ctx = await t();
+  const id = await ctx.mutation(api.pages.create, { type: "doc", title: "Doc" });
+  // A machine whose clock is a year fast — or a hostile shared editor.
+  const farFuture = Date.now() + 365 * 24 * 60 * 60 * 1000;
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: para("from the future"),
+    text: "from the future",
+    clientUpdatedAt: farFuture,
+  });
+  let doc = await ctx.query(api.pages.get, { id });
+  // The stamp was clamped to server time, not stored as sent.
+  expect(doc?.contentUpdatedAt).toBeLessThanOrEqual(Date.now());
+  expect(doc?.contentUpdatedAt).toBeGreaterThan(Date.now() - 60_000);
+
+  // Every later edit from a correct clock must still land, rather than
+  // losing the comparison forever and being silently dropped.
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: para("after"),
+    text: "after",
+    clientUpdatedAt: Date.now(),
+  });
+  await ctx.mutation(api.pages.rename, {
+    id,
+    title: "Renamed after",
+    clientUpdatedAt: Date.now(),
+  });
+  doc = await ctx.query(api.pages.get, { id });
+  expect(doc?.contentText).toBe("after");
+  expect(doc?.title).toBe("Renamed after");
+});
+
+test("a page created by a future clock isn't born frozen", async () => {
+  // The same freeze through a different door: createWithDoc stores the
+  // client's stamp directly, so an offline create from a fast machine used
+  // to produce a page whose every later edit lost the comparison.
+  const ctx = await t();
+  const farFuture = Date.now() + 365 * 24 * 60 * 60 * 1000;
+  const id = (await ctx.mutation(api.pages.createWithDoc, {
+    clientKey: "ck-future",
+    title: "From a fast clock",
+    type: "doc",
+    rank: 1,
+    updatedAt: farFuture,
+  }))!;
+  const born = await ctx.query(api.pages.get, { id });
+  expect(born?.contentUpdatedAt).toBeLessThanOrEqual(Date.now());
+
+  await ctx.mutation(api.pages.updateContent, {
+    id,
+    content: para("typed later"),
+    text: "typed later",
+    clientUpdatedAt: Date.now(),
+  });
+  const doc = await ctx.query(api.pages.get, { id });
+  expect(doc?.contentText).toBe("typed later");
 });
 
 test("deleteForever removes a page's history", async () => {
@@ -1084,4 +1141,64 @@ test("public slugs and invite codes come from the CSPRNG shape", async () => {
   expect(slug).toMatch(/^[a-z0-9]{20}$/);
   const code = await t.mutation(internal.admin.mintInvite, {});
   expect(code).toMatch(/^[a-z0-9]{10}$/);
+});
+
+/* ------------------------------------------------------------------ */
+/* Trashed destinations                                                */
+/* ------------------------------------------------------------------ */
+
+test("a trashed page is not a valid destination parent", async () => {
+  const ctx = await t();
+  const parent = await ctx.mutation(api.pages.create, { type: "doc", title: "Parent" });
+  const loose = await ctx.mutation(api.pages.create, { type: "doc", title: "Loose" });
+  const child = await ctx.mutation(api.pages.create, {
+    type: "doc",
+    title: "Child",
+    parentId: parent,
+  });
+  await ctx.mutation(api.pages.trash, { id: parent });
+
+  // create, move and duplicate all refuse — otherwise the page is live but
+  // hidden from the tree *and* from Trash, then dies with the trash root.
+  await expect(
+    ctx.mutation(api.pages.create, { type: "doc", title: "Ghost", parentId: parent }),
+  ).rejects.toThrow(/Trash/);
+  // …including a descendant of the trashed page, which `trash` also stamped.
+  await expect(
+    ctx.mutation(api.pages.create, { type: "doc", title: "Ghost", parentId: child }),
+  ).rejects.toThrow(/Trash/);
+  await expect(
+    ctx.mutation(api.pages.move, { id: loose, parentId: parent, rank: 1 }),
+  ).rejects.toThrow(/Trash/);
+  await expect(
+    ctx.mutation(api.pages.duplicate, { id: loose, parentId: parent }),
+  ).rejects.toThrow(/Trash/);
+
+  // The loose page never moved.
+  const still = await ctx.query(api.pages.get, { id: loose });
+  expect(still?.parentId).toBeUndefined();
+});
+
+test("a replayed offline create inherits a parent trashed meanwhile", async () => {
+  const ctx = await t();
+  const parent = await ctx.mutation(api.pages.create, { type: "doc", title: "Parent" });
+  await ctx.mutation(api.pages.trash, { id: parent });
+  // The op was queued before the trash and must not be dropped — losing a
+  // page the user wrote offline is worse than putting it in the Trash.
+  const id = await ctx.mutation(api.pages.createWithDoc, {
+    clientKey: "ck-1",
+    title: "Written offline",
+    type: "doc",
+    parentId: parent,
+    rank: 1,
+    updatedAt: Date.now(),
+  });
+  const doc = await ctx.query(api.pages.get, { id: id! });
+  expect(doc?.inTrash).toBe(true);
+  expect(doc?.trashRoot).toBe(false);
+  // Restoring the parent brings it back with the rest of the subtree.
+  await ctx.mutation(api.pages.restore, { id: parent });
+  const back = await ctx.query(api.pages.get, { id: id! });
+  expect(back?.inTrash).toBeFalsy();
+  expect(back?.parentId).toBe(parent);
 });

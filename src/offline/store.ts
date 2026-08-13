@@ -541,6 +541,15 @@ export function createPageStore(): PageStore {
           p.parentId = to;
           touched = true;
         }
+        // Known gap, deliberate for now: a Vault page's content is an
+        // encrypted envelope, so a temp id sealed inside it is invisible to
+        // this rewrite. Creating a sub-page inside the Vault while offline
+        // therefore leaves that block pointing at a dead id once the create
+        // syncs. Fixing it means remapping at *decrypt* time (the gate in
+        // PageView holds the plaintext) against a persisted temp→real map,
+        // since the id may land while the vault is locked — more machinery
+        // than the rest of this function, and the same class of hazard as
+        // the pageLink/relation/targetId cases below.
         if (p.content && rewriteContentIds(p.content, from, to)) touched = true;
         // Relation property values hold page ids; so does a relation
         // column's targetId. Without these, an offline-created row stays

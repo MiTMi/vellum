@@ -89,7 +89,9 @@ export function collectStorageKeys(
 ): Set<string> {
   const seen = new Set<unknown>();
   const walk = (node: unknown, depth: number) => {
-    // Cheap guards: vault ciphertext and pathological nesting both stop here.
+    // Pathological nesting stops here. Note vault ciphertext also yields
+    // nothing — deliberately, but that makes it *invisible* rather than
+    // safe; see `isOpaqueVaultContent` for what the sweep owes it.
     if (depth > 64 || node === null || node === undefined) return;
     if (typeof node === "string") {
       for (const key of storageKeysInString(node)) into.add(key);
@@ -108,4 +110,33 @@ export function collectStorageKeys(
   };
   walk(value, 0);
   return into;
+}
+
+/* ------------------------------------------------------------------ */
+/* The vault blind spot                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The instant after which no upload can be hidden inside vault ciphertext.
+ *
+ * Uploads into the Vault are refused as of 2026-08-12 — `uploadForPage`
+ * throws for vault pages and CoverPicker hides Upload — so a blob created
+ * after that day is provably not sealed in an encrypted page. Dated to the
+ * following midnight UTC so the whole of the 12th counts as "before".
+ */
+export const VAULT_UPLOADS_BLOCKED_MS = Date.UTC(2026, 7, 13);
+
+/**
+ * True when this document is a vault page whose content the server cannot
+ * read — an AES-GCM envelope, `{ __venc: 1, iv, data }`.
+ *
+ * `collectStorageKeys` returns nothing for such a document, and the sweep
+ * reads "nothing" as "unreferenced". This is how the sweep learns to tell
+ * the two apart.
+ */
+export function isOpaqueVaultContent(doc: unknown): boolean {
+  if (!doc || typeof doc !== "object") return false;
+  const content = (doc as { content?: unknown }).content;
+  if (!content || typeof content !== "object") return false;
+  return (content as { __venc?: unknown }).__venc === 1;
 }

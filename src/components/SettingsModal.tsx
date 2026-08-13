@@ -22,6 +22,8 @@ import {
   useVaultVersion,
   vaultRootId,
 } from "../lib/vaultSession";
+import { signOutAndClearDevice } from "./Auth";
+import { clearLocalWorkspace } from "../offline/runtime";
 
 /**
  * App settings. One modal, four sections: Account (change password),
@@ -207,9 +209,13 @@ function AccountSections({ onClose }: { onClose: () => void }) {
             className="btn subtle"
             onClick={() => {
               void (async () => {
+                // Revoke server-side first, then scrub this device the same
+                // way the sidebar's sign-out does — the local replica and
+                // outbox are named for the app, not the user.
                 await account.signOutEverywhere();
-                await signOut().catch(() => {});
-                window.location.reload();
+                if (await signOutAndClearDevice(signOut)) {
+                  window.location.reload();
+                }
               })();
             }}
           >
@@ -383,10 +389,7 @@ function DangerZone({
       } catch {
         /* ignore */
       }
-      await new Promise<void>((resolve) => {
-        const req = indexedDB.deleteDatabase("vellum-offline");
-        req.onsuccess = req.onerror = req.onblocked = () => resolve();
-      });
+      await clearLocalWorkspace();
       await signOut().catch(() => {});
       onClose();
       window.location.reload();

@@ -168,9 +168,23 @@ in a durable outbox, replayed FIFO against Convex on reconnect.
   (mock mode reuses it; keep the two backends behaviorally identical by
   editing the reducer, not the wrappers).
 - `outbox.ts` — durable write queue. Coalesces consecutive absolute-value
-  ops per page, but never across order-sensitive ops (create/trash/…) and
-  never into the op currently being replayed — both are correctness rules,
+  ops per page, but never across order-sensitive ops (create/trash/…),
+  never into the op currently being replayed, and (2026-08-13) **never
+  past a differently-keyed *stamped* op on the same page**: `rename` and
+  `updateContent` coalesce under separate keys yet share one server-side
+  `contentUpdatedAt` clock, so `rename → type → rename` offline used to
+  replay as `[rename@t3, content@t2]` — the server dropped the content
+  op as stale and *returned success*, local `updatedAt` was already t3
+  so reconcile saw no diff, and the typed text never left that device.
+  `isStampedOp` in `ops.ts` is the list. All three are correctness rules,
   not optimizations.
+- **Outbox keys are allocated by IndexedDB, not by the tab** (2026-08-13).
+  The store is shared per origin while each tab counted its own `seq`, so
+  two tabs collided: one `add` threw ConstraintError (swallowed into a
+  `console.error`, op never persisted) and either tab's `complete`
+  deleted the other's row. `OfflineDb.addOp(op)` now picks highest-live-key
+  + 1 *inside* the write transaction and returns it; the outbox keeps the
+  in-memory seq as its ordering handle and maps it to the durable key.
 - `sync.ts` — sync engine: hydration, outbox drain, temp-id → real-id
   remapping, reconcile against the `pages.syncIndex` query. Reconcile only
   runs when the outbox is empty.
@@ -182,6 +196,20 @@ Invariants to preserve when touching `convex/pages.ts`:
 
 - Every page-patching mutation must bump `updatedAt` (reconcile diffs on it)
   and null-guard a missing page (replayed ops race deletes).
+- **Client clocks are clamped to server time** (`lwwStamps`, 2026-08-13).
+  A client stamp is trusted to run behind — that's what LWW is for — never
+  ahead: one edit carrying a far-future `clientUpdatedAt` parked
+  `contentUpdatedAt` beyond every real clock, and every later edit then
+  lost the comparison and returned *successfully* without writing,
+  freezing that page on every device. Reachable from a wrong system clock
+  or any shared editor. The stored stamp is read back through the same
+  clamp, so an already-poisoned row heals itself.
+- **A trashed page is never a destination parent** (2026-08-13):
+  `create`/`move`/`duplicate` throw, since the result is a live page
+  hidden from the tree (filters `inTrash`) *and* from Trash (lists only
+  `trashRoot`), destroyed later with the trash root. `createWithDoc` is
+  the exception — it inherits the trash instead of throwing, because
+  dropping a replayed offline create would lose the page outright.
 - Ops replayed from the outbox must be absolute-valued (e.g. the
   `toggleFavorite` / `setTemplate` `value` arg), never relative.
 - **Every new `pages` field must also be added to `createWithDoc`'s args.**
@@ -228,7 +256,12 @@ pages and CoverPicker hides Upload via `allowUpload={false}` — lift only
 by client-encrypting file bytes end-to-end), trashed vault
 pages list as "Locked page", and `pageVersions` snapshots are ciphertext
 (HistoryModal decrypts, and must keep decrypting before restore or the
-wrapper would double-encrypt).
+wrapper would double-encrypt). One more, found 2026-08-13 and deferred:
+**a temp id sealed inside vault ciphertext is never remapped** —
+`store.remapId` rewrites by string match, so a sub-page created inside
+the Vault *while offline* keeps pointing at a dead id after its create
+syncs. Fixing it means remapping at decrypt time against a persisted
+temp→real map (the id can land while the vault is locked).
 
 Leak checklist when touching UI that shows titles: go through
 `displayTitle()` from vaultSession (breadcrumbs, trash, exports, registry
@@ -309,6 +342,18 @@ Invariants, all of which have tests that fail loudly if broken:
   field-specific walker would delete live images the day a new block type
   ships. Adding a block type needs no change here — that is the point.
 - Unresolvable blob → keep. `dryRun: true` reports without deleting.
+- **Vault ciphertext is a blind spot, not a clean miss** (fixed
+  2026-08-13). A storage URL sealed in a `{__venc,iv,data}` envelope is
+  base64 — `collectStorageKeys` sees no `/api/storage/` and reports
+  nothing, and the sweep read "nothing" as "unreferenced". So the mark
+  phase now returns a `ReferenceScan` (`{keys, opaqueVault}`), and both
+  deletion paths keep any blob uploaded before
+  `VAULT_UPLOADS_BLOCKED_MS` while unreadable vault content exists.
+  The bound matters in both directions: without it one encrypted page
+  would switch reclamation off forever; without the guard the nightly
+  cron deletes live vault images. **Lifting the vault upload ban means
+  revisiting this**, not deleting it. `admin:storageReport` reports
+  `vaultOpaque` so "unreferenced" is read as a floor, not a verdict.
 
 `admin:storageReport` is the answer to "is it really gone?" — it reads
 `_storage` (ground truth), unlike `usageOverview`'s `fileMB`, which reads
@@ -409,6 +454,16 @@ CLI gotchas below). `SITE_URL` must be the hosted origin, not `.convex.site`.
   contract: `e2e-offline.mjs` pins `.login-card`, `input[name=email]`,
   `input[name=password]`, `.login-submit`; `e2e-landing.mjs` accepts
   `.login-screen` — keep all of them through any restyle.
+- **Signing out erases the local replica** (`signOutAndClearDevice` →
+  `clearLocalWorkspace`, 2026-08-13). The IndexedDB database is named for
+  the app, not the user, so on a shared device the next person to sign in
+  used to open the previous user's pages *and* inherit their queued
+  outbox, where a root create replayed under the new `ownerId`. Harmless
+  when Vellum was single-user; Phase 1/2 made it a cross-account path.
+  Unsynced writes are confirmed before being discarded, the engine is
+  stopped and the connection closed first (an open handle blocks
+  `deleteDatabase`), and Settings' "Sign out everywhere" takes the same
+  path.
 - Client wiring is `ConvexAuthProvider` + `AuthGate` (`main.tsx`,
   `src/components/Auth.tsx`). Offline rule: a machine with a prior session
   (localStorage `vellum:hasSession`) may open its local replica while

@@ -8,7 +8,11 @@ import { ConvexReactClient, useConvexAuth } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { ConvexError } from "convex/values";
 import { Check, Fingerprint, LogOut } from "lucide-react";
-import { setSyncAuthorized } from "../offline/runtime";
+import {
+  clearLocalWorkspace,
+  pendingWriteCount,
+  setSyncAuthorized,
+} from "../offline/runtime";
 import { unmetPasswordRules, PASSWORD_RULES } from "../../convex/lib/passwordPolicy";
 // The landing page's display serif, reused here so the front door carries
 // the same "ink on vellum" identity as the marketing page. Bundled locally
@@ -329,6 +333,38 @@ function LoginScreen() {
   );
 }
 
+/**
+ * Sign out and leave nothing of this account on the device.
+ *
+ * The local replica and outbox live in one IndexedDB database named for the
+ * app, not for the user, so leaving them behind hands the next person to
+ * sign in the previous user's pages *and* their queued writes — which would
+ * then replay under the new identity. Exported so Settings' "Sign out
+ * everywhere" takes the same path.
+ *
+ * Unsynced writes are the one thing that can't be recovered, so they are
+ * the one thing worth interrupting for.
+ */
+export async function signOutAndClearDevice(
+  signOut: () => Promise<unknown>,
+): Promise<boolean> {
+  const pending = pendingWriteCount();
+  if (pending > 0) {
+    const ok = window.confirm(
+      `${pending} change${pending === 1 ? "" : "s"} on this device ${
+        pending === 1 ? "hasn't" : "haven't"
+      } reached the server yet. Signing out discards ${
+        pending === 1 ? "it" : "them"
+      }.\n\nReconnect and let it finish syncing, or sign out anyway?`,
+    );
+    if (!ok) return false;
+  }
+  rememberSession(false);
+  await signOut().catch(() => {});
+  await clearLocalWorkspace();
+  return true;
+}
+
 /** Sidebar footer button. Only mounted in real modes (needs the provider). */
 export function SignOutButton() {
   const { signOut } = useAuthActions();
@@ -337,8 +373,9 @@ export function SignOutButton() {
       className="icon-btn"
       title="Sign out"
       onClick={() => {
-        rememberSession(false);
-        void signOut();
+        void (async () => {
+          if (await signOutAndClearDevice(signOut)) window.location.reload();
+        })();
       }}
     >
       <LogOut size={15} />

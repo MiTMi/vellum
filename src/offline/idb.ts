@@ -11,11 +11,28 @@ export interface OfflineDb {
   putPages(docs: PageDoc[]): Promise<void>;
   deletePages(ids: PageId[]): Promise<void>;
   loadOps(): Promise<StoredOp[]>;
-  addOp(seq: number, op: OutboxOp): Promise<void>;
+  /**
+   * Append an op and return the key it was stored under.
+   *
+   * The key is allocated *inside* the write transaction rather than by the
+   * caller, because the outbox is one IndexedDB store shared by every tab
+   * on the origin while each tab's seq counter is its own. Two tabs would
+   * otherwise pick the same number: one `add` fails with a ConstraintError
+   * (swallowed into a console.error — that op then never persists), and
+   * either tab's `complete` deletes the other's row. Two tabs open on a web
+   * app is ordinary use, so the allocation has to be atomic.
+   */
+  addOp(op: OutboxOp): Promise<number>;
   putOp(seq: number, op: OutboxOp): Promise<void>;
   deleteOp(seq: number): Promise<void>;
   getMeta<T>(key: string): Promise<T | undefined>;
   setMeta(key: string, value: unknown): Promise<void>;
+  /**
+   * Release the underlying connection. `indexedDB.deleteDatabase` fires
+   * `onblocked` and stalls indefinitely while any connection is still open,
+   * so sign-out's wipe has to close this first.
+   */
+  close(): void;
 }
 
 const DB_NAME = "vellum-offline";
@@ -88,10 +105,18 @@ export async function openOfflineDb(): Promise<OfflineDb> {
         .map((key, i) => ({ seq: key as number, op: values[i] as OutboxOp }))
         .sort((a, b) => a.seq - b.seq);
     },
-    async addOp(seq, op) {
+    async addOp(op) {
       const tx = db.transaction("outbox", "readwrite");
-      tx.objectStore("outbox").add(op, seq);
+      const store = tx.objectStore("outbox");
+      // Highest live key + 1, read and written in one transaction so a
+      // concurrent tab's allocation serializes behind it rather than
+      // racing it. Keys only have to be unique among *queued* ops, so
+      // restarting from 1 once the queue drains is fine.
+      const highest = await reqResult(store.openKeyCursor(null, "prev"));
+      const seq = ((highest?.key as number | undefined) ?? 0) + 1;
+      store.add(op, seq);
       await txDone(tx);
+      return seq;
     },
     async putOp(seq, op) {
       const tx = db.transaction("outbox", "readwrite");
@@ -111,6 +136,9 @@ export async function openOfflineDb(): Promise<OfflineDb> {
       const tx = db.transaction("meta", "readwrite");
       tx.objectStore("meta").put(value, key);
       await txDone(tx);
+    },
+    close() {
+      db.close();
     },
   };
 }
@@ -135,8 +163,10 @@ export function createMemoryDb(): OfflineDb {
         .map(([seq, op]) => ({ seq, op: structuredClone(op) }))
         .sort((a, b) => a.seq - b.seq);
     },
-    async addOp(seq, op) {
+    async addOp(op) {
+      const seq = Math.max(0, ...outbox.keys()) + 1;
       outbox.set(seq, structuredClone(op));
+      return seq;
     },
     async putOp(seq, op) {
       outbox.set(seq, structuredClone(op));
@@ -149,6 +179,9 @@ export function createMemoryDb(): OfflineDb {
     },
     async setMeta(key, value) {
       meta.set(key, structuredClone(value));
+    },
+    close() {
+      /* nothing to release */
     },
   };
 }
