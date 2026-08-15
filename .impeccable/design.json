@@ -1,0 +1,383 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-13T00:00:00.000Z",
+  "title": "Design System: Vellum",
+  "extensions": {
+    "colorMeta": {
+      "vellum": {
+        "role": "neutral",
+        "displayName": "Vellum",
+        "canonical": "#fbfaf7",
+        "tonalRamp": [
+          "#1c1a17",
+          "#3a372f",
+          "#5c574c",
+          "#847e70",
+          "#aba498",
+          "#cfc9bc",
+          "#e6e2d8",
+          "#fbfaf7"
+        ]
+      },
+      "vellum-deep": {
+        "role": "neutral",
+        "displayName": "Deep Vellum",
+        "canonical": "#f3f1ea",
+        "tonalRamp": [
+          "#191712",
+          "#35322a",
+          "#565046",
+          "#7d766a",
+          "#a49d90",
+          "#c9c2b4",
+          "#e1dbcd",
+          "#f3f1ea"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#1a1a1a",
+          "#383838",
+          "#585858",
+          "#7d7d7d",
+          "#a5a5a5",
+          "#cccccc",
+          "#e9e9e9",
+          "#ffffff"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1c1a17",
+        "tonalRamp": [
+          "#100f0d",
+          "#1c1a17",
+          "#332f2a",
+          "#4f4a41",
+          "#6e6a62",
+          "#948d81",
+          "#c0b9aa",
+          "#e8e3d8"
+        ]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#6e6a62",
+        "tonalRamp": [
+          "#151412",
+          "#2a2823",
+          "#413e37",
+          "#59554c",
+          "#6e6a62",
+          "#948f84",
+          "#bab5a9",
+          "#e2ded4"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#e6e2d8",
+        "tonalRamp": [
+          "#17150f",
+          "#302d24",
+          "#4b473a",
+          "#6a6455",
+          "#8d8674",
+          "#b3ab97",
+          "#d0c9b8",
+          "#e6e2d8"
+        ]
+      },
+      "minium": {
+        "role": "primary",
+        "displayName": "Minium",
+        "canonical": "#b23a2c",
+        "tonalRamp": [
+          "#2b0d08",
+          "#4c1710",
+          "#6d2119",
+          "#8f2c21",
+          "#b23a2c",
+          "#cd5f4f",
+          "#e29284",
+          "#f4cdc5"
+        ]
+      },
+      "minium-deep": {
+        "role": "primary",
+        "displayName": "Deep Minium",
+        "canonical": "#962f23",
+        "tonalRamp": [
+          "#240a06",
+          "#40120d",
+          "#5c1a13",
+          "#7a231a",
+          "#962f23",
+          "#bb5344",
+          "#d98d7f",
+          "#f2cac2"
+        ]
+      },
+      "minium-light": {
+        "role": "primary",
+        "displayName": "Light Minium",
+        "canonical": "#d4553f",
+        "tonalRamp": [
+          "#33110b",
+          "#571d13",
+          "#7b291b",
+          "#a03724",
+          "#d4553f",
+          "#e27f6d",
+          "#efab9c",
+          "#f9d8d0"
+        ]
+      },
+      "ink-dark-ground": {
+        "role": "neutral",
+        "displayName": "Ink Dark Ground",
+        "canonical": "#1c1a17",
+        "tonalRamp": [
+          "#0d0c0a",
+          "#1c1a17",
+          "#2e2b26",
+          "#454037",
+          "#605a4e",
+          "#847d6e",
+          "#b0a897",
+          "#efece5"
+        ]
+      },
+      "ink-dark-text": {
+        "role": "neutral",
+        "displayName": "Ink Dark Text",
+        "canonical": "#efece5",
+        "tonalRamp": [
+          "#1a1814",
+          "#33302a",
+          "#4d4941",
+          "#6b6659",
+          "#8f8879",
+          "#b5ad9c",
+          "#d5cec1",
+          "#efece5"
+        ]
+      },
+      "ink-dark-muted": {
+        "role": "neutral",
+        "displayName": "Ink Dark Muted",
+        "canonical": "#a9a399",
+        "tonalRamp": [
+          "#1b1a17",
+          "#33312c",
+          "#4c4942",
+          "#67635a",
+          "#847f74",
+          "#a9a399",
+          "#c8c3ba",
+          "#e6e2da"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The hero document's title, at full display strength (clamp(34px, 6.4vw, 72px)). Once per page — it is literally the page's h1 inside the facsimile sheet."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section titles. Newsreader with negative tracking, set as prose rather than as a wordmark."
+      },
+      "title": {
+        "displayName": "Eyebrow",
+        "purpose": "Italic serif in Minium, preceded by a pilcrow. The one place the serif appears small, and always red."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All reading copy at 17px/1.6. The hero subhead steps up to 19px."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Nav links, meta and small UI text."
+      }
+    },
+    "shadows": [
+      {
+        "name": "sheet",
+        "value": "0 1px 2px rgba(28,26,23,0.05), 0 16px 48px rgba(28,26,23,0.10)",
+        "purpose": "The hero document only. Tight contact shadow plus wide ambient — a page resting on a desk."
+      },
+      {
+        "name": "shot",
+        "value": "0 1px 2px rgba(28,26,23,0.05), 0 10px 34px rgba(28,26,23,0.09)",
+        "purpose": "Product screenshots. Same recipe, lifted less, so a screenshot never outranks the hero."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": "0.15s ease",
+        "purpose": "Every hover and color state change in the system."
+      },
+      {
+        "name": "chrome",
+        "value": "0.2s ease",
+        "purpose": "The nav's scroll border fade — the only scroll-reactive chrome."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "@media (prefers-reduced-motion: reduce)",
+        "purpose": "Hard requirement: the hero load-in, caret and checkbox ticks are all suppressed here."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "grid",
+        "value": "980px"
+      },
+      {
+        "name": "stack",
+        "value": "860px"
+      },
+      {
+        "name": "mobile",
+        "value": "640px"
+      }
+    ],
+    "layout": [
+      {
+        "name": "wrap",
+        "value": "1072px",
+        "purpose": "The single centered column. --wrap."
+      },
+      {
+        "name": "nav-h",
+        "value": "60px",
+        "purpose": "Sticky nav height. --nav-h."
+      },
+      {
+        "name": "section",
+        "value": "96px",
+        "purpose": "Vertical rhythm between major sections."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single filled element on a page. At most one per view.",
+      "html": "<a class=\"ds-btn ds-btn-primary\" href=\"#\">Get started</a>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 46px; padding: 0 22px; border-radius: 7px; font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 15px; font-weight: 500; text-decoration: none; white-space: nowrap; border: 1px solid transparent; transition: background-color 0.15s ease, border-color 0.15s ease; } .ds-btn-primary { background: #b23a2c; color: #fff; } .ds-btn-primary:hover { background: #962f23; } .ds-btn-primary:focus-visible { outline: 2px solid #962f23; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Paper fill with a hairline edge; everything happens at the border.",
+      "html": "<a class=\"ds-btn ds-btn-secondary\" href=\"#\">Read the guides</a>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 46px; padding: 0 22px; border-radius: 7px; font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 15px; font-weight: 500; text-decoration: none; white-space: nowrap; border: 1px solid transparent; transition: background-color 0.15s ease, border-color 0.15s ease; } .ds-btn-secondary { background: #ffffff; color: #1c1a17; border-color: #e6e2d8; } .ds-btn-secondary:hover { border-color: #d1ccc0; } .ds-btn-secondary:focus-visible { outline: 2px solid #b23a2c; outline-offset: 2px; }"
+    },
+    {
+      "name": "Eyebrow with Pilcrow",
+      "kind": "custom",
+      "refersTo": "typography.title",
+      "description": "The system's signature: a red pilcrow before an italic serif label. Structure marked in red lead, exactly as a scribe would.",
+      "html": "<p class=\"ds-eyebrow\"><span class=\"ds-pilcrow\">¶</span> Offline by design</p>",
+      "css": ".ds-eyebrow { font-family: 'Newsreader Variable', 'Iowan Old Style', Georgia, serif; font-style: italic; font-weight: 500; font-size: 19px; color: #b23a2c; margin: 0 0 14px; display: flex; align-items: baseline; gap: 8px; } .ds-pilcrow { color: #b23a2c; font-family: 'Newsreader Variable', Georgia, serif; font-style: normal; }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "The Help Center search. Left padding is inset to clear an inline icon.",
+      "html": "<div class=\"ds-search\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#6e6a62\" stroke-width=\"2\" stroke-linecap=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg><input type=\"search\" placeholder=\"Search the guides\"></div>",
+      "css": ".ds-search { position: relative; display: block; max-width: 420px; } .ds-search svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); pointer-events: none; } .ds-search input { width: 100%; height: 48px; padding: 0 16px 0 44px; font-family: Inter, -apple-system, sans-serif; font-size: 16px; color: #1c1a17; background: #ffffff; border: 1px solid #e6e2d8; border-radius: 9px; transition: border-color 0.15s ease; } .ds-search input::placeholder { color: #6e6a62; } .ds-search input:focus { outline: none; border-color: #b23a2c; }"
+    },
+    {
+      "name": "Feature Tile",
+      "kind": "card",
+      "refersTo": "card-feature",
+      "description": "Recessive card: Vellum on a Paper band, hairline edge, no shadow.",
+      "html": "<div class=\"ds-feature\"><h3>Offline-first</h3><p>The whole workspace reads and writes without a network, and converges when it reconnects.</p></div>",
+      "css": ".ds-feature { background: #fbfaf7; border: 1px solid #e6e2d8; border-radius: 7px; padding: 28px 26px 30px; max-width: 340px; } .ds-feature h3 { font-family: 'Newsreader Variable', Georgia, serif; font-weight: 550; font-size: 21px; letter-spacing: -0.008em; color: #1c1a17; margin: 0 0 8px; } .ds-feature p { font-family: Inter, -apple-system, sans-serif; font-size: 15.5px; line-height: 1.6; color: #6e6a62; margin: 0; }"
+    },
+    {
+      "name": "Sheet",
+      "kind": "card",
+      "refersTo": "card-sheet",
+      "description": "The only kind of surface allowed a shadow, because it represents an actual page. Rows reveal a ghost drag handle on hover, as the real editor does.",
+      "html": "<div class=\"ds-sheet\"><h1>Write it down.</h1><p class=\"ds-block\">A block, like the editor it advertises.</p><p class=\"ds-block\">Hover to reveal the handle.</p></div>",
+      "css": ".ds-sheet { max-width: 420px; background: #ffffff; border: 1px solid #e6e2d8; border-radius: 10px; box-shadow: 0 1px 2px rgba(28,26,23,0.05), 0 16px 48px rgba(28,26,23,0.10); padding: 28px 28px 32px 46px; } .ds-sheet h1 { font-family: 'Newsreader Variable', Georgia, serif; font-weight: 560; font-size: 34px; letter-spacing: -0.01em; color: #1c1a17; margin: 0 0 20px; } .ds-block { position: relative; padding: 3px 0; margin: 0; font-family: Inter, -apple-system, sans-serif; font-size: 17px; line-height: 1.6; color: #1c1a17; } .ds-block::before { content: '\\2833'; position: absolute; left: -26px; top: 50%; transform: translateY(-50%); color: #6e6a62; font-size: 15px; opacity: 0; transition: opacity 0.15s ease; } .ds-block:hover::before { opacity: 1; }"
+    },
+    {
+      "name": "Sticky Nav",
+      "kind": "nav",
+      "refersTo": "layout.nav-h",
+      "description": "Translucent Vellum with a saturating blur; the bottom hairline fades in only after scroll.",
+      "html": "<nav class=\"ds-nav\"><span class=\"ds-nav-brand\">Vellum</span><a href=\"#\">Features</a><a href=\"#\">Help</a><a class=\"ds-btn ds-btn-primary ds-btn-sm\" href=\"#\">Open Vellum</a></nav>",
+      "css": ".ds-nav { display: flex; align-items: center; gap: 20px; height: 60px; padding: 0 24px; background: rgba(251,250,247,0.85); backdrop-filter: saturate(180%) blur(12px); -webkit-backdrop-filter: saturate(180%) blur(12px); border-bottom: 1px solid #e6e2d8; transition: border-color 0.2s ease; } .ds-nav-brand { font-family: 'Newsreader Variable', Georgia, serif; font-size: 19px; font-weight: 560; color: #1c1a17; margin-right: auto; } .ds-nav a:not(.ds-btn) { font-family: Inter, -apple-system, sans-serif; font-size: 14px; font-weight: 500; color: #6e6a62; text-decoration: none; transition: color 0.15s ease; } .ds-nav a:not(.ds-btn):hover { color: #1c1a17; } .ds-btn-sm { height: 34px; padding: 0 14px; font-size: 14px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Scriptorium",
+    "overview": "A warm sheet, dark ink, and a second ink in red kept for marking. The system takes its logic from the manuscript room: the ground is vellum rather than white, the display face is a text serif rather than a display face, and the one saturated color in the palette is not a brand color at all — it is rubrication, the scribe's practice of marking structure in red lead so a reader can find their way through a page of unbroken text. Pilcrows, section eyebrows, the blinking caret, and the primary action are all the same gesture: a mark, not a decoration.\n\nThe density is editorial rather than promotional. Sections breathe at 96px, body copy sits at 17px with a 1.6 line-height, and the page is mostly type and space — an eyebrow is italic serif in red, not a pill; a section marker is a pilcrow, not an icon. Where a graphic element is needed, it is a sheet of paper: bordered, softly shadowed, and slightly warmer than the ground it rests on. The hero is not an illustration of the product but a hand-built facsimile of one of its documents, whose page title is literally the page's h1.\n\nComponents are papery and tactile — the material metaphor is the point, and the confirmed direction is to lean into it rather than flatten it. Note honestly that the current implementation is more restrained than that character implies: outside the hero sheet and the screenshots, surfaces are flat and separated by hairlines. That gap is headroom for future landing work, not a defect to correct silently.",
+    "keyCharacteristics": [
+      "One accent, used as a marking practice and nothing else",
+      "A text serif (Newsreader) carrying display duty; Inter for reading",
+      "Warm paper ground (#fbfaf7), never pure white as the page",
+      "Hairlines separate; shadows are reserved for things that are paper",
+      "Motion is a load-in and a hover hint, fully disabled under prefers-reduced-motion",
+      "One deliberate inversion: a single ink-dark band, used once"
+    ],
+    "rules": [
+      {
+        "name": "The Rubrication Rule",
+        "body": "Minium marks structure; it never fills, tints, or decorates. If a red element is not a pilcrow, an eyebrow, a caret, or the single primary action, it is wrong. The rarity is what makes the mark legible.",
+        "section": "colors"
+      },
+      {
+        "name": "The Warm Ground Rule",
+        "body": "The page is Vellum, not white. Pure #ffffff means 'this is a sheet resting on the page' — using it as a background collapses the entire material metaphor.",
+        "section": "colors"
+      },
+      {
+        "name": "The Prose-Not-Logo Rule",
+        "body": "Headings are set in a text serif and never tracked out, uppercased, or letterspaced as a wordmark. Negative tracking (-0.008em to -0.01em) tightens them as size grows; that is the only tracking adjustment in the system.",
+        "section": "typography"
+      },
+      {
+        "name": "The Shadow-Means-Paper Rule",
+        "body": "A shadow declares 'this is a sheet'. If an element is not representing a physical page, it gets a hairline instead. Adding a shadow to a button, a nav, or a tile breaks the system's only depth signal.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep Minium to marks only — pilcrow, eyebrow, caret, one primary action per view (The Rubrication Rule).",
+      "Do set the page on Vellum (#fbfaf7) and reserve Paper (#ffffff) for surfaces that represent a sheet (The Warm Ground Rule).",
+      "Do separate with 1px Hairline (#e6e2d8); reach for shadow only when the element is paper (The Shadow-Means-Paper Rule).",
+      "Do set headings in Newsreader with negative tracking, as prose set large (The Prose-Not-Logo Rule).",
+      "Do bundle fonts through @fontsource imports so the PWA precache captures them.",
+      "Do wrap every animation in a prefers-reduced-motion escape, as the hero already does.",
+      "Do check src/help/help.css before changing landing tokens — it defines no :root of its own and inherits this system wholesale, so /help and /legal restyle with /.",
+      "Do update scripts/e2e-landing.mjs in the same commit as any structural change: it pins the .hero h1 copy, 9 .feature cards, 7 .deep .row s, the section anchors, and the CTA hrefs. e2e-pwa.mjs also asserts the headline."
+    ],
+    "donts": [
+      "Don't introduce a dark default or a theme toggle. This world is light; the single inverted band is the exception that proves it.",
+      "Don't use pure white as a page background or pure black as text.",
+      "Don't add a second accent hue. If something needs emphasis and cannot be Minium, it should be emphasized with type or space instead.",
+      "Don't put a shadow on a button, a nav, or a tile.",
+      "Don't replace the pilcrow or the italic serif eyebrow with icons, bullets, or uppercase tracked-out labels.",
+      "Don't letterspace or uppercase the serif.",
+      "Don't load fonts from a CDN.",
+      "Don't apply any of this to the workspace app at /app — its design is frozen by product constraint (PRODUCT.md)."
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "files": ["index.html", "help.html", "legal.html"],
+  "exclude": ["app.html"],
+  "insertBefore": "</body>",
+  "commentSyntax": "html",
+  "cspChecked": true
+}
