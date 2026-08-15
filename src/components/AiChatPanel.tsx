@@ -20,6 +20,7 @@ import { AiChatMessage, PageId, PageMeta } from "../lib/types";
 import { useAi, useGetDoc, useMutations } from "../data";
 import { isVaultPage } from "../lib/vaultSession";
 import { describeOp, executePlan } from "../lib/agentPlan";
+import ChatMarkdown from "./ChatMarkdown";
 import { markdownToBlocks } from "../lib/markdownBlocks";
 import { Check, Globe, ListChecks } from "lucide-react";
 
@@ -368,6 +369,13 @@ export default function AiChatPanel({
               <div key={i} className={`ai-msg ai-msg-${m.role}`}>
                 {m.error ? (
                   <div className="ai-menu-error">{m.error}</div>
+                ) : m.role === "assistant" ? (
+                  // The model writes markdown; render it as real elements.
+                  // The user's own words stay verbatim — a stray asterisk
+                  // in what they typed must not restyle it.
+                  <div className="ai-msg-body">
+                    <ChatMarkdown text={m.content} />
+                  </div>
                 ) : (
                   <div className="ai-msg-body">{m.content}</div>
                 )}

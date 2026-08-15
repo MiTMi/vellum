@@ -4615,6 +4615,81 @@ tbody.db-group + tbody.db-group .group-row td {
   border-radius: 10px;
   background: var(--bg-hover);
 }
+/* Rendered markdown in assistant messages (ChatMarkdown). The parent's
+   pre-wrap is for plain text; rendered blocks manage their own flow. */
+.ai-md {
+  white-space: normal;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ai-md h1,
+.ai-md h2,
+.ai-md h3 {
+  margin: 4px 0 0;
+  line-height: 1.3;
+  font-weight: 600;
+}
+.ai-md h1 {
+  font-size: 17px;
+}
+.ai-md h2 {
+  font-size: 15.5px;
+}
+.ai-md h3 {
+  font-size: 14.5px;
+}
+.ai-md p {
+  margin: 0;
+}
+.ai-md ul,
+.ai-md ol {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ai-md blockquote {
+  margin: 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2.5px solid var(--border);
+  color: var(--text-secondary);
+}
+.ai-md code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.88em;
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+.ai-md pre {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+.ai-md pre code {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+.ai-md hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+}
+.ai-md a {
+  color: var(--ai, var(--accent));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .ai-msg-thinking {
   display: flex;
   align-items: center;
