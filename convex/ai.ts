@@ -14,7 +14,12 @@ import {
   aiSpend,
   monthKey,
 } from "./lib/quotas";
-import { AgentOp, parseAgentJson, validatePlan } from "./lib/agentPlan";
+import {
+  AgentOp,
+  parseAgentJson,
+  salvageAgentReply,
+  validatePlan,
+} from "./lib/agentPlan";
 import { fetchUrlText, searchConfigured, webSearch } from "./lib/websearch";
 import { Doc, Id } from "./_generated/dataModel";
 
@@ -780,7 +785,7 @@ Include "plan" ONLY when the user asked to create something; omit it for questio
 {"kind":"addRow","target":"#N"|"<database page id>","title":"...","props":{"<column name>":<value>}}
 {"kind":"appendToPage","target":"current"|"<page id>","markdown":"..."}
 
-Rules: every createPage/createDatabase step MUST carry "parent" ("root" unless it belongs inside another page); nothing in a plan exists until the user clicks Apply, so phrase the reply as a proposal ("I'll create…"), NEVER as work already done; web queries and URLs must be lawful and family-appropriate — an independent safety check declines anything else, so do not attempt it; prop values are strings, numbers, booleans, or string lists keyed by COLUMN NAME; dates are "YYYY-MM-DD"; "parent":"current" needs an open page (you are told when one is open); markdown supports #/##/### headings, - bullets, 1. numbered lists, - [ ] checkboxes, and plain paragraphs.`;
+Rules: output exactly ONE JSON object per turn, with every double quote inside a string value escaped as \\"; to add content to the open page use appendToPage, never a new createPage; every createPage/createDatabase step MUST carry "parent" ("root" unless it belongs inside another page); nothing in a plan exists until the user clicks Apply, so phrase the reply as a proposal ("I'll create…"), NEVER as work already done; web queries and URLs must be lawful and family-appropriate — an independent safety check declines anything else, so do not attempt it; prop values are strings, numbers, booleans, or string lists keyed by COLUMN NAME; dates are "YYYY-MM-DD"; "parent":"current" needs an open page (you are told when one is open); markdown supports #/##/### headings, - bullets, 1. numbered lists, - [ ] checkboxes, and plain paragraphs.`;
 
 /**
  * The propose-then-apply workspace agent. Runs a bounded read-tool loop
@@ -905,11 +910,36 @@ export const agent = action({
         },
       );
 
-      const parsed = parseAgentJson(text);
+      // Keyed to the protocol so the candidate scan can't mistake a plan
+      // step (also a JSON object) for the message that carries it.
+      const parsed = parseAgentJson(text, ["reply", "tool", "plan"]);
 
-      // Not JSON at all: treat the text as the final reply. A model that
-      // drifts off-protocol mid-loop still answers the user.
-      if (!parsed) return { answer: text.trim(), plan: null, sources, model: aiModel() };
+      // Not parseable protocol JSON. Plain prose passes through as the
+      // reply — but protocol-shaped text that merely failed to parse
+      // (unescaped quotes, observed live) must never be dumped on the
+      // user raw; salvage the reply string or apologize readably.
+      if (!parsed) {
+        const salvaged = salvageAgentReply(text);
+        if (salvaged !== null) {
+          return {
+            answer:
+              salvaged +
+              "\n\n_(I lost the rest of that reply while composing it — if I mentioned creating something, ask me again.)_",
+            plan: null,
+            sources,
+            model: aiModel(),
+          };
+        }
+        if (text.trim().startsWith("{")) {
+          return {
+            answer: "I garbled that reply — please ask me again.",
+            plan: null,
+            sources,
+            model: aiModel(),
+          };
+        }
+        return { answer: text.trim(), plan: null, sources, model: aiModel() };
+      }
 
       if (!finalRound && parsed.tool === "search" && typeof parsed.query === "string") {
         const docs: { pageId: string; title: string; icon: string | null; text: string }[] =

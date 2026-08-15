@@ -76,10 +76,11 @@ const COLUMN_TYPES: readonly string[] = [
  * brace span. Null means "this is not JSON" — callers treat the text
  * as a plain reply, never as an error.
  */
-/** The first complete, brace-balanced JSON object in `t`, or null.
- *  String-aware, so braces inside quoted values don't confuse it. */
-function firstJsonObject(t: string): string | null {
-  const start = t.indexOf("{");
+/** The first complete, brace-balanced JSON object in `t` at or after
+ *  `from`, or null. String-aware, so braces inside quoted values don't
+ *  confuse it. */
+function firstJsonObject(t: string, from = 0): string | null {
+  const start = t.indexOf("{", from);
   if (start === -1) return null;
   let depth = 0;
   let inString = false;
@@ -103,28 +104,79 @@ function firstJsonObject(t: string): string | null {
   return null;
 }
 
-export function parseAgentJson(text: string): Record<string, unknown> | null {
+/** Parse attempts per reply. Broken JSON with markdown/code inside can
+ *  hold many `{`s; parsing is cheap but bound it anyway. */
+const MAX_PARSE_CANDIDATES = 40;
+
+export function parseAgentJson(
+  text: string,
+  /** When set, a candidate only counts if it carries at least one of
+   *  these top-level keys. This is what lets the scan skip nested
+   *  fragments (a plan step parses as an object too) while hunting for
+   *  a real protocol message in a partially broken reply. */
+  requiredKeys?: string[],
+): Record<string, unknown> | null {
   let t = text.trim();
   const fence = t.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
   if (fence) t = fence[1].trim();
-  // Whole text first; then the first balanced object — models sometimes
-  // emit a tool call AND a final reply in one turn (observed live), and
-  // taking the first means the tool executes and the premature reply is
-  // regenerated next round with the tool's result in hand.
-  const candidates = [t];
-  const balanced = firstJsonObject(t);
-  if (balanced && balanced !== t) candidates.push(balanced);
-  for (const c of candidates) {
-    try {
-      const parsed = JSON.parse(c) as unknown;
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
+  const accept = (parsed: unknown): Record<string, unknown> | null => {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const obj = parsed as Record<string, unknown>;
+    if (requiredKeys && !requiredKeys.some((k) => k in obj)) return null;
+    return obj;
+  };
+  // Whole text first; then every balanced object, front to back — models
+  // sometimes emit a tool call AND a final reply in one turn, or a broken
+  // object followed by a valid one (both observed live). Taking the first
+  // acceptable candidate means a tool call executes before a premature
+  // reply, and a valid later object survives a garbled earlier one.
+  try {
+    const whole = accept(JSON.parse(t) as unknown);
+    if (whole) return whole;
+  } catch {
+    /* fall through to the scan */
+  }
+  let from = 0;
+  for (let n = 0; n < MAX_PARSE_CANDIDATES; n++) {
+    const start = t.indexOf("{", from);
+    if (start === -1) break;
+    const span = firstJsonObject(t, start);
+    if (span) {
+      try {
+        const parsed = accept(JSON.parse(span) as unknown);
+        if (parsed) return parsed;
+      } catch {
+        /* try the next opening brace */
       }
-    } catch {
-      /* try next candidate */
     }
+    from = start + 1;
   }
   return null;
+}
+
+/**
+ * Last-resort extraction of the user-facing reply from a protocol-shaped
+ * message that failed every parse — flash-lite sometimes leaves inner
+ * quotes unescaped inside the reply string (observed live 2026-08-15),
+ * which poisons the whole object. Null when the text doesn't look like
+ * the protocol at all (a plain-prose reply must pass through untouched).
+ */
+export function salvageAgentReply(text: string): string | null {
+  const t = text.trim();
+  if (!t.startsWith("{") || !/"reply"\s*:/.test(t)) return null;
+  // Up to the next protocol key or the closing brace — non-greedy, so
+  // stray unescaped quotes inside the reply are captured rather than
+  // terminating it.
+  const m =
+    t.match(/"reply"\s*:\s*"([\s\S]*?)"\s*,\s*"(?:plan|tool)"/) ??
+    t.match(/"reply"\s*:\s*"([\s\S]*?)"\s*\}/);
+  if (!m || !m[1].trim()) return null;
+  // Single pass — sequential replaces would let a literal backslash bleed
+  // into the next escape (`\\n` in the raw JSON is a backslash then "n",
+  // not a newline).
+  return m[1]
+    .replace(/\\(.)/g, (_, c: string) => (c === "n" ? "\n" : c === "t" ? "\t" : c))
+    .trim();
 }
 
 function isRef(v: unknown): v is AgentRef {

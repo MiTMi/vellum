@@ -6,6 +6,7 @@ import { expect, test } from "vitest";
 import {
   MAX_PLAN_OPS,
   parseAgentJson,
+  salvageAgentReply,
   validatePlan,
 } from "../convex/lib/agentPlan";
 import { markdownToBlocks } from "../src/lib/markdownBlocks";
@@ -27,6 +28,43 @@ test("non-JSON and JSON arrays read as null (plain replies)", () => {
   expect(parseAgentJson("I could not find anything relevant.")).toBeNull();
   expect(parseAgentJson("[1,2,3]")).toBeNull();
   expect(parseAgentJson("")).toBeNull();
+});
+
+// The 2026-08-15 live failure: two concatenated objects, the first broken
+// by unescaped quotes inside its reply string, the second valid. The scan
+// must skip past the garbage (and past the first object's nested plan
+// steps, which parse as objects but lack protocol keys) to the real one.
+const brokenThenValid =
+  '{"reply":"I can add content to the "macOS .plist" page. What would you like?","plan":[{"kind":"createPage","title":"macOS .plist","parent":"root"}]}\n' +
+  '{"reply":"Adding it now.","plan":[{"kind":"appendToPage","target":"current","markdown":"## What are .plist files?"}]}';
+
+test("recovers a valid protocol object after a quote-poisoned one", () => {
+  const parsed = parseAgentJson(brokenThenValid, ["reply", "tool", "plan"]);
+  expect(parsed?.reply).toBe("Adding it now.");
+  expect(Array.isArray(parsed?.plan)).toBe(true);
+});
+
+test("requiredKeys skips nested fragments without breaking normal parses", () => {
+  // A lone plan step must not be mistaken for the protocol message…
+  expect(
+    parseAgentJson('{"kind":"createPage","title":"x","parent":"root"}', [
+      "reply",
+      "tool",
+      "plan",
+    ]),
+  ).toBeNull();
+  // …while an un-keyed call (the web guard's verdict) behaves as before.
+  expect(parseAgentJson('{"allowed":true}')).toEqual({ allowed: true });
+});
+
+test("salvageAgentReply pulls the reply out of quote-poisoned JSON", () => {
+  const broken =
+    '{"reply":"I can add content to the "macOS .plist" page.\\nShall I?","plan":[]}';
+  expect(salvageAgentReply(broken)).toBe(
+    'I can add content to the "macOS .plist" page.\nShall I?',
+  );
+  // Plain prose is not protocol-shaped — must pass through untouched.
+  expect(salvageAgentReply("Sure, I can help with that.")).toBeNull();
 });
 
 /* ---------------------------- validatePlan ---------------------------- */
