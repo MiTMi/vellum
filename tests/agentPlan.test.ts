@@ -52,6 +52,18 @@ test("accepts a well-formed plan with refs", () => {
   expect(result.ok).toBe(true);
 });
 
+test("a missing parent on create steps defaults to root (flash-lite omits it)", () => {
+  const result = validatePlan([
+    { kind: "createPage", title: "Fable Test Page", markdown: "hi" },
+    { kind: "createDatabase", title: "Meals", columns: [{ name: "Day", type: "text" }] },
+  ]);
+  expect(result.ok).toBe(true);
+  if (result.ok) {
+    expect(result.plan[0]).toMatchObject({ parent: "root" });
+    expect(result.plan[1]).toMatchObject({ parent: "root" });
+  }
+});
+
 test("rejects non-lists, empty plans, and oversized plans", () => {
   expect(validatePlan("nope").ok).toBe(false);
   expect(validatePlan([]).ok).toBe(false);

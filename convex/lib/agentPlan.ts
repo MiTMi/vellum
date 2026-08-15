@@ -165,6 +165,18 @@ export function validatePlan(raw: unknown): PlanValidation {
     const op = raw[i] as Record<string, unknown>;
     if (!op || typeof op !== "object") return fail(i, "not an object");
 
+    // flash-lite omits `parent` on create steps at low temperature even
+    // though the prompt spells it out (observed live 2026-08-15, 4/4 on
+    // prod). A missing parent means "nowhere special" — default it to the
+    // workspace root rather than rejecting the whole plan. Written onto
+    // the op because the executor consumes this same object.
+    if (
+      (op.kind === "createPage" || op.kind === "createDatabase") &&
+      op.parent == null
+    ) {
+      op.parent = "root";
+    }
+
     // A ref must point strictly backwards, at an op of the right kind.
     const checkRef = (ref: AgentRef, allowed: string[]): string | null => {
       const idx = refIndex(ref);

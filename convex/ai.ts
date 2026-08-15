@@ -780,7 +780,7 @@ Include "plan" ONLY when the user asked to create something; omit it for questio
 {"kind":"addRow","target":"#N"|"<database page id>","title":"...","props":{"<column name>":<value>}}
 {"kind":"appendToPage","target":"current"|"<page id>","markdown":"..."}
 
-Rules: web queries and URLs must be lawful and family-appropriate — an independent safety check declines anything else, so do not attempt it; prop values are strings, numbers, booleans, or string lists keyed by COLUMN NAME; dates are "YYYY-MM-DD"; "parent":"current" needs an open page (you are told when one is open); markdown supports #/##/### headings, - bullets, 1. numbered lists, - [ ] checkboxes, and plain paragraphs.`;
+Rules: every createPage/createDatabase step MUST carry "parent" ("root" unless it belongs inside another page); nothing in a plan exists until the user clicks Apply, so phrase the reply as a proposal ("I'll create…"), NEVER as work already done; web queries and URLs must be lawful and family-appropriate — an independent safety check declines anything else, so do not attempt it; prop values are strings, numbers, booleans, or string lists keyed by COLUMN NAME; dates are "YYYY-MM-DD"; "parent":"current" needs an open page (you are told when one is open); markdown supports #/##/### headings, - bullets, 1. numbered lists, - [ ] checkboxes, and plain paragraphs.`;
 
 /**
  * The propose-then-apply workspace agent. Runs a bounded read-tool loop
