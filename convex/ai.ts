@@ -659,6 +659,8 @@ const MAX_WEB_OPS = 3;
  *  Real queries are short; real URLs fit comfortably. */
 const MAX_SEARCH_QUERY_CHARS = 200;
 const MAX_FETCH_URL_CHARS = 500;
+/** Plan-step kinds, for recovering a step the model mislabels as a tool. */
+const PLAN_OP_KINDS = ["createPage", "createDatabase", "addRow", "appendToPage"];
 
 /**
  * The safety gate on OUTGOING web operations (decided with Michael
@@ -785,7 +787,7 @@ Include "plan" ONLY when the user asked to create something; omit it for questio
 {"kind":"addRow","target":"#N"|"<database page id>","title":"...","props":{"<column name>":<value>}}
 {"kind":"appendToPage","target":"current"|"<page id>","markdown":"..."}
 
-Rules: output exactly ONE JSON object per turn, with every double quote inside a string value escaped as \\"; to add content to the open page use appendToPage, never a new createPage; every createPage/createDatabase step MUST carry "parent" ("root" unless it belongs inside another page); nothing in a plan exists until the user clicks Apply, so phrase the reply as a proposal ("I'll create…"), NEVER as work already done; web queries and URLs must be lawful and family-appropriate — an independent safety check declines anything else, so do not attempt it; prop values are strings, numbers, booleans, or string lists keyed by COLUMN NAME; dates are "YYYY-MM-DD"; "parent":"current" needs an open page (you are told when one is open); markdown supports #/##/### headings, - bullets, 1. numbered lists, - [ ] checkboxes, and plain paragraphs.`;
+Rules: output exactly ONE JSON object per turn, with every double quote inside a string value escaped as \\"; createPage/createDatabase/addRow/appendToPage are plan steps and go inside "plan" — they are NOT tools; to add content to the open page use appendToPage, never a new createPage; every createPage/createDatabase step MUST carry "parent" ("root" unless it belongs inside another page); nothing in a plan exists until the user clicks Apply, so phrase the reply as a proposal ("I'll create…"), NEVER as work already done; web queries and URLs must be lawful and family-appropriate — an independent safety check declines anything else, so do not attempt it; prop values are strings, numbers, booleans, or string lists keyed by COLUMN NAME; dates are "YYYY-MM-DD"; "parent":"current" needs an open page (you are told when one is open); markdown supports #/##/### headings, - bullets, 1. numbered lists, - [ ] checkboxes, and plain paragraphs.`;
 
 /**
  * The propose-then-apply workspace agent. Runs a bounded read-tool loop
@@ -1056,6 +1058,44 @@ export const agent = action({
           convo.push(`Tool result for fetchUrl ${parsed.url}:\nThat page is not available.`);
         }
         continue;
+      }
+
+      // A "tool" that is really a plan step (observed live 2026-08-16:
+      // {"tool":"appendToPage",…}) is intent, not noise — recover it as a
+      // one-step plan so the user still gets an Apply card. Any other
+      // unrecognized tool gets a corrective round mid-loop and a readable
+      // apology on the last one; raw protocol must never reach the chat.
+      if (
+        typeof parsed.tool === "string" &&
+        typeof parsed.reply !== "string" &&
+        parsed.plan === undefined
+      ) {
+        if (PLAN_OP_KINDS.includes(parsed.tool)) {
+          const { tool, ...rest } = parsed;
+          const validated = validatePlan([{ ...rest, kind: tool }]);
+          if (validated.ok) {
+            return {
+              answer: "Here's what I can add — review and apply it.",
+              plan: validated.plan,
+              sources,
+              model: aiModel(),
+            };
+          }
+        }
+        if (!finalRound) {
+          convo.push(
+            `Tool result for ${parsed.tool}: unknown tool. Use search or read` +
+              `${webEnabled ? " (or webSearch/fetchUrl)" : ""}, put plan steps inside "plan", ` +
+              `or reply with the final JSON now.`,
+          );
+          continue;
+        }
+        return {
+          answer: "I garbled that reply — please ask me again.",
+          plan: null,
+          sources,
+          model: aiModel(),
+        };
       }
 
       // Final answer (or a tool call on the forced-final round, which we

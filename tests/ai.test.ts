@@ -401,6 +401,34 @@ test("agent: a malformed plan is rejected whole; the reply survives", async () =
   expect(res.answer).toMatch(/malformed/);
 });
 
+test("agent: a plan step mislabeled as a tool recovers into an Apply card", async () => {
+  // Observed live 2026-08-16: {"tool":"appendToPage",…} — a plan op in the
+  // tool slot. The intent is clear, so it must come back as a real plan.
+  fetchMock.mockResolvedValue(
+    ok('{"tool":"appendToPage","target":"current","markdown":"## Notes\\n- a"}'),
+  );
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "add this to the page" }],
+  });
+  expect(res.plan).toHaveLength(1);
+  expect(res.plan?.[0]).toMatchObject({ kind: "appendToPage", target: "current" });
+  expect(res.answer).not.toContain('"tool"');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test("agent: an unknown tool gets a corrective round, never a raw JSON dump", async () => {
+  fetchMock
+    .mockResolvedValueOnce(ok('{"tool":"quux","query":"?"}'))
+    .mockResolvedValueOnce(ok('{"reply":"Recovered."}'));
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "hello" }],
+  });
+  expect(res.answer).toBe("Recovered.");
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+  expect(secondBody.messages[1].content).toContain("unknown tool");
+});
+
 test("agent: off-protocol prose becomes the answer, never an error", async () => {
   fetchMock.mockResolvedValue(ok("I'm not sure what you mean."));
   const res = await (await t()).action(api.ai.agent, {
