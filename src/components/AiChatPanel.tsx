@@ -267,14 +267,27 @@ export default function AiChatPanel({
               .map((f) => `step ${f.opIndex + 1} (${f.reason})`)
               .join(", ")}.`
           : "";
+      // An append-only apply creates nothing yet succeeds — the summary
+      // must count every kind of successful write, or "Nothing was
+      // created." reads as a failure (seen live 2026-08-16).
+      const succeeded = msg.plan.length - result.failures.length;
+      const summary =
+        succeeded === 0
+          ? "Nothing was applied."
+          : result.created.length > 0 && result.touched.length > 0
+            ? "Done — created and added what we discussed."
+            : result.created.length > 0
+              ? "Done — created what we discussed."
+              : result.touched.length === 1
+                ? `Done — added the content to “${result.touched[0].title}”.`
+                : result.touched.length > 1
+                  ? "Done — added the content to your pages."
+                  : "Done — applied the plan.";
       setMessages((m) =>
         m.map((x, i) => (i === idx ? { ...x, planApplied: true } : x)).concat({
           role: "assistant",
-          content:
-            (result.created.length > 0
-              ? "Done — created what we discussed."
-              : "Nothing was created.") + failNote,
-          sources: result.created.map((c) => ({
+          content: summary + failNote,
+          sources: [...result.created, ...result.touched].map((c) => ({
             pageId: c.pageId,
             title: c.title,
             icon: c.icon,

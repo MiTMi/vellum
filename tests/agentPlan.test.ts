@@ -272,6 +272,46 @@ test("executor: database + rows + page land with resolved refs and prop ids", as
   expect(calls.filter((c) => c.fn === "updateDbProps").length).toBe(2); // initial + minted option
 });
 
+test("executor: append-only and existing-db writes report as touched, not silence", async () => {
+  // The live 2026-08-16 bug: an append-only apply succeeded but `created`
+  // was empty, so the panel announced "Nothing was created."
+  const { deps, store } = fakeDeps({
+    notes: { title: "Field Notes", icon: "📓", content: [], contentText: "" },
+    meals: {
+      title: "Meals", type: "database",
+      dbProps: [{ id: "day-0", name: "Day", type: "text" }],
+    },
+  });
+  const plan: AgentOp[] = [
+    { kind: "appendToPage", target: "notes", markdown: "- new line" },
+    { kind: "appendToPage", target: "notes", markdown: "- another" }, // dedup
+    { kind: "addRow", target: "meals", title: "Pasta", props: { Day: "Mon" } },
+  ];
+  const result = await executePlan(plan, deps);
+  expect(result.failures).toEqual([]);
+  expect(result.created).toEqual([]);
+  expect(result.touched).toEqual([
+    { pageId: "notes", title: "Field Notes", icon: "📓" },
+    { pageId: "meals", title: "Meals", icon: null },
+  ]);
+  expect(store.get("notes")!.content).toHaveLength(2);
+});
+
+test("executor: an in-plan database is a created chip, never doubled as touched", async () => {
+  const { deps } = fakeDeps();
+  const plan: AgentOp[] = [
+    {
+      kind: "createDatabase", title: "Trips", parent: "root",
+      columns: [{ name: "Where", type: "text" }],
+    },
+    { kind: "addRow", target: "#0", title: "Rome" },
+  ];
+  const result = await executePlan(plan, deps);
+  expect(result.failures).toEqual([]);
+  expect(result.created).toHaveLength(1);
+  expect(result.touched).toEqual([]);
+});
+
 test("executor: guarded targets fail their op and the rest continues", async () => {
   const { deps, store } = fakeDeps({
     vaultpage: { vault: true },

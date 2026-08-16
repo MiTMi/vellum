@@ -23,6 +23,10 @@ export interface ExecuteDeps {
 export interface ExecuteResult {
   /** Pages created, in op order — for the confirmation chips. */
   created: { pageId: PageId; title: string; icon: string | null }[];
+  /** EXISTING pages the plan wrote into (appends, rows into an existing
+   *  database). Without these an append-only apply reported "Nothing was
+   *  created." — true, and completely misleading (seen live 2026-08-16). */
+  touched: { pageId: PageId; title: string; icon: string | null }[];
   /** Ops that could not run, with why. Empty means a clean apply. */
   failures: { opIndex: number; reason: string }[];
 }
@@ -52,11 +56,26 @@ export async function executePlan(
   deps: ExecuteDeps,
 ): Promise<ExecuteResult> {
   const created: ExecuteResult["created"] = [];
+  const touched: ExecuteResult["touched"] = [];
   const failures: ExecuteResult["failures"] = [];
   /** Op index → created page id, for "#n" refs. */
   const refIds = new Map<number, PageId>();
-  /** Database id → its evolving dbProps (options minted as rows land). */
-  const dbSchemas = new Map<PageId, { props: DbProp[]; dirty: boolean }>();
+  /** Database id → its evolving dbProps (options minted as rows land).
+   *  `existing` carries chip info when the db predates this plan. */
+  const dbSchemas = new Map<
+    PageId,
+    { props: DbProp[]; dirty: boolean; existing?: { title: string; icon: string | null } }
+  >();
+
+  const addTouched = (pageId: PageId, info: { title: string; icon: string | null }) => {
+    if (touched.some((t) => t.pageId === pageId)) return;
+    if (created.some((c) => c.pageId === pageId)) return;
+    touched.push({ pageId, ...info });
+  };
+  const chipInfo = (doc: PageDoc): { title: string; icon: string | null } => ({
+    title: doc.title || "Untitled",
+    icon: doc.icon ?? null,
+  });
 
   const resolveParent = (
     parent: "current" | "root" | `#${number}`,
@@ -169,7 +188,11 @@ export async function executePlan(
               failures.push({ opIndex: i, reason: "the target is not a database" });
               break;
             }
-            schema = { props: structuredClone(target.doc.dbProps ?? []), dirty: false };
+            schema = {
+              props: structuredClone(target.doc.dbProps ?? []),
+              dirty: false,
+              existing: chipInfo(target.doc),
+            };
             dbSchemas.set(dbId, schema);
           }
 
@@ -216,6 +239,7 @@ export async function executePlan(
             props: Object.keys(props).length > 0 ? props : undefined,
           });
           refIds.set(i, rowId);
+          if (schema.existing) addTouched(dbId, schema.existing);
           break;
         }
 
@@ -255,6 +279,7 @@ export async function executePlan(
           // Modal rule) — repaint it through the registry.
           const editor = getActiveEditorFor(targetId);
           if (editor) editor.replaceBlocks(editor.document, combined);
+          addTouched(targetId, chipInfo(target.doc));
           break;
         }
       }
@@ -277,7 +302,7 @@ export async function executePlan(
     }
   }
 
-  return { created, failures };
+  return { created, touched, failures };
 }
 
 /** One plain-language line per op, for the plan card. */
