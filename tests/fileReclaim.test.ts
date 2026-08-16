@@ -426,7 +426,12 @@ test("a blob is not swept while vault ciphertext could be referencing it", async
     });
   });
 
-  vi.setSystemTime(new Date("2026-08-14T00:00:00Z"));
+  // Sweep "now". Anchored to the REAL clock, not an absolute date:
+  // convex-test stamps `_storage._creationTime` from real time — fake
+  // timers never reach it — so a fixed date here becomes a time bomb the
+  // day the calendar passes it (this test broke on 2026-08-14 exactly
+  // that way). A future-of-real cutoff keeps the blob nominated forever.
+  vi.setSystemTime(vi.getRealSystemTime() + 60_000);
   await tc.mutation(internal.files._sweep, { graceMs: 0 });
   await settle(tc);
   expect(await storedObjects(tc)).toBe(1);
@@ -469,7 +474,9 @@ test("vault ciphertext does not protect blobs uploaded after the ban", async () 
       content: { __venc: 1, iv: "aXY=", data: "Y2lwaGVydGV4dA==" },
     });
   });
-  vi.setSystemTime(new Date("2026-09-01T00:00:00Z"));
+  // The fake clock starts at real now, which is already past the ban —
+  // no absolute date needed (a fixed one detonates when the calendar
+  // passes it; see the real-clock note in the previous test).
   await upload(tc, as, "after-the-ban");
   ageClock();
   await tc.mutation(internal.files._sweep, { graceMs: 0 });
