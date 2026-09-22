@@ -1263,8 +1263,8 @@ persistence.
   landed: every hard-coded `Meta` chord (the four `e2e-guide-*` `MOD`
   constants and ten literal `"Meta+k"`/`"Meta+,"`/`"Meta+Shift+J"`
   presses) is now platform-aware like `e2e.mjs:122` — keep new chords
-  that way — but expect the first Linux run to need a triage pass all
-  the same.
+  that way. The first run on ubuntu (2026-09-22, run 35706401003) was
+  green without a triage pass: `check` in ~1 min, `e2e` in ~9 min.
 - `node scripts/e2e*.mjs` — Playwright UI suites against a mock-mode vite
   server on port 5199 (`VITE_MOCK_CONVEX=1 npx vite --port 5199`), e.g.
   `e2e-embeds.mjs` (embed block + export menu) and `e2e-dbfeatures.mjs`
