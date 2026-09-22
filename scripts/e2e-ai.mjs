@@ -432,6 +432,50 @@ try {
     "the real number is still in the document",
     (await page.textContent(".bn-editor")).includes("4111 1111 1111 1111"),
   );
+
+  /* ---------- 6. the agent edits existing text via a diffed plan ---------- */
+  // The mock turns an edit-shaped ask that quotes a phrase into one
+  // replaceText step on the open page; the card must show the diff, Apply
+  // must swap the block in the live editor, and nothing else may change.
+
+  // Escape left focus on the menu's trigger, not the editor: click back in
+  // at the last block before typing a fresh line.
+  await page.locator(".bn-block-content").last().click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("The quick brown fox");
+  await page.waitForFunction(
+    () => document.querySelector(".bn-editor")?.textContent.includes("quick brown fox"),
+    null,
+    { timeout: 4000 },
+  );
+  await page.keyboard.press(`${mod}+Shift+J`);
+  await page.waitForSelector(".ai-panel", { timeout: 4000 });
+  await page.fill(".ai-panel-composer textarea", 'Rewrite "The quick brown fox" to be formal');
+  await page.keyboard.press("Enter");
+  const diffCard = await page
+    .waitForSelector(".ai-plan-card .ai-plan-diff", { timeout: 6000 })
+    .catch(() => null);
+  check("an edit ask renders a plan card with a diff", !!diffCard);
+  if (diffCard) {
+    const diff = await diffCard.textContent();
+    check("the diff shows what goes and what comes", diff.includes("− The quick brown fox") && diff.includes("+ The quick brown fox (edited by AI)"));
+    check(
+      "the note says edits are undoable, not additive-only",
+      (await page.textContent(".ai-plan-note")).includes("page history"),
+    );
+    await page.click(".ai-plan-apply");
+    await page.waitForSelector(".ai-plan-applied", { timeout: 6000 });
+    await page.waitForTimeout(400);
+    const body = await page.textContent(".bn-editor");
+    check("Apply swaps the block in the live editor", body.includes("The quick brown fox (edited by AI)"));
+    check("the old block is gone (not duplicated)", body.split("The quick brown fox").length === 2);
+    check("the rest of the page is untouched", body.includes("4111 1111 1111 1111"));
+    check(
+      "the receipt says updated, not created",
+      (await page.locator(".ai-msg-body").last().textContent()).includes("updated"),
+    );
+  }
 } catch (err) {
   check(`threw: ${err.message}`, false);
   await page.screenshot({ path: `${SHOTS}/crash.png` }).catch(() => {});

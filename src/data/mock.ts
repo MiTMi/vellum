@@ -474,6 +474,24 @@ const mockApi: DataApi = {
         agent: async ({ messages }) => {
           const last = [...messages].reverse().find((m) => m.role === "user");
           const content = last?.content ?? "";
+          // Edit-shaped asks that quote a phrase yield one replaceText step on
+          // the open page, so e2e can apply an edit and assert the diff.
+          const quoted = /["“]([^"”]{3,})["”]/.exec(content)?.[1];
+          if (quoted && /\b(rewrite|replace|change|edit|reword)\b/i.test(content)) {
+            return {
+              answer: "Here's the edit — review and apply it.",
+              plan: [
+                {
+                  kind: "replaceText" as const,
+                  target: "current" as const,
+                  find: quoted,
+                  markdown: `${quoted} (edited by AI)`,
+                },
+              ],
+              sources: [],
+              model: "demo",
+            };
+          }
           if (/\b(create|make|set up|build)\b/i.test(content)) {
             return {
               answer: "Here's a plan — review and apply it.",

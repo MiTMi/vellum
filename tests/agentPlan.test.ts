@@ -367,3 +367,93 @@ test("two concatenated JSON objects parse as the first (observed live)", () => {
     reply: "use {curly} braces",
   });
 });
+
+/* ------------------------------ replaceText ------------------------------ */
+
+import { findReplaceTargets, replaceBlockIn } from "../src/lib/agentPlan";
+import { extractText } from "../src/lib/blocks";
+
+test("replaceText: validator accepts the edit op and keeps delete unrepresentable", () => {
+  expect(
+    validatePlan([{ kind: "replaceText", target: "current", find: "old text", markdown: "new text" }]).ok,
+  ).toBe(true);
+  // A blank replacement would be a delete.
+  expect(
+    validatePlan([{ kind: "replaceText", target: "current", find: "old text", markdown: "   " }]),
+  ).toMatchObject({ ok: false, error: /markdown/ });
+  // An anchor too short to be unambiguous.
+  expect(
+    validatePlan([{ kind: "replaceText", target: "current", find: "ab", markdown: "x" }]),
+  ).toMatchObject({ ok: false, error: /find/ });
+  expect(
+    validatePlan([{ kind: "replaceText", target: "", find: "old text", markdown: "x" }]),
+  ).toMatchObject({ ok: false, error: /target/ });
+});
+
+const para = (text: string, children: unknown[] = []) => ({
+  id: text.replace(/\W/g, "_"),
+  type: "paragraph",
+  content: [{ type: "text", text, styles: {} }],
+  children,
+});
+
+test("replaceText: exact block match wins over substring matches", () => {
+  const blocks = [para("The quick brown fox"), para("The quick brown fox jumps")];
+  const hits = findReplaceTargets(blocks, "The quick brown fox");
+  expect(hits).toHaveLength(1);
+  expect(hits[0]).toBe(blocks[0]);
+  // No exact match → substring, which finds both → ambiguous for the executor.
+  expect(findReplaceTargets(blocks, "quick brown")).toHaveLength(2);
+  expect(findReplaceTargets(blocks, "nowhere")).toHaveLength(0);
+});
+
+test("replaceText: nested children ride along on the last replacement block", () => {
+  const kids = [para("child")];
+  const blocks = [para("intro"), para("target", kids), para("outro")];
+  const next = replaceBlockIn(blocks, blocks[1], [para("a"), para("b")]);
+  expect(next.map((b) => (b as { id: string }).id)).toEqual(["intro", "a", "b", "outro"]);
+  expect((next[2] as { children: unknown[] }).children).toBe(kids);
+});
+
+test("executor: replaceText swaps exactly one block in place and reports the page as touched", async () => {
+  const { deps, store } = fakeDeps({
+    p1: {
+      title: "Notes",
+      content: [para("keep me"), para("The quick brown fox"), para("and me")],
+      contentText: "keep me\nThe quick brown fox\nand me",
+    },
+  });
+  deps.currentPageId = "p1" as PageId;
+  const result = await executePlan(
+    [{ kind: "replaceText", target: "current", find: "The quick brown fox", markdown: "A formal fox" }],
+    deps,
+  );
+  expect(result.failures).toEqual([]);
+  expect(result.created).toEqual([]);
+  expect(result.touched.map((t) => t.pageId)).toEqual(["p1"]);
+  const doc = store.get("p1")!;
+  // Read each block the way the app does — the replacement comes from
+  // markdownToBlocks and is not shaped like the fixture.
+  const texts = (doc.content as unknown[]).map((b) => extractText([b]).trim());
+  expect(texts).toEqual(["keep me", "A formal fox", "and me"]);
+  expect(doc.contentText).toContain("A formal fox");
+  expect(doc.contentText).not.toContain("quick brown");
+});
+
+test("executor: replaceText refuses a missing or ambiguous anchor without writing", async () => {
+  const { deps, calls } = fakeDeps({
+    p1: { title: "Notes", content: [para("same line"), para("same line")] },
+  });
+  deps.currentPageId = "p1" as PageId;
+  const result = await executePlan(
+    [
+      { kind: "replaceText", target: "current", find: "same line", markdown: "x" },
+      { kind: "replaceText", target: "current", find: "not on the page", markdown: "y" },
+    ],
+    deps,
+  );
+  expect(result.failures.map((f) => f.opIndex)).toEqual([0, 1]);
+  expect(result.failures[0].reason).toMatch(/more than once/);
+  expect(result.failures[1].reason).toMatch(/no longer on the page/);
+  expect(calls.filter((c) => c.fn === "updateContent")).toHaveLength(0);
+});

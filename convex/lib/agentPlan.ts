@@ -1,9 +1,12 @@
 /**
  * The AI workspace agent's plan vocabulary (docs/ai-agent-design.md).
  *
- * Four ops, all additive — no update, no move, no trash. That is not a
- * v1 restriction hidden behind a flag: the vocabulary simply cannot
- * express destructive actions, so no prompt injection can reach them.
+ * Five ops. Four are additive; `replaceText` (2026-09-22) is the one edit:
+ * it swaps ONE existing block — anchored on that block's verbatim text —
+ * for new content, always shown to the user as a diff before Apply, and
+ * always undoable from page history. There is still no move and no
+ * delete, and the replacement must be non-empty, so the vocabulary cannot
+ * express a destructive action — no prompt injection can reach one.
  *
  * Pure module (like snippet.ts / pageLinks.ts): the server validates
  * plans with it before returning them, the client executor consumes the
@@ -52,9 +55,20 @@ export type AgentOp =
       kind: "appendToPage";
       target: "current" | string;
       markdown: string;
+    }
+  | {
+      kind: "replaceText";
+      target: "current" | string;
+      /** The block to replace, identified by its text copied verbatim from
+       *  a `read`. The executor demands exactly one matching block. */
+      find: string;
+      /** Non-empty by validation: an empty replacement would be a delete. */
+      markdown: string;
     };
 
 export const MAX_PLAN_OPS = 20;
+const MIN_FIND_CHARS = 3;
+const MAX_FIND_CHARS = 2000;
 const MAX_TITLE_CHARS = 300;
 const MAX_MARKDOWN_CHARS = 20_000;
 const MAX_COLUMNS = 20;
@@ -305,6 +319,22 @@ export function validatePlan(raw: unknown): PlanValidation {
           return fail(i, "bad target");
         }
         if (!isShortString(op.markdown, MAX_MARKDOWN_CHARS)) return fail(i, "bad markdown");
+        break;
+      }
+      case "replaceText": {
+        if (op.target !== "current" && (typeof op.target !== "string" || !op.target.trim())) {
+          return fail(i, "bad target");
+        }
+        if (
+          !isShortString(op.find, MAX_FIND_CHARS) ||
+          (op.find as string).trim().length < MIN_FIND_CHARS
+        ) {
+          return fail(i, "bad find");
+        }
+        // A blank replacement would be a delete — keep that unrepresentable.
+        if (!isShortString(op.markdown, MAX_MARKDOWN_CHARS) || !(op.markdown as string).trim()) {
+          return fail(i, "bad markdown");
+        }
         break;
       }
       default:

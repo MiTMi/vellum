@@ -278,6 +278,9 @@ export default function AiChatPanel({
             ? "Done — created and added what we discussed."
             : result.created.length > 0
               ? "Done — created what we discussed."
+              : msg.plan.some((op) => op.kind === "replaceText") &&
+                  result.touched.length === 1
+                ? `Done — updated “${result.touched[0].title}”.`
               : result.touched.length === 1
                 ? `Done — added the content to “${result.touched[0].title}”.`
                 : result.touched.length > 1
@@ -399,7 +402,17 @@ export default function AiChatPanel({
                     </div>
                     <ul className="ai-plan-steps">
                       {m.plan.map((op, oi) => (
-                        <li key={oi}>{describeOp(op)}</li>
+                        <li key={oi}>
+                          {describeOp(op)}
+                          {op.kind === "replaceText" && (
+                            // An edit is shown as the diff it is: what goes,
+                            // what comes. Nothing is applied on trust.
+                            <div className="ai-plan-diff">
+                              <div className="ai-plan-diff-del">− {op.find}</div>
+                              <div className="ai-plan-diff-add">+ {op.markdown}</div>
+                            </div>
+                          )}
+                        </li>
                       ))}
                     </ul>
                     <div className="ai-plan-actions">
@@ -424,7 +437,9 @@ export default function AiChatPanel({
                       </button>
                     </div>
                     <div className="ai-plan-note">
-                      Only creates new content — nothing is changed or deleted.
+                      {m.plan.some((op) => op.kind === "replaceText")
+                        ? "Changes only the text shown above and creates the rest — nothing is deleted, and page history keeps the previous version."
+                        : "Only creates new content — nothing is changed or deleted."}
                     </div>
                   </div>
                 )}

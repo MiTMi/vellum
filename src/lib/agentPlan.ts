@@ -3,6 +3,7 @@ import { Mutations } from "../data/api";
 import { DbProp, PageDoc, PageId, SelectOption } from "./types";
 import { markdownToBlocks } from "./markdownBlocks";
 import { getActiveEditorFor } from "./editorRegistry";
+import { extractText } from "./blocks";
 
 /**
  * Executes an approved agent plan through the ordinary mutations
@@ -32,6 +33,63 @@ export interface ExecuteResult {
 }
 
 const OPTION_COLORS = ["gray", "blue", "green", "yellow", "red", "purple", "pink", "orange"];
+
+type AnyBlock = { children?: AnyBlock[] } & Record<string, unknown>;
+
+/** A block's own text, children excluded — what `find` is matched against. */
+function ownText(block: AnyBlock): string {
+  return extractText([{ ...block, children: [] }]).trim();
+}
+
+function collectMatches(
+  blocks: AnyBlock[],
+  find: string,
+  exact: boolean,
+  out: AnyBlock[],
+): void {
+  for (const b of blocks) {
+    if (!b) continue;
+    const t = ownText(b);
+    if (exact ? t === find : t.includes(find)) out.push(b);
+    if (Array.isArray(b.children)) collectMatches(b.children, find, exact, out);
+  }
+}
+
+/**
+ * The blocks a `replaceText` step could mean. An exact whole-block match
+ * wins; only when there is none does a substring match count. The caller
+ * demands exactly one hit — the model anchors on verbatim text it read, and
+ * an ambiguous anchor must fail rather than rewrite the wrong paragraph.
+ */
+export function findReplaceTargets(blocks: unknown, find: string): AnyBlock[] {
+  if (!Array.isArray(blocks)) return [];
+  const needle = find.trim();
+  const hits: AnyBlock[] = [];
+  collectMatches(blocks as AnyBlock[], needle, true, hits);
+  if (hits.length === 0) collectMatches(blocks as AnyBlock[], needle, false, hits);
+  return hits;
+}
+
+/** The document with `target` swapped for `replacement`, in place; the
+ *  target's nested children ride along on the last replacement block. */
+export function replaceBlockIn(
+  blocks: AnyBlock[],
+  target: AnyBlock,
+  replacement: AnyBlock[],
+): AnyBlock[] {
+  return blocks.flatMap((b) => {
+    if (b === target) {
+      const kids = Array.isArray(target.children) ? target.children : [];
+      if (kids.length === 0 || replacement.length === 0) return replacement;
+      const last = replacement[replacement.length - 1];
+      return [...replacement.slice(0, -1), { ...last, children: kids }];
+    }
+    if (Array.isArray(b.children) && b.children.length > 0) {
+      return [{ ...b, children: replaceBlockIn(b.children, target, replacement) }];
+    }
+    return [b];
+  });
+}
 
 function slug(name: string, i: number): string {
   const s = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -282,6 +340,53 @@ export async function executePlan(
           addTouched(targetId, chipInfo(target.doc));
           break;
         }
+        case "replaceText": {
+          const targetId =
+            op.target === "current" ? deps.currentPageId : (op.target as PageId);
+          if (!targetId) {
+            failures.push({ opIndex: i, reason: "no page is open" });
+            break;
+          }
+          // Same flush as append: the block being replaced may be the one
+          // the user just typed in.
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("vellum:flush-edits"));
+          }
+          const target = await writableDoc(deps, targetId);
+          if ("reason" in target) {
+            failures.push({ opIndex: i, reason: target.reason });
+            break;
+          }
+          const existing = Array.isArray(target.doc.content)
+            ? (target.doc.content as AnyBlock[])
+            : [];
+          const hits = findReplaceTargets(existing, op.find);
+          if (hits.length !== 1) {
+            failures.push({
+              opIndex: i,
+              reason:
+                hits.length === 0
+                  ? "the text to replace is no longer on the page"
+                  : "the text to replace appears more than once",
+            });
+            break;
+          }
+          const { blocks } = markdownToBlocks(op.markdown);
+          if (blocks.length === 0) {
+            failures.push({ opIndex: i, reason: "the replacement is empty" });
+            break;
+          }
+          const next = replaceBlockIn(existing, hits[0], blocks as unknown as AnyBlock[]);
+          await deps.mutations.updateContent({
+            id: targetId,
+            content: next,
+            text: extractText(next),
+          });
+          const editor = getActiveEditorFor(targetId);
+          if (editor) editor.replaceBlocks(editor.document, next);
+          addTouched(targetId, chipInfo(target.doc));
+          break;
+        }
       }
     } catch (err) {
       failures.push({
@@ -318,5 +423,9 @@ export function describeOp(op: AgentOp): string {
       return op.target === "current"
         ? "Append to the open page"
         : "Append to an existing page";
+    case "replaceText": {
+      const where = op.target === "current" ? "on the open page" : "on an existing page";
+      return `Rewrite one block ${where}`;
+    }
   }
 }

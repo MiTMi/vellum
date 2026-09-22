@@ -4774,6 +4774,23 @@ tbody.db-group + tbody.db-group .group-row td {
   align-items: center;
   gap: 5px;
 }
+/* A replaceText step renders as the diff it is: gone text struck, new text
+   added, before Apply. */
+.ai-plan-diff {
+  margin: 4px 0 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+.ai-plan-diff-del {
+  color: var(--danger, #eb5757);
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+.ai-plan-diff-add {
+  color: var(--ai);
+}
+
 .ai-plan-note {
   margin-top: 7px;
   font-size: 11px;

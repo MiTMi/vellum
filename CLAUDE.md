@@ -1204,10 +1204,14 @@ panel's send path now goes through **`ai.agent`**, not `converse`
 (`converse` remains for API compatibility and its tests). The agent runs
 a bounded read-tool loop server-side — `search`/`read` via a
 prompt-engineered JSON protocol, ≤4 metered calls, no provider function
-calling (guardrail/model support uncertain) — and may return an
-**additive-only plan**: createPage / createDatabase / addRow /
-appendToPage, validated by `convex/lib/agentPlan.ts`. Destructive ops
-are unrepresentable in the vocabulary, not merely hidden. The panel
+calling (guardrail/model support uncertain) — and may return a
+**plan**: createPage / createDatabase / addRow / appendToPage, plus
+(2026-09-22) **replaceText** — the one edit: it swaps exactly one
+existing block, anchored on that block's text copied verbatim from a
+`read`, shown as a −/+ diff on the card before Apply, undoable from page
+history; the executor refuses zero or several matches. All validated by
+`convex/lib/agentPlan.ts`. Move and delete stay unrepresentable in the
+vocabulary (the replacement must be non-empty), not merely hidden. The panel
 renders a plan as an Apply/Dismiss card; **Apply executes client-side
 through the ordinary mutations** (`src/lib/agentPlan.ts` executor +
 `src/lib/markdownBlocks.ts`, which `makeDeck` also uses), so writes are
@@ -1251,8 +1255,9 @@ outbound reads, no new access to workspace data).
 **Tests.** `tests/ai.test.ts` (18) stubs `fetch` and covers the guards —
 auth, the vault, empty/oversized input, error translation, env-driven model
 selection, and that only `content` is ever returned. `scripts/e2e-ai.mjs`
-(44 checks) clicks every surface in mock mode: the selection menu, writing
-from a blank line, the redaction guard on Replace, AI database columns, the floating launcher's position and
+(50 checks) clicks every surface in mock mode: the selection menu, writing
+from a blank line, the redaction guard on Replace, a diffed replaceText edit
+applied through the panel, AI database columns, the floating launcher's position and
 show/hide, and the panel's multi-turn history, context chip and persona
 persistence.
 `VITE_MOCK_CONVEX=1 npx vite --port 5241 & E2E_URL=http://localhost:5241 node scripts/e2e-ai.mjs`

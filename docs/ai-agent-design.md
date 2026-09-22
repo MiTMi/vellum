@@ -76,13 +76,25 @@ type AgentOp =
   | { kind: "addRow";         target: Ref | PageId; title: string;
       props?: Record<string, string | number | boolean | string[]> }
   | { kind: "appendToPage";   target: "current" | PageId;
-      markdown: string };
+      markdown: string }
+  | { kind: "replaceText";    target: "current" | PageId;   // 2026-09-22
+      find: string; markdown: string };
 type Ref = `#${number}`; // an earlier op in the same plan, e.g. "#0"
 ```
 
-Four ops, all additive. No update, no move, no trash — not "hidden for
-v1" but absent from the vocabulary, so no prompt injection can reach
-them. `appendToPage` only ever appends blocks after existing content.
+Five ops. Four are additive; `replaceText` is the one edit, added once
+additive-only proved to be the thing users hit first (the pre-agent panel
+even *pretended* to edit). It swaps exactly ONE existing block, anchored
+on that block's text copied verbatim from a `read` — an exact whole-block
+match wins, a substring match counts only when there is no exact one, and
+the executor refuses zero or several matches rather than rewrite the
+wrong paragraph. The card renders it as a −/+ diff before Apply; nested
+children of the replaced block ride along on the last replacement block;
+page history keeps the previous version. No move, no reorder, no
+delete: the replacement must be non-empty by validation, so the
+vocabulary still cannot express a destructive action and no prompt
+injection can reach one. `appendToPage` only ever appends blocks after
+existing content.
 
 ## Client: the plan card and the executor
 
@@ -144,7 +156,8 @@ them. `appendToPage` only ever appends blocks after existing content.
 
 ## Out of scope for v1 (deliberately)
 
-Editing or restructuring existing content (beyond append); moving or
+Restructuring existing content beyond a one-block `replaceText`
+(multi-block rewrites, inline edits inside a block); moving or
 deleting anything; auto-apply; agent actions on shared pages beyond
 what the role already permits at the mutation layer; scheduled or
 background agent runs.

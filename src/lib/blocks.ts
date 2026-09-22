@@ -31,7 +31,13 @@ export function blocksToPlainText(blocks: unknown, depth = 0): string {
   for (const block of blocks as AnyBlock[]) {
     if (!block) continue;
     const content = block.content;
-    let line = Array.isArray(content) ? textFromInline(content).trim() : "";
+    // PartialBlocks (markdownToBlocks, agent plans) may carry content as a
+    // plain string until BlockNote normalises it into inline runs.
+    let line = Array.isArray(content)
+      ? textFromInline(content).trim()
+      : typeof content === "string"
+        ? content.trim()
+        : "";
     if (block.type === "bulletListItem") line = `• ${line}`;
     else if (block.type === "checkListItem") line = `☐ ${line}`;
     else if (block.type === "heading") line = line ? `# ${line}` : "";
@@ -51,10 +57,14 @@ export function extractText(blocks: unknown): string {
     if (!block) continue;
     const content = block.content as
       | unknown[]
+      | string
       | { rows?: { cells: { content?: unknown }[] }[] }
       | undefined;
     if (Array.isArray(content)) {
       out += textFromInline(content);
+    } else if (typeof content === "string") {
+      // A PartialBlock not yet normalised by BlockNote (see blocksToPlainText).
+      out += content;
     } else if (content && typeof content === "object" && Array.isArray(content.rows)) {
       for (const row of content.rows) {
         for (const cell of row.cells ?? []) {
