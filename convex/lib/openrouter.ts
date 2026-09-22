@@ -138,6 +138,30 @@ function estimateMicroUsd(totalTokens: number | undefined): number {
   return 500;
 }
 
+/** Slow-call threshold for the log line every model round-trip emits. */
+const SLOW_CALL_MS = 10_000;
+
+/**
+ * One line per provider round-trip, so `npx convex logs --prod` can answer
+ * "was that 28-second reply the model, a retry, or a timeout?" — the log
+ * stream carries no function durations of its own. Never logs prompt or
+ * completion text. Slow, failed and timed-out calls go to `warn` so they
+ * stand out in a scroll of successes.
+ */
+function logCall(
+  status: number | "timeout" | "network",
+  started: number,
+  attempt: number,
+) {
+  const ms = Date.now() - started;
+  const line = `[ai] openrouter ${aiModel()} status=${status} ${ms}ms attempt=${attempt + 1}`;
+  if (ms >= SLOW_CALL_MS || typeof status !== "number" || status >= 400) {
+    console.warn(line);
+  } else {
+    console.log(line);
+  }
+}
+
 export interface ChatResult {
   text: string;
   /** Actual (or conservatively estimated) cost of this call, micro-USD. */
@@ -154,6 +178,7 @@ export async function chat(
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const started = Date.now();
     try {
       const res = await fetch(ENDPOINT, {
         method: "POST",
@@ -178,6 +203,7 @@ export async function chat(
         }),
       });
 
+      logCall(res.status, started, attempt);
       if (res.ok) {
         const body = (await res.json()) as {
           choices?: { message?: { content?: string } }[];
@@ -223,10 +249,11 @@ export async function chat(
       // ConvexError is our own deliberate signal — never swallow it into a
       // retry, or a misconfigured key would look like a network blip.
       if (err instanceof ConvexError) throw err;
-      lastError =
-        err instanceof Error && err.name === "AbortError"
-          ? "The AI request timed out."
-          : "Could not reach OpenRouter.";
+      const timedOut = err instanceof Error && err.name === "AbortError";
+      logCall(timedOut ? "timeout" : "network", started, attempt);
+      lastError = timedOut
+        ? "The AI request timed out."
+        : "Could not reach OpenRouter.";
       if (attempt < MAX_ATTEMPTS - 1) {
         await sleep(BASE_BACKOFF_MS * 2 ** attempt);
       }

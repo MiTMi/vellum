@@ -214,6 +214,10 @@ const realApi: DataApi = {
         available: true,
         getEmail: async () =>
           (await client.query(api.account.me, {})).email,
+        getAiUsage: async () => {
+          const me = await client.query(api.account.me, {});
+          return { calls: me.aiCallsThisMonth, usd: me.aiUsdThisMonth };
+        },
         changePassword: async (currentPassword: string, newPassword: string) => {
           await changePassword({ currentPassword, newPassword });
         },

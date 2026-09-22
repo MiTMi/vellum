@@ -383,6 +383,55 @@ try {
     "no stray AI row is left in the sidebar",
     (await page.locator(".sidebar-item:has-text('Ask AI')").count()) === 0,
   );
+
+  /* ------- 5. Replace is refused when the result gained a placeholder ------- */
+  // The provider guardrail redacts card numbers on the way in, so a rewrite
+  // of "card 4111 1111 1111 1111" comes back as "card [CREDIT_CARD]"; the
+  // mock mirrors that. Accepting Replace would overwrite the real number.
+
+  await page.goto(BASE);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForSelector(".page-title", { timeout: 10000 });
+  await page.fill(".page-title", "Redaction page");
+  await page.click(".bn-block-content");
+  await page.keyboard.type("card 4111 1111 1111 1111");
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".bn-editor")?.textContent.includes("4111 1111"),
+    null,
+    { timeout: 4000 },
+  );
+  await page.keyboard.press(`${mod}+A`);
+  await page.waitForSelector(".bn-formatting-toolbar", { timeout: 4000 });
+  await page.keyboard.press(`${mod}+J`);
+  await page.waitForSelector(".ai-menu-item:has-text('Fix spelling')", {
+    timeout: 4000,
+  });
+  await page.click(".ai-menu-item:has-text('Fix spelling')");
+  await page.waitForSelector(".ai-menu-result", { timeout: 6000 });
+  check(
+    "a redacted result carries the placeholder",
+    (await page.textContent(".ai-menu-result")).includes("[CREDIT_CARD]"),
+  );
+  const replaceBtn = page.locator(".ai-menu-item:has-text('Replace selection')");
+  check(
+    "Replace selection is disabled for a redacted result",
+    await replaceBtn.isDisabled(),
+  );
+  check(
+    "the menu explains why",
+    (await page.locator(".ai-menu-note").textContent()).includes("placeholder"),
+  );
+  check(
+    "Insert below stays available",
+    await page.locator(".ai-menu-item:has-text('Insert below')").isEnabled(),
+  );
+  await page.keyboard.press("Escape");
+  check(
+    "the real number is still in the document",
+    (await page.textContent(".bn-editor")).includes("4111 1111 1111 1111"),
+  );
 } catch (err) {
   check(`threw: ${err.message}`, false);
   await page.screenshot({ path: `${SHOTS}/crash.png` }).catch(() => {});

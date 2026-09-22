@@ -1,6 +1,7 @@
 import { Plugin } from "vite";
 import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import { execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -60,6 +61,28 @@ const RUNTIME_CACHED =
   /^assets\/(hero|editor|database|publish|og)-[^/]*\.png$|\.(ttf|woff)$/;
 
 /**
+ * Build identity: the git short sha (Vercel exposes it as an env var; local
+ * builds ask git). Baked into every bundle as `__VELLUM_BUILD__` and emitted
+ * as dist/build.json, so the packaged Mac app can tell on launch that the
+ * hosted site has moved on — its screens are frozen at build time while the
+ * web app updates itself, and a stale desktop build once hid a whole feature
+ * (the AI plan card) for five weeks without anyone noticing.
+ */
+const BUILD_ID: string = (() => {
+  const fromVercel = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
+  if (fromVercel) return fromVercel;
+  try {
+    return execSync("git rev-parse --short HEAD", {
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+  } catch {
+    return "dev";
+  }
+})();
+
+/**
  * Emits dist/sw.js from src/pwa/sw.js, with the shell's file list and a
  * content-derived cache name substituted in. Hand-rolled rather than
  * vite-plugin-pwa: the requirements are one page of code, and the plugin's
@@ -112,11 +135,24 @@ function vellumPWA(): Plugin {
         .replace(/__PRECACHE__/g, () => JSON.stringify(precache, null, 2));
 
       this.emitFile({ type: "asset", fileName: "sw.js", source });
+
+      // The build's identity, for the Mac app's update check. Emitted after
+      // the precache list is computed, so it is deliberately NOT in the
+      // shell — a cached copy would defeat the check; vercel.json serves it
+      // no-cache with a permissive CORS header (Electron fetches it from a
+      // file:// origin).
+      this.emitFile({
+        type: "asset",
+        fileName: "build.json",
+        source: JSON.stringify({ build: BUILD_ID }),
+      });
     },
   };
 }
 
 export default defineConfig({
+  // Baked into every bundle as `__VELLUM_BUILD__` (see UpdateBanner.tsx).
+  define: { __VELLUM_BUILD__: JSON.stringify(BUILD_ID) },
   plugins: [react(), appRouteAlias(), vellumPWA()],
   // Relative asset URLs: one dist/ has to work from Electron's
   // file://…/dist/app.html, from "/", from "/app.html" and from "/app".

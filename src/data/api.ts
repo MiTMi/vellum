@@ -112,6 +112,8 @@ export interface AccountApi {
   available: boolean;
   /** Owner email for display + Touch ID re-enrollment after a change. */
   getEmail(): Promise<string | null>;
+  /** This account's AI usage for the current month (calls, US dollars). */
+  getAiUsage(): Promise<{ calls: number; usd: number }>;
   /** Re-verifies the current password server-side before changing. */
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
   /** Revokes every session on every device. */

@@ -15,6 +15,7 @@ import {
 import { internal } from "./_generated/api";
 import { Id, TableNames } from "./_generated/dataModel";
 import { requireUser } from "./lib/auth";
+import { monthKey } from "./lib/quotas";
 import { assertPasswordPolicy } from "./lib/passwordPolicy";
 import { collectStorageKeys, storageKeyFromUrl } from "./lib/fileRefs";
 
@@ -32,7 +33,19 @@ export const me = query({
   handler: async (ctx) => {
     const userId = await requireUser(ctx);
     const user = await ctx.db.get("users", userId);
-    return { email: user?.email ?? null };
+    // This month's AI spend, for the Settings account section. Recorded for
+    // every account, the quota-exempt owner included.
+    const usage = await ctx.db
+      .query("aiUsage")
+      .withIndex("by_user_month", (q) =>
+        q.eq("userId", userId).eq("month", monthKey()),
+      )
+      .unique();
+    return {
+      email: user?.email ?? null,
+      aiCallsThisMonth: usage?.calls ?? 0,
+      aiUsdThisMonth: (usage?.costMicroUsd ?? 0) / 1_000_000,
+    };
   },
 });
 

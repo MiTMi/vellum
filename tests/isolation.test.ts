@@ -715,3 +715,32 @@ test("deleteForever removes the page's share rows", async () => {
     expect(await ctx.db.get("pages", child)).toBeNull();
   });
 });
+
+test("AI budget: the owner's recorded spend never counts toward the pool", async () => {
+  // The owner is exempt from the caps but recorded like everyone else (so
+  // Settings can show their spend); aiSpend must leave those rows out of
+  // the shared non-owner pool, or one busy owner month would lock every
+  // other account out of AI.
+  const tc = freshBackend();
+  const owner = await addUser(tc, OWNER_EMAIL);
+  const user = await addUser(tc, "pool@vellum.test");
+  const month = new Date().toISOString().slice(0, 7);
+  await tc.run(async (ctx) => {
+    await ctx.db.insert("aiUsage", {
+      userId: owner.userId as Id<"users">,
+      month,
+      costMicroUsd: 5_000_000, // far past the $0.85 pool
+      calls: 500,
+    });
+  });
+  expect(
+    await tc.query(internal.ai._budgetCheck, {
+      userId: user.userId as Id<"users">,
+    }),
+  ).toEqual({ exempt: false });
+  expect(
+    await tc.query(internal.ai._budgetCheck, {
+      userId: owner.userId as Id<"users">,
+    }),
+  ).toEqual({ exempt: true });
+});

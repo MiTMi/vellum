@@ -26,6 +26,7 @@ import { ChevronsRight, FileText, Plus } from "lucide-react";
 import ChunkFailed from "./components/ChunkFailed";
 import { lazyModule } from "./lib/lazyModule";
 import { warmChunk } from "./lib/warmChunk";
+import UpdateBanner from "./components/UpdateBanner";
 
 // The chat panel (with the agent-plan executor and Markdown mapping only it
 // uses) is code-split: nobody needs it for first render. It is warmed shortly
@@ -197,6 +198,7 @@ function Workspace() {
         />
       )}
       <div className="main-col">
+        <UpdateBanner />
         <TabBar
           index={index}
           sidebarCollapsed={sidebarCollapsed}

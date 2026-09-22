@@ -51,7 +51,8 @@ import { Doc, Id } from "./_generated/dataModel";
  * Every model call goes through `meteredChat`: a pre-flight budget check
  * ($0.10/user/month and a $0.85/month pool shared by all non-owner users),
  * then the call, then recording OpenRouter's reported cost. The owner is
- * exempt and never recorded — so the pool is simply the month's total.
+ * exempt from both caps but recorded like everyone else (Settings shows each
+ * account its own month's spend); `aiSpend` keeps owner rows out of the pool.
  * Concurrent calls can overshoot a cap by one request; that is cents, and
  * accepted.
  * ------------------------------------------------------------------ */
@@ -108,14 +109,11 @@ async function meteredChat(
   messages: Parameters<typeof chat>[0],
   opts?: Parameters<typeof chat>[1],
 ): Promise<string> {
-  const gate: { exempt: boolean } = await ctx.runQuery(
-    internal.ai._budgetCheck,
-    { userId },
-  );
+  await ctx.runQuery(internal.ai._budgetCheck, { userId });
   const { text, costMicroUsd } = await chat(messages, opts);
-  if (!gate.exempt) {
-    await ctx.runMutation(internal.ai._recordSpend, { userId, costMicroUsd });
-  }
+  // Recorded for everyone, owner included: the exemption is from the caps,
+  // not from the ledger.
+  await ctx.runMutation(internal.ai._recordSpend, { userId, costMicroUsd });
   return text;
 }
 

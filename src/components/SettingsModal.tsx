@@ -167,12 +167,18 @@ function AccountSections({ onClose }: { onClose: () => void }) {
   const account = useAccount();
   const { signOut } = useAuthActions();
   const [email, setEmail] = useState<string | null>(null);
+  const [aiUsage, setAiUsage] = useState<{ calls: number; usd: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!account.available) return;
     let alive = true;
     void account.getEmail().then((e) => {
       if (alive) setEmail(e);
+    });
+    void account.getAiUsage().then((u) => {
+      if (alive) setAiUsage(u);
     });
     return () => {
       alive = false;
@@ -198,6 +204,14 @@ function AccountSections({ onClose }: { onClose: () => void }) {
         <div className="settings-row">
           <span className="settings-row-label">Email</span>
           <span className="settings-value">{email ?? "…"}</span>
+        </div>
+        <div className="settings-row">
+          <span className="settings-row-label">AI this month</span>
+          <span className="settings-value">
+            {aiUsage
+              ? `${aiUsage.calls} ${aiUsage.calls === 1 ? "call" : "calls"} · $${aiUsage.usd.toFixed(2)}`
+              : "…"}
+          </span>
         </div>
         <ChangePasswordForm email={email} />
         <div className="settings-row">

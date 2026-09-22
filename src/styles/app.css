@@ -4423,6 +4423,43 @@ tbody.db-group + tbody.db-group .group-row td {
   font-size: 13px;
   line-height: 1.45;
 }
+/* Why "Replace selection" is disabled (a redaction placeholder in the result). */
+.ai-menu-note {
+  padding: 9px 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+  border-top: 1px solid var(--border);
+}
+.ai-menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ai-menu-item:disabled:hover {
+  background: transparent;
+}
+
+/* Desktop-only "rebuild me" strip (UpdateBanner.tsx), above the tab bar. */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.update-banner span {
+  flex: 1;
+}
+.update-banner code {
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-tertiary, var(--bg-secondary));
+}
 
 /* --- AI database column --- */
 

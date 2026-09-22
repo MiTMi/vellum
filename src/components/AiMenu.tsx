@@ -166,6 +166,19 @@ export default function AiMenu({
 
   if (!container) return null;
 
+  // OpenRouter's guardrail redacts card numbers and SSNs on the way IN, so a
+  // rewrite comes back carrying "[CREDIT_CARD]"-style placeholders where the
+  // real value was. Accepting Replace would overwrite the real number with
+  // the placeholder — the one destructive path in the writing assistant —
+  // so it is disabled whenever the result gained a placeholder the
+  // selection did not already contain. Insert below stays available: it
+  // only adds.
+  const gainedPlaceholder =
+    result !== null &&
+    (result.match(/\[[A-Z][A-Z0-9_]{2,}\]/g) ?? []).some(
+      (p) => !selection.includes(p),
+    );
+
   const body = (
     <div
       ref={rootRef}
@@ -242,10 +255,23 @@ export default function AiMenu({
       ) : (
         <>
           <div className="ai-menu-result">{result}</div>
+          {gainedPlaceholder && (
+            <div className="ai-menu-note">
+              The result contains a redaction placeholder where a card or ID
+              number was, so it can’t replace your text. Insert it below
+              instead, or edit by hand.
+            </div>
+          )}
           <div className="ai-menu-actions">
             {selection.trim() !== "" && (
               <button
                 className="ai-menu-item"
+                disabled={gainedPlaceholder}
+                title={
+                  gainedPlaceholder
+                    ? "Disabled: the result would overwrite a number with a placeholder"
+                    : undefined
+                }
                 onClick={() => {
                   onReplace(result);
                   onClose();

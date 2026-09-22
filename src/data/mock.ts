@@ -374,6 +374,7 @@ const mockApi: DataApi = {
       () => ({
         available: false,
         getEmail: async () => null,
+        getAiUsage: async () => ({ calls: 0, usd: 0 }),
         changePassword: async () => {
           throw new Error("No account in demo mode");
         },
@@ -407,6 +408,10 @@ const mockApi: DataApi = {
       () => ({
         available: true,
         transform: async ({ text, kind, option }) => {
+          // Mirrors the OpenRouter guardrail, which redacts card numbers on the
+          // way IN: a rewrite comes back with the placeholder where the number
+          // was. Lets e2e exercise AiMenu's "Replace selection" guard.
+          text = text.replace(/\b(?:\d[ -]?){13,19}\b/g, "[CREDIT_CARD]");
           switch (kind) {
             case "fix":
               return text;

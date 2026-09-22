@@ -76,9 +76,14 @@ export async function aiSpend(
     .query("aiUsage")
     .withIndex("by_month", (q) => q.eq("month", month))
     .collect();
-  return {
-    userMicro: mine?.costMicroUsd ?? 0,
-    // The owner is never recorded (exempt), so the month total IS the pool.
-    poolMicro: all.reduce((n, r) => n + r.costMicroUsd, 0),
-  };
+  // The owner is exempt from the caps but recorded like everyone else (so
+  // Settings can show their spend), so their rows must not count against
+  // the shared pool. One lookup per row; there is a row per active user per
+  // month, so this stays tiny.
+  let poolMicro = 0;
+  for (const r of all) {
+    if (await isOwnerUser(ctx, r.userId)) continue;
+    poolMicro += r.costMicroUsd;
+  }
+  return { userMicro: mine?.costMicroUsd ?? 0, poolMicro };
 }

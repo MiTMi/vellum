@@ -202,6 +202,10 @@ const offlineApi: DataApi = {
         available: connected,
         getEmail: async () =>
           (await convexClient().query(api.account.me, {})).email,
+        getAiUsage: async () => {
+          const me = await convexClient().query(api.account.me, {});
+          return { calls: me.aiCallsThisMonth, usd: me.aiUsdThisMonth };
+        },
         changePassword: async (currentPassword, newPassword) => {
           await convexClient().action(api.account.changePassword, {
             currentPassword,

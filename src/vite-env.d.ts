@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+/** Build identity baked in by vite.config.ts (git short sha, or "dev"). */
+declare const __VELLUM_BUILD__: string;
+
 interface ImportMetaEnv {
   readonly VITE_CONVEX_URL?: string;
   readonly VITE_CONVEX_SITE_URL?: string;

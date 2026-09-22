@@ -138,7 +138,14 @@ variable is used, it must be Vercel's stable alias, never a per-deployment URL.
   `.convex.site`. Filesystem wins before rewrites, so it can't shadow real files.
 - Cache headers: `/assets/*` immutable for a year (content-hashed), `sw.js` and
   the manifest `no-cache` — a cached service worker would pin users to an old
-  shell.
+  shell. `/build.json` (2026-09-22) is `no-cache` **plus
+  `Access-Control-Allow-Origin: *`**: it is the build's git sha, fetched by
+  the packaged Mac app from its `file://` origin so `UpdateBanner.tsx` can
+  tell the desktop build has fallen behind the site (the same sha is baked
+  into the bundle as `__VELLUM_BUILD__` by `vite.config.ts`, from
+  `VERCEL_GIT_COMMIT_SHA` on Vercel and `git rev-parse` locally). The
+  file is emitted after the precache list is computed, so it is never in
+  the offline shell — a cached copy would defeat the check.
 
 Old `…convex.site/p/<slug>` links keep working; Convex serves that route
 directly, so proxying is additive rather than a cutover.
@@ -1098,10 +1105,13 @@ The cost of keeping those two: a rewrite of text containing one comes back
 carrying the placeholder — "card 4111 1111 1111 1111" → "card
 [CREDIT_CARD]" — so accepting **Replace selection** would overwrite the real
 number. `AiMenu`'s preview card shows the result before anything is applied,
-so it is visible rather than silent, but it is the one destructive path.
-Generating paths (AI columns, chat) only ever *create* values, so nothing is
-lost there. A guard that disables Replace when the result gains a
-placeholder the input didn't have was offered and not (yet) built.
+so it is visible rather than silent — and since 2026-09-22 **Replace
+selection is disabled** whenever the result gained a `[LIKE_THIS]`
+placeholder the selection did not contain (`gainedPlaceholder` in
+`AiMenu.tsx`, with a note explaining why; Insert below stays enabled because
+it only adds). Mock mode mirrors the redaction for card-like digit runs so
+`e2e-ai.mjs` exercises the guard. Generating paths (AI columns, chat) only
+ever *create* values, so nothing is lost there.
 
 `OPENROUTER_PROVIDER` optionally pins upstream providers (comma-separated,
 `allow_fallbacks: false`). Unset by default. It exists because OpenRouter
@@ -1113,6 +1123,19 @@ Gemini is not a reasoning model by default, unlike Nemotron, so responses no
 longer spend most of their token budget deliberating. `chat()` still returns
 only `content` and ignores any `reasoning` fields, which keeps a future
 reasoning model from leaking its scratchpad into the UI.
+
+**Every provider round-trip logs one line** (`logCall` in `openrouter.ts`,
+2026-09-22): `[ai] openrouter <model> status=<n|timeout|network> <ms>ms
+attempt=<n>`, `warn`-level when slow (≥10 s), failed or timed out — so
+`npx convex logs --prod` can answer "was that 28-second reply the model, a
+retry, or a timeout?", which the log stream's own output cannot (it carries
+no function durations). Never logs prompt or completion text.
+
+**Spend is recorded for every account, the owner included** (2026-09-22).
+The owner is exempt from both caps, not from the ledger — Settings › Account
+shows "AI this month: N calls · $X" via `account.me`, and `aiSpend` skips
+owner rows when summing the shared pool (`tests/isolation.test.ts` pins
+that, or one busy owner month would lock every other account out).
 
 Free-tier limits were 20 req/min and 1,000/day. `chat()` retries 429 and 5xx
 three times with exponential backoff, honours `Retry-After`, and does *not*
@@ -1228,8 +1251,8 @@ outbound reads, no new access to workspace data).
 **Tests.** `tests/ai.test.ts` (18) stubs `fetch` and covers the guards —
 auth, the vault, empty/oversized input, error translation, env-driven model
 selection, and that only `content` is ever returned. `scripts/e2e-ai.mjs`
-(29 checks) clicks every surface in mock mode: the selection menu, writing
-from a blank line, AI database columns, the floating launcher's position and
+(44 checks) clicks every surface in mock mode: the selection menu, writing
+from a blank line, the redaction guard on Replace, AI database columns, the floating launcher's position and
 show/hide, and the panel's multi-turn history, context chip and persona
 persistence.
 `VITE_MOCK_CONVEX=1 npx vite --port 5241 & E2E_URL=http://localhost:5241 node scripts/e2e-ai.mjs`
@@ -1313,6 +1336,13 @@ persistence.
   calls `app.setPath("userData", …)` before `ready`, so the user's
   replica, outbox and Touch ID file are never opened by a test. Keep that
   env var wired through any new Electron-driving script.
+- **The Mac app tells you when it is stale** (2026-09-22): five seconds
+  after launch `UpdateBanner.tsx` compares `__VELLUM_BUILD__` with the
+  hosted `/build.json` and, if they differ, shows the rebuild runbook above
+  the tab bar (dismiss is remembered per hosted build). It exists because
+  the installed app silently lacked the AI plan card for five weeks. Verify
+  a change to it with a scratch Playwright-Electron script that
+  `route()`s `**/build.json` to a fake sha — no deploy needed.
 - **Anything that launches Electron must drop `ELECTRON_RUN_AS_NODE`**: IDE
   terminals (VS Code/Cursor) export it, and it silently makes the Electron
   binary start as plain Node — `require("electron")` returns a path string,
