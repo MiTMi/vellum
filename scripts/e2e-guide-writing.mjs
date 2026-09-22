@@ -2,11 +2,11 @@
  * Help Center guide check (5/5) — the writing guides on /help. Covers: the markdown shortcuts and
  * block affordances the "Writing" guides promise.
  *
- * Usage: VITE_MOCK_CONVEX=1 npx vite --port 5210 & node scripts/e2e-guide-writing.mjs
+ * Usage: VITE_MOCK_CONVEX=1 npx vite --port 5199 & node scripts/e2e-guide-writing.mjs
  */
 import { chromium } from "playwright";
 
-const BASE = (process.env.E2E_URL ?? "http://localhost:5210") + "/app.html";
+const BASE = (process.env.E2E_URL ?? "http://localhost:5199") + "/app.html";
 
 let failures = 0;
 const results = [];
@@ -27,7 +27,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 page.on("pageerror", (err) => check(`pageerror: ${err.message}`, false));
 
-const MOD = "Meta";
+const MOD = process.platform === "darwin" ? "Meta" : "Control";
 
 try {
   await page.goto(BASE);

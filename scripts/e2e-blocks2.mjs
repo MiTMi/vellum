@@ -117,7 +117,7 @@ try {
   check("toc survives reload", (await page.locator(".toc-block").count()) === 1);
 
   // ---------- Command palette (⌘K) ----------
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k");
   await page.waitForSelector(".quick-switcher", { timeout: 5000 });
   const hasActions = await page.locator(".qs-section:has-text('Actions')").count();
   check("command palette shows an Actions section", hasActions === 1);
@@ -152,7 +152,7 @@ try {
   check("running the theme command toggles the theme", beforeTheme !== afterTheme, `${beforeTheme}→${afterTheme}`);
 
   // run "New page" from the palette
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k");
   await page.waitForSelector(".quick-switcher", { timeout: 5000 });
   await page.fill(".qs-input-row input", "new page");
   await page.waitForTimeout(300);

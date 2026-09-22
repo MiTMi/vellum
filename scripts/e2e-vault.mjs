@@ -92,7 +92,7 @@ try {
   );
 
   // ⌘K search finds nothing from the vault.
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k");
   await page.fill(".qs-input-row input", "Nightingale");
   await page.waitForTimeout(400);
   check(
@@ -123,7 +123,7 @@ try {
   );
 
   // ⌘K finds the vault page by title while unlocked.
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k");
   await page.fill(".qs-input-row input", "Nightingale");
   await page.waitForTimeout(400);
   check(

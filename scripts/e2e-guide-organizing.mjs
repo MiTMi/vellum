@@ -5,12 +5,12 @@
  * forward, breadcrumbs, recents, tab persistence) and the small print of the
  * sidebar itself (resize, right-click New page).
  *
- * Usage: VITE_MOCK_CONVEX=1 npx vite --port 5210 & node scripts/e2e-guide-organizing.mjs
+ * Usage: VITE_MOCK_CONVEX=1 npx vite --port 5199 & node scripts/e2e-guide-organizing.mjs
  */
 import { chromium } from "playwright";
 import fs from "fs";
 
-const BASE = (process.env.E2E_URL ?? "http://localhost:5210") + "/app.html";
+const BASE = (process.env.E2E_URL ?? "http://localhost:5199") + "/app.html";
 const SHOTS = "/tmp/shots-help4";
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -29,7 +29,7 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
 page.on("pageerror", (err) => check(`pageerror: ${err.message}`, false));
 
-const MOD = "Meta";
+const MOD = process.platform === "darwin" ? "Meta" : "Control";
 
 /** HTML5 drag-and-drop that Playwright's mouse API can't synthesise. */
 async function dragTree(fromText, toText, zone /* "inside" | "before" */) {

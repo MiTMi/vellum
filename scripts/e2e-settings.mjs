@@ -49,13 +49,13 @@ try {
   await page.keyboard.press("Escape");
   await page.waitForTimeout(200);
   check("Escape closes Settings", (await page.locator(".settings-modal").count()) === 0);
-  await page.keyboard.press("Meta+,");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+," : "Control+,");
   await page.waitForSelector(".settings-modal", { timeout: 5000 });
   check("⌘, reopens Settings", true);
   await page.keyboard.press("Escape");
 
   // ⌘K lists a Settings action.
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k");
   await page.fill(".qs-input-row input", "settings");
   await page.waitForTimeout(300);
   await page.click(".qs-results >> text=Settings");
@@ -71,7 +71,7 @@ try {
   await inputs.nth(1).fill("correct horse battery");
   await page.click(".vault-btn");
   await page.waitForSelector(".vault-toolbar", { timeout: 10000 });
-  await page.keyboard.press("Meta+,");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+," : "Control+,");
   await page.waitForSelector(".settings-modal", { timeout: 5000 });
   check(
     "unlocked vault shows a Lock now control in Settings",

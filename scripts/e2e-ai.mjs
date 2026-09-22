@@ -37,16 +37,50 @@ try {
   await page.fill(".page-title", "AI test page");
   await page.click(".bn-block-content");
   await page.keyboard.type("this sentence    has   bad spacing");
-  await page.waitForTimeout(400);
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector(".bn-editor")
+        ?.textContent.includes("this sentence    has   bad spacing"),
+    null,
+    { timeout: 4000 },
+  );
 
-  // Select the paragraph, then ⌘J.
+  // Select everything, then ⌘J.
+  //
+  // ⌘A is not bound by the editor: the browser does a native select-all and
+  // ProseMirror only learns about it from the *asynchronous*
+  // `selectionchange` event. Playwright fires the next chord in under a
+  // millisecond — before that event — so ⌘J used to read the old collapsed
+  // selection about one run in five and open the menu in its no-selection
+  // shape (no "Improve writing"). No human can press two chords inside one
+  // event-loop turn, so this is a test race, not a product bug. The
+  // formatting toolbar renders off the editor's own selection state, which
+  // makes it the user-visible proof that the selection has landed.
   await page.keyboard.press(`${mod}+A`);
+  await page
+    .waitForSelector(".bn-formatting-toolbar", { timeout: 4000 })
+    .catch(() => {
+      throw new Error(
+        "⌘A never produced an editor selection (formatting toolbar did not appear)",
+      );
+    });
   await page.keyboard.press(`${mod}+J`);
+  // The menu alone is not enough: it also opens with no selection, showing
+  // only "Continue writing". The rewrite actions prove it saw the selection.
   const menuOpened = await page
-    .waitForSelector(".ai-menu", { timeout: 4000 })
+    .waitForSelector(".ai-menu-item:has-text('Improve writing')", {
+      timeout: 4000,
+    })
     .then(() => true)
     .catch(() => false);
-  check("⌘J opens the AI menu over a selection", menuOpened);
+  check(
+    "⌘J opens the AI menu over a selection",
+    menuOpened,
+    menuOpened
+      ? ""
+      : `menu items: ${await page.locator(".ai-menu-item").allTextContents()}`,
+  );
 
   // ⌘J must NOT also open the workspace modal.
   check(
@@ -320,7 +354,7 @@ try {
       // Dismiss leaves no trace: new chat, same ask, dismiss instead.
       await page.click(".ai-launcher").catch(() => {});
       const panelStillOpen = await page.locator(".ai-panel").isVisible();
-      if (!panelStillOpen) await page.keyboard.press("Meta+Shift+J");
+      if (!panelStillOpen) await page.keyboard.press(`${mod}+Shift+J`);
       await page.click(".ai-panel-head-actions .icon-btn[title='New chat']");
       await page.waitForTimeout(300);
       await page.fill(".ai-panel-composer textarea", "Create another meal plan");

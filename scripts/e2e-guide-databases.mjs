@@ -3,12 +3,12 @@
  * properties, the five views, filter/sort/group/search, relations, rollups,
  * formulas, row peek and CSV export.
  *
- * Usage: VITE_MOCK_CONVEX=1 npx vite --port 5210 & node scripts/e2e-guide-databases.mjs
+ * Usage: VITE_MOCK_CONVEX=1 npx vite --port 5199 & node scripts/e2e-guide-databases.mjs
  */
 import { chromium } from "playwright";
 import fs from "fs";
 
-const BASE = (process.env.E2E_URL ?? "http://localhost:5210") + "/app.html";
+const BASE = (process.env.E2E_URL ?? "http://localhost:5199") + "/app.html";
 const SHOTS = "/tmp/shots-help2";
 fs.mkdirSync(SHOTS, { recursive: true });
 

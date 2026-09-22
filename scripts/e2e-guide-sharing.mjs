@@ -4,14 +4,14 @@
  * comments, publishing, export/import, embeds & bookmarks, block links,
  * code copy, the Vault, settings and the theme.
  *
- * Usage: VITE_MOCK_CONVEX=1 npx vite --port 5210 & node scripts/e2e-guide-sharing.mjs
+ * Usage: VITE_MOCK_CONVEX=1 npx vite --port 5199 & node scripts/e2e-guide-sharing.mjs
  */
 import { chromium } from "playwright";
 import fs from "fs";
 import os from "os";
 import path from "path";
 
-const BASE = (process.env.E2E_URL ?? "http://localhost:5210") + "/app.html";
+const BASE = (process.env.E2E_URL ?? "http://localhost:5199") + "/app.html";
 const SHOTS = "/tmp/shots-help3";
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -34,7 +34,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 page.on("pageerror", (err) => check(`pageerror: ${err.message}`, false));
 
-const MOD = "Meta";
+const MOD = process.platform === "darwin" ? "Meta" : "Control";
 
 try {
   await page.goto(BASE);

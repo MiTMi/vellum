@@ -393,7 +393,7 @@ try {
 
   /* ---------------- 7. Search snippets ---------------- */
 
-  await page.keyboard.press("Meta+k");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k");
   await page.waitForSelector(".quick-switcher", { timeout: 5000 });
   await page.fill(".qs-input-row input", "ANCHOR");
   await page.waitForTimeout(600);

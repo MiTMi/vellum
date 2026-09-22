@@ -5,12 +5,12 @@
  * Covers: the workspace tour, the editor, sub-pages, mentions/backlinks,
  * icons & covers, page options, favorites, tabs, ⌘K and the trash.
  *
- * Usage: VITE_MOCK_CONVEX=1 npx vite --port 5210 & node scripts/e2e-guide-basics.mjs
+ * Usage: VITE_MOCK_CONVEX=1 npx vite --port 5199 & node scripts/e2e-guide-basics.mjs
  */
 import { chromium } from "playwright";
 import fs from "fs";
 
-const BASE = (process.env.E2E_URL ?? "http://localhost:5210") + "/app.html";
+const BASE = (process.env.E2E_URL ?? "http://localhost:5199") + "/app.html";
 const SHOTS = "/tmp/shots-help1";
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -29,7 +29,7 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.on("pageerror", (err) => check(`pageerror: ${err.message}`, false));
 
-const MOD = "Meta";
+const MOD = process.platform === "darwin" ? "Meta" : "Control";
 
 try {
   await page.goto(BASE);
