@@ -23,9 +23,13 @@ const out = path.join(
 // bare "Process failed to launch!" from Playwright. Drop it for the child.
 const { ELECTRON_RUN_AS_NODE: _ignored, ...cleanEnv } = process.env;
 
+// Throwaway profile (honoured by electron/main.cjs): the handler doesn't need
+// the user's replica, and a production dist would otherwise open it.
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), "vellum-pdf-profile-"));
+
 const app = await electron.launch({
   args: [".", "--no-sandbox"],
-  env: { ...cleanEnv, ELECTRON_DISABLE_SANDBOX: "1" },
+  env: { ...cleanEnv, ELECTRON_DISABLE_SANDBOX: "1", VELLUM_SMOKE_PROFILE: profile },
 });
 
 let failures = 0;
@@ -61,6 +65,7 @@ try {
 } finally {
   await app.close();
   fs.rmSync(path.dirname(out), { recursive: true, force: true });
+  fs.rmSync(profile, { recursive: true, force: true });
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : "\nALL PASS");

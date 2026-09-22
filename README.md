@@ -90,11 +90,16 @@ runs the whole UI against an in-memory store persisted to localStorage — handy
 ## Tests
 
 ```bash
-npx vitest run tests/pages.test.ts     # backend functions (in-memory Convex)
+npm run typecheck                       # tsc for the app and for convex/
+npm test                                # all unit + Convex function tests (vitest)
+npm run lint                            # eslint (errors fail CI, warnings don't)
 VITE_MOCK_CONVEX=1 npx vite --port 5199 # in one terminal
-node scripts/e2e.mjs                    # full UI drive (Playwright)
-node scripts/e2e-blocks.mjs             # editor blocks: tables, sub-pages, images
+npm run e2e                             # every Playwright suite (mock mode)
+node scripts/e2e.mjs                    # …or one suite at a time
 ```
+
+The same four gates run on every push and pull request in
+`.github/workflows/ci.yml`; CI only verifies — deploying stays with Vercel.
 
 ## Switching machines / backups
 

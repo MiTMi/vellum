@@ -15,6 +15,15 @@ const os = require("os");
 
 const isMac = process.platform === "darwin";
 
+// Smoke tests (scripts/electron-*smoke.mjs) drive the real app binary. Give
+// them a throwaway profile so they can never touch the user's replica: a run
+// against a production dist once typed into the signed-in workspace and left
+// the edit queued in the real outbox for the next sign-in to replay to prod.
+// Must run before `ready` — userData is read when the session is created.
+if (process.env.VELLUM_SMOKE_PROFILE) {
+  app.setPath("userData", process.env.VELLUM_SMOKE_PROFILE);
+}
+
 /* ---------------------- Touch ID sign-in support ---------------------- */
 // Touch ID can't authenticate to Convex by itself — the server still needs
 // the password. So: after a password sign-in the renderer may store the
@@ -147,8 +156,6 @@ function buildMenu() {
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
-
-const isDev = !!process.env.ELECTRON_START_URL;
 
 let mainWindow = null;
 

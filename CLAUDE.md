@@ -880,6 +880,87 @@ back to (`/` for the root, `/help` for the guides, `/legal` for the
 legal pages, `/app` for everything else). A new entry that isn't taught to it is precached but unreachable
 offline — the navigation lands on the workspace shell instead.
 
+### Code splitting (2026-09-22)
+
+The workspace entry (`app-*.js`) was 1.74 MB / 515 KB gzip with everything
+static. Three pieces now load on demand, cutting it to ~1.43 MB / 418 KB:
+**KaTeX** (`katex-*.js`, ~260 KB — `EquationBlock.tsx`), the **AI chat
+panel** (`AiChatPanel-*.js` — `App.tsx`) and the **database layouts**
+(`DatabaseView-*.js` — `PageView.tsx`). Rules that keep it invisible:
+
+- **Not `React.lazy`/`Suspense`.** `src/lib/lazyModule.ts` is a tiny
+  external store: once a Suspense boundary has shown its fallback React
+  holds the real content back ~300 ms (its anti-flicker throttle), which
+  measured as first paint of the open page going from 120 ms to ~390 ms
+  for a chunk that arrived in 40. `use(wanted)` starts the load and
+  re-renders on arrival; `get()` is the non-hook read for code that runs
+  after a gate (`PageBody`). No error boundary.
+- **A failed chunk load is terminal for the document — do not add a
+  retry.** Browsers memoize a rejected `import()` in the module map, so
+  re-issuing it returns the same rejection without a request (the first
+  version of `lazyModule` did exactly that and every "retry" path was
+  inert; adversarial review 2026-09-22). `failed: true` is therefore
+  sticky, and recovery is explicit: `ChunkFailed.tsx` renders the notice
+  with a **Reload** button (flushes edits, then `location.reload()`;
+  disabled while offline, where a reload would land on the browser's
+  error page), used by `PageBodyGate` for databases and by `App.tsx` for
+  the AI panel — which must show *something* when open-and-failed,
+  because ⌘⇧J hides the launcher and an empty panel would be a dead end.
+  Equations are the one surface with nowhere to mount that notice: they
+  fall back to showing the raw LaTeX source. `IconPicker`'s `React.lazy`
+  emoji picker has the same memoized-failure exposure and was left alone.
+- **Every lazy chunk is warmed** (`src/lib/warmChunk.ts`: ~2.5 s after
+  boot, at the next idle moment — not immediately, when the main thread
+  is still mounting the editor) and again on intent (launcher hover/focus,
+  an equation block mounting). So ⌘⇧J and opening a database normally
+  find the chunk resident; the accepted trade-offs are a `.page-loading`
+  flash for a database opened within seconds of a cold boot, and ⌘⇧J
+  showing nothing until the panel chunk lands.
+- **Nothing stands in for a lazy surface.** No `.ai-panel` placeholder
+  (`.main-col` narrows once, when the real panel mounts), and
+  `PageBodyGate` holds a database's *whole* body so title and table still
+  appear together. The gate only opens, never closes, so `PageBody` state
+  is not reset by it.
+- **KaTeX: script lazy, stylesheet static, render synchronous once
+  resident.** The CSS stays a static import — in the lazy chunk it would
+  load after `app.css` and flip the cascade against the `.katex-display`
+  override, and a CSS-carrying lazy chunk is a mechanism never exercised
+  under Electron's `file://`. The block spec stays registered
+  synchronously (stored documents must parse on first mount). And once
+  the module is loaded `renderInto` paints synchronously, which is
+  correctness, not speed: BlockNote exports custom blocks by rendering
+  under `flushSync` and cloning the DOM at once, so an always-async
+  render would silently blank every equation in HTML/PDF exports.
+- **Offline: every emitted `.js`/`.css` must be precached.**
+  `RUNTIME_CACHED` in `vite.config.ts` is pinned to `.png` screenshots
+  (a chunk that happened to be named `editor-*.js` or `database-*.js`
+  used to match the screenshot pattern and would have been dropped from
+  the shell — working online, dead offline), and `vellumPWA` now fails
+  the build if any script or stylesheet is excluded. Check
+  `grep -o 'assets/[^"]*' dist/sw.js` after adding a boundary.
+- **Stale tab after a deploy:** a hashed chunk 404s once the new service
+  worker evicts the old cache. `main.tsx` listens for `vite:preloadError`,
+  fires `vellum:flush-edits` and reloads once (sessionStorage stamp, one
+  reload per minute) — the same flush path `beforeunload` uses. It
+  ignores the event while a **background warm-up** is in flight
+  (`isWarming()` in `warmChunk.ts`) and while `navigator.onLine` is
+  false: Vite dispatches the event synchronously inside the import
+  chain, so without that guard a transient warm-up failure reloaded the
+  tab with no user action.
+- **A lazy Editor was tried and reverted.** It would take the entry to
+  ~470 KB (140 KB gzip), and a working variant is in the session
+  scratchpad from 2026-09-22, but it widened a pre-existing ⌘A race in
+  `e2e-ai.mjs` (ProseMirror re-applies its own collapsed selection ~20 ms
+  after focus; a test that types and selects within ~50 ms of the click
+  loses the selection) from ~4/100 to ~13/50. Re-enable only with that
+  step hardened (wait ~100 ms after the click, or retry ⌘A until
+  `.bn-formatting-toolbar` appears) — and keep the KaTeX stylesheet in
+  the entry.
+- QuickSwitcher, PeekModal and LibraryView are deliberately **not**
+  split (first-keypress and two-editor registration hazards); Settings,
+  Trash, History and the exporters would save ~2% and weren't worth a
+  boundary.
+
 ### One-off migrations (`convex/migrate.ts`)
 
 `rewriteHostBatch` / `rewriteVersionHostBatch` swap a deployment origin inside
@@ -987,11 +1068,16 @@ now `npx convex env set OPENROUTER_MODEL <slug> --prod`, no deploy. A `:free`
 suffix is part of the slug's identity; free and paid variants are separately
 allowlisted strings.
 
-Current: `google/gemini-2.5-flash-lite`. Measured against prod on 2026-08-08,
-a short grammar fix took **~2.5-5s end-to-end** (~2s of that is `npx convex
-run` overhead), against **26-40s** on `nemotron-3-super:free`. The free tier's
-queue, not model size, was the bottleneck all along — swapping Ultra for Super
-on the free tier changed nothing.
+Current: `google/gemini-2.5-flash` on prod (since 2026-08-16, when the
+workspace agent moved off `flash-lite`; check with `npx convex env get
+OPENROUTER_MODEL --prod` rather than trusting this line). `DEFAULT_MODEL`
+still names `flash-lite` — it is only the fallback for an unset env var, and
+the guardrail must allowlist whichever slug is actually in force. Measured
+against prod on 2026-08-08 *on flash-lite*, a short grammar fix took
+**~2.5-5s end-to-end** (~2s of that is `npx convex run` overhead), against
+**26-40s** on `nemotron-3-super:free`. The free tier's queue, not model size,
+was the bottleneck all along — swapping Ultra for Super on the free tier
+changed nothing.
 
 **Guardrail PII redaction rewrites text before the model ever sees it.**
 OpenRouter guardrails have a *Sensitive Info* section that redacts matched
@@ -1156,6 +1242,29 @@ persistence.
   `convex/*.ts` modules must be added to the `import.meta.glob` list in
   `tests/pages.test.ts` or convex-test can't resolve them.
 - `npm run build` — typecheck + vite build.
+- `npm run typecheck` / `npm test` / `npm run lint` / `npm run e2e` (added
+  2026-09-22) — the four gates CI runs, kept as npm scripts so local and CI
+  can't drift. `lint` is `eslint .` over `eslint.config.mjs` (flat config;
+  read its header before "tidying" it — the react-hooks preset is off and
+  `exhaustive-deps` is a warning on purpose). Errors fail CI, warnings don't.
+  `e2e` is `scripts/run-e2e.mjs`: every `scripts/e2e*.mjs` except
+  `e2e-offline` (needs a real deployment + password) and `e2e-pwa` (needs a
+  built preview), run to completion with a PASS/FAIL table, exit 1 on any
+  failure; pass suite names to run a subset.
+- **CI is `.github/workflows/ci.yml`** (2026-09-22): a `check` job
+  (typecheck, unit tests, lint, `npm audit --omit=dev --audit-level=high`,
+  build) and an `e2e` job (mock-mode suites on :5199, then a build +
+  `vite preview` on :5197 for `e2e-pwa`). It **verifies, never ships** —
+  no secrets, `permissions: contents: read`, and the whole `e2e` job runs
+  under `VITE_MOCK_CONVEX=1` so no browser in CI ever opens a socket to
+  prod. Deploying stays Vercel's job. The audit step hits the registry
+  live, so a new advisory can turn `main` red without a code change — that
+  is the intended gate. The suites had never run on Linux before this
+  landed: every hard-coded `Meta` chord (the four `e2e-guide-*` `MOD`
+  constants and ten literal `"Meta+k"`/`"Meta+,"`/`"Meta+Shift+J"`
+  presses) is now platform-aware like `e2e.mjs:122` — keep new chords
+  that way — but expect the first Linux run to need a triage pass all
+  the same.
 - `node scripts/e2e*.mjs` — Playwright UI suites against a mock-mode vite
   server on port 5199 (`VITE_MOCK_CONVEX=1 npx vite --port 5199`), e.g.
   `e2e-embeds.mjs` (embed block + export menu) and `e2e-dbfeatures.mjs`
@@ -1163,9 +1272,12 @@ persistence.
   — the server root is the landing page.
   The scripts default to `/opt/pw-browsers/chromium`; set `CHROMIUM_PATH` if
   your Playwright browsers live elsewhere. On this machine the binary is
-  `~/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google
+  `~/Library/Caches/ms-playwright/chromium-1243/chrome-mac-arm64/Google
   Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing` (note:
-  not `Chromium.app` — newer Playwright ships Chrome for Testing).
+  not `Chromium.app` — newer Playwright ships Chrome for Testing). The
+  revision follows the `playwright` version (1243 ↔ 1.63); after a bump,
+  `node -e "console.log(require('playwright').chromium.executablePath())"`
+  prints the right path.
 - `node scripts/e2e-vault.mjs` — the E2E-encrypted Vault (same mock server):
   setup, the no-plaintext-at-rest assertion against `vellum:mockdb`,
   lock/unlock, ⌘K exclusion, reload-relocks, and image-paste compression.
@@ -1187,11 +1299,23 @@ persistence.
 - `node scripts/electron-pdf-smoke.mjs` — launches the real desktop app,
   stubs the save dialog and invokes the `vellum:export-pdf` handler. Needs
   `npm run build` first.
+- `node scripts/electron-smoke.mjs` — boots the desktop app and **types
+  into the open page**. It therefore needs a **mock-mode dist**
+  (`VITE_MOCK_CONVEX=1 npx vite build`) and refuses a production one
+  (it greps the entry chunk for a `.convex.cloud` URL). Learned the hard
+  way on 2026-09-21: run against a production build it typed "Hello from
+  Electron" into the signed-in workspace's replica and left the edit
+  queued in the real outbox, where the next sign-in would have replayed
+  it to prod. **Both smokes now run the app on a throwaway profile**:
+  they set `VELLUM_SMOKE_PROFILE` to a temp dir and `electron/main.cjs`
+  calls `app.setPath("userData", …)` before `ready`, so the user's
+  replica, outbox and Touch ID file are never opened by a test. Keep that
+  env var wired through any new Electron-driving script.
 - **Anything that launches Electron must drop `ELECTRON_RUN_AS_NODE`**: IDE
   terminals (VS Code/Cursor) export it, and it silently makes the Electron
   binary start as plain Node — `require("electron")` returns a path string,
   so every API is `undefined`, and Playwright just says "Process failed to
-  launch!". `electron-pdf-smoke.mjs` strips it.
+  launch!". Both smoke scripts strip it.
 - `node scripts/e2e-offline.mjs` — offline-sync e2e against a real (non-mock)
   deployment; defaults to whatever `.env.local` names, i.e. dev (vite on port
   5201, no mock flag; push functions first with `npx convex dev --once`).
