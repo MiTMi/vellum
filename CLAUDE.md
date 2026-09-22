@@ -1071,8 +1071,10 @@ allowlisted strings.
 Current: `google/gemini-2.5-flash` on prod (since 2026-08-16, when the
 workspace agent moved off `flash-lite`; check with `npx convex env get
 OPENROUTER_MODEL --prod` rather than trusting this line). `DEFAULT_MODEL`
-still names `flash-lite` — it is only the fallback for an unset env var, and
-the guardrail must allowlist whichever slug is actually in force. Measured
+was moved to the same slug on 2026-09-22 — the guardrail had stopped
+allowing `flash-lite`, so the old fallback (and the dev deployment, whose
+env var was never updated) 404ed every call; the guardrail must allowlist
+whichever slug is actually in force, fallback included. Measured
 against prod on 2026-08-08 *on flash-lite*, a short grammar fix took
 **~2.5-5s end-to-end** (~2s of that is `npx convex run` overhead), against
 **26-40s** on `nemotron-3-super:free`. The free tier's queue, not model size,

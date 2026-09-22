@@ -100,7 +100,7 @@ test("the model comes from OPENROUTER_MODEL, falling back to the default", async
   fetchMock.mockResolvedValue(ok("x"));
   await (await t()).action(api.ai.transform, { text: "y", kind: "fix" });
   expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe(
-    "google/gemini-2.5-flash-lite",
+    "google/gemini-2.5-flash",
   );
 
   fetchMock.mockClear();

@@ -24,7 +24,7 @@ import { ConvexError } from "convex/values";
  * `npx convex env set OPENROUTER_MODEL <slug> --prod`, with no code change
  * and no deploy. `DEFAULT_MODEL` is only the fallback when it is unset.
  */
-const DEFAULT_MODEL = "google/gemini-2.5-flash-lite";
+const DEFAULT_MODEL = "google/gemini-2.5-flash";
 
 export function aiModel(): string {
   return process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
