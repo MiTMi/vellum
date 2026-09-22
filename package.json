@@ -14,7 +14,11 @@
     "build": "tsc --noEmit && vite build",
     "app": "vite build && electron .",
     "dist": "vite build && electron-builder --mac",
-    "convex:deploy": "convex deploy"
+    "convex:deploy": "convex deploy",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p convex",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "e2e": "node scripts/run-e2e.mjs"
   },
   "dependencies": {
     "@auth/core": "^0.41.3",

@@ -1,0 +1,170 @@
+# Continuous integration: verifies, never ships.
+#
+# Deploying is Vercel's job — it auto-deploys `main` and runs `npx convex
+# deploy` with the production key. This workflow must therefore stay free of
+# secrets, deploy steps and anything that reaches a Convex deployment:
+#   - no `secrets.*`, and `permissions` is read-only;
+#   - `npm run build` only compiles (it reads the checked-in .env.production,
+#     which holds public URLs, not keys);
+#   - the e2e job runs the app in MOCK mode (VITE_MOCK_CONVEX=1), where no
+#     Convex client is ever constructed — including for the built PWA pass;
+#   - scripts/e2e-offline.mjs (real deployment + owner password) is excluded
+#     by scripts/run-e2e.mjs and must never be added here.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch / PR supersedes the run in flight.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Electron's postinstall downloads a ~100 MB binary nothing in CI launches.
+  # Must be in scope for `npm ci`, hence workflow-level.
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        id: install
+        run: npm ci
+
+      # Each check below runs even if an earlier one failed, so one run
+      # reports everything that is wrong rather than only the first thing.
+
+      - name: Typecheck (app + convex)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run typecheck
+
+      - name: Unit tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm test
+
+      # Lint runs BEFORE the build on purpose: `dist/` does not exist yet, so
+      # `eslint .` cannot wander into bundled output. Errors fail the job;
+      # warnings do not (no --max-warnings).
+      - name: Lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run lint
+
+      - name: Security audit (production dependencies, high and above)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run build
+
+  e2e:
+    name: e2e
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Mock mode for the dev server AND for the PWA pass's build: the mock
+      # branch in src/main.tsx never constructs a ConvexReactClient, so no
+      # browser in this job opens a connection to the production deployment.
+      # (The real production bundle is compiled by the `check` job.)
+      VITE_MOCK_CONVEX: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # The suites default to /opt/pw-browsers/chromium (or a macOS path);
+      # point them at the browser Playwright just installed.
+      - name: Export CHROMIUM_PATH
+        id: chromium
+        run: |
+          CHROMIUM_PATH="$(node -e "console.log(require('playwright').chromium.executablePath())")"
+          if [ ! -x "$CHROMIUM_PATH" ]; then
+            echo "::error::Chromium not found at '$CHROMIUM_PATH'"
+            exit 1
+          fi
+          echo "CHROMIUM_PATH=$CHROMIUM_PATH" >> "$GITHUB_ENV"
+          echo "Chromium: $CHROMIUM_PATH"
+
+      # Output goes to a file: a background process that keeps the step's
+      # stdout open would hold the step until the job times out.
+      - name: Start mock-mode dev server (:5199)
+        run: |
+          npx vite --port 5199 --strictPort > /tmp/vite-mock.log 2>&1 &
+          npx wait-on --timeout 120000 http-get://localhost:5199/app.html
+
+      # Every scripts/e2e*.mjs except e2e-offline and e2e-pwa. Runs them all,
+      # prints which failed, exits non-zero if any did. A suite takes 1–2 min
+      # here; the per-suite cap is 5 min so two hung suites cannot eat the
+      # job's 45 (the runner's default of 10 was sized for a laptop).
+      - name: Mock-mode suites
+        env:
+          E2E_SUITE_TIMEOUT_MS: "300000"
+        run: npm run e2e
+
+      # The service worker only registers in a PROD build served over http,
+      # so this suite gets its own build + `vite preview`. It still runs when
+      # a mock suite failed — it is independent signal.
+      - name: Build for the PWA suite
+        id: pwa_build
+        if: ${{ !cancelled() && steps.chromium.outcome == 'success' }}
+        run: npm run build
+
+      - name: Start preview server (:5197)
+        id: pwa_preview
+        if: ${{ !cancelled() && steps.pwa_build.outcome == 'success' }}
+        run: |
+          npx vite preview --port 5197 --strictPort > /tmp/vite-preview.log 2>&1 &
+          npx wait-on --timeout 60000 http-get://localhost:5197/app
+
+      - name: PWA suite
+        if: ${{ !cancelled() && steps.pwa_preview.outcome == 'success' }}
+        run: node scripts/e2e-pwa.mjs
+
+      # The suites write to /tmp/shots, /tmp/shots-<name>/ and a couple of
+      # loose /tmp/shots-*.png files; `/tmp/shots*` covers all three shapes.
+      # `cancelled()` too: a job that hits timeout-minutes is cancelled, not
+      # failed, and a hung suite is exactly when the screenshots matter.
+      - name: Upload screenshots and server logs
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/shots*
+            /tmp/vite-*.log
+          if-no-files-found: ignore
+          retention-days: 7
