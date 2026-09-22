@@ -14,9 +14,12 @@ import { useAi } from "../data";
 export default function AiLauncher({
   open,
   onOpen,
+  onIntent,
 }: {
   open: boolean;
   onOpen: () => void;
+  /** Hover/focus: the caller warms the code-split panel chunk. */
+  onIntent?: () => void;
 }) {
   const ai = useAi();
   if (open || !ai.available) return null;
@@ -27,6 +30,8 @@ export default function AiLauncher({
       title="Ask AI (⌘⇧J)"
       aria-label="Ask AI"
       onClick={onOpen}
+      onMouseEnter={onIntent}
+      onFocus={onIntent}
     >
       <Sparkles size={20} />
     </button>

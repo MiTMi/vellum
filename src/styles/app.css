@@ -1194,6 +1194,11 @@ body.resizing {
   text-align: center;
   color: var(--text-secondary);
 }
+/* The same notice inside the 380px AI panel (ChunkFailed): 80px each side
+   would leave the copy ~220px wide and wrapping every other word. */
+.ai-panel .page-missing {
+  padding: 40px 20px;
+}
 
 /* ============================================================
    Editor (BlockNote overrides)

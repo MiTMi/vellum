@@ -16,14 +16,25 @@ import LibraryView from "./components/LibraryView";
 import { isLibraryId } from "./lib/library";
 import { recordVisit } from "./lib/visits";
 import QuickSwitcher from "./components/QuickSwitcher";
-import AiChatPanel from "./components/AiChatPanel";
 import AiLauncher from "./components/AiLauncher";
 import TrashModal from "./components/TrashModal";
 import SettingsModal from "./components/SettingsModal";
 import PeekModal from "./components/PeekModal";
 import { PageId } from "./lib/types";
 import { parseAnchor, scrollToBlock } from "./lib/anchors";
-import { FileText, Plus } from "lucide-react";
+import { ChevronsRight, FileText, Plus } from "lucide-react";
+import ChunkFailed from "./components/ChunkFailed";
+import { lazyModule } from "./lib/lazyModule";
+import { warmChunk } from "./lib/warmChunk";
+
+// The chat panel (with the agent-plan executor and Markdown mapping only it
+// uses) is code-split: nobody needs it for first render. It is warmed shortly
+// after boot (warmChunk) and again when the launcher is hovered or focused,
+// so opening it — bubble or ⌘⇧J — finds the chunk resident; the PWA plugin
+// precaches every emitted chunk, so it opens offline too. The shortcut and
+// the open/closed state stay here in the eager shell.
+const aiChatPanelModule = lazyModule(() => import("./components/AiChatPanel"));
+warmChunk(aiChatPanelModule.load);
 
 export default function App() {
   return (
@@ -41,6 +52,8 @@ function Workspace() {
   const [trashOpen, setTrashOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const { value: AiChatPanel, failed: aiPanelFailed } =
+    aiChatPanelModule.use(aiPanelOpen);
   const [aiPanelWidth, setAiPanelWidth] = useState(380);
   const [peekId, setPeekId] = useState<PageId | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -205,8 +218,18 @@ function Workspace() {
           )}
         </main>
       </div>
-      <AiLauncher open={aiPanelOpen} onOpen={() => setAiPanelOpen(true)} />
-      {aiPanelOpen && (
+      <AiLauncher
+        open={aiPanelOpen}
+        onOpen={() => setAiPanelOpen(true)}
+        onIntent={() => void aiChatPanelModule.load()}
+      />
+      {/* Nothing stands in while the chunk loads, never an `.ai-panel`
+          shell: .main-col narrows once, when the real panel mounts, exactly
+          as it always has. A FAILED load is different — terminal, not
+          transient (lib/lazyModule.ts) — and must render something: the
+          launcher hides whenever the panel is "open", so an invisible panel
+          would leave the user with no AI affordance and no explanation. */}
+      {aiPanelOpen && AiChatPanel && (
         <AiChatPanel
           page={(pageId && index.byId.get(pageId)) || null}
           onClose={() => setAiPanelOpen(false)}
@@ -214,6 +237,24 @@ function Workspace() {
           width={aiPanelWidth}
           setWidth={setAiPanelWidth}
         />
+      )}
+      {aiPanelOpen && !AiChatPanel && aiPanelFailed && (
+        <aside className="ai-panel" style={{ width: aiPanelWidth }}>
+          <header className="ai-panel-head">
+            <span className="ai-panel-title">Vellum AI</span>
+            <div className="ai-panel-head-actions">
+              <button
+                className="icon-btn"
+                title="Close"
+                aria-label="Close"
+                onClick={() => setAiPanelOpen(false)}
+              >
+                <ChevronsRight size={16} />
+              </button>
+            </div>
+          </header>
+          <ChunkFailed title="The assistant couldn’t be loaded" />
+        </aside>
       )}
 
       {searchOpen && (

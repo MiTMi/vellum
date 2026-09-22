@@ -49,9 +49,15 @@ const PUBLIC_SHELL = [
  *  - the .ttf/.woff fallbacks of every KaTeX and Inter face — each @font-face
  *    lists woff2 first, so that is the only format a service-worker-capable
  *    browser will ever fetch.
+ *
+ * The screenshot half is pinned to `.png` on purpose: the app entry is
+ * code-split, and a lazy chunk that happened to be named `editor-*.js` or
+ * `database-*.js` would otherwise be dropped from the offline shell — it
+ * would work online and die offline. `vellumPWA` also refuses to build if
+ * any script or stylesheet ends up excluded.
  */
 const RUNTIME_CACHED =
-  /^assets\/(hero|editor|database|publish|og)-|\.(ttf|woff)$/;
+  /^assets\/(hero|editor|database|publish|og)-[^/]*\.png$|\.(ttf|woff)$/;
 
 /**
  * Emits dist/sw.js from src/pwa/sw.js, with the shell's file list and a
@@ -78,6 +84,15 @@ function vellumPWA(): Plugin {
         "legal.html": "/legal",
       };
       const emitted = Object.keys(bundle).filter((f) => !RUNTIME_CACHED.test(f));
+      // Every lazy chunk must be in the shell, or its feature dies offline.
+      const dropped = Object.keys(bundle).filter(
+        (f) => /\.(js|css)$/.test(f) && !emitted.includes(f),
+      );
+      if (dropped.length > 0) {
+        this.error(
+          `vellum-pwa: code excluded from the precache: ${dropped.join(", ")}`,
+        );
+      }
       const precache = [
         ...PUBLIC_SHELL,
         ...emitted.map((f) => CANONICAL[f] ?? "/" + f),
@@ -119,6 +134,10 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
+  // KaTeX is only ever reached through a dynamic import (EquationBlock.tsx).
+  // Pre-bundle it up front so the dev server never discovers it late and
+  // full-reloads the page in the middle of an e2e run.
+  optimizeDeps: { include: ["katex"] },
   build: {
     outDir: "dist",
     chunkSizeWarningLimit: 4000,

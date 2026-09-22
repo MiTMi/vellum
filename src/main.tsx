@@ -8,6 +8,7 @@ import { IS_DIRECT, IS_MOCK } from "./data/api";
 import { initOfflineRuntime } from "./offline/runtime";
 import { registerSW } from "./pwa/register";
 import { initialTheme } from "./state";
+import { isWarming } from "./lib/warmChunk";
 
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
@@ -19,6 +20,34 @@ document.documentElement.dataset.theme = initialTheme();
 
 // Offline app shell for the hosted build. No-ops in dev and inside Electron.
 registerSW();
+
+// A lazy chunk that fails to load almost always means this tab predates a
+// deploy: the new service worker has evicted the old cache and the host no
+// longer serves the old hashes. Vite reports it as `vite:preloadError`;
+// flush pending edits and reload once into the current build. The stamp
+// stops a reload loop when the failure is something else (offline with a
+// cold cache), in which case the surface's own failed state handles it
+// (lib/lazyModule.ts). Two failures never reload at all: a background
+// warm-up (lib/warmChunk.ts) — nobody on screen asked for that chunk, and
+// unloading a workspace someone is typing in over it is worse than a
+// sticky failed state — and any failure while offline, where a reload
+// can't fetch anything either. Those checks come before the stamp so a
+// suppressed failure doesn't burn the reload budget a genuine
+// stale-deploy failure needs seconds later.
+window.addEventListener("vite:preloadError", (event) => {
+  if (isWarming() || !navigator.onLine) return;
+  const FLAG = "vellum:chunk-reload";
+  try {
+    const last = Number(sessionStorage.getItem(FLAG)) || 0;
+    if (Date.now() - last < 60_000) return;
+    sessionStorage.setItem(FLAG, String(Date.now()));
+  } catch {
+    return;
+  }
+  event.preventDefault();
+  window.dispatchEvent(new Event("vellum:flush-edits"));
+  window.location.reload();
+});
 
 const url = import.meta.env.VITE_CONVEX_URL as string | undefined;
 

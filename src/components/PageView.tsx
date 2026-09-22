@@ -15,8 +15,10 @@ import { coverBackground } from "../lib/colors";
 import { extractText } from "../lib/blocks";
 import Editor from "./Editor";
 import Comments from "./Comments";
-import DatabaseView from "./database/DatabaseView";
 import RowPropsPanel from "./database/RowProps";
+import { lazyModule } from "../lib/lazyModule";
+import { warmChunk } from "../lib/warmChunk";
+import ChunkFailed from "./ChunkFailed";
 import IconPicker from "./IconPicker";
 import CoverPicker from "./CoverPicker";
 import VaultView, { VaultUnlock } from "./VaultView";
@@ -32,6 +34,41 @@ import {
   vaultKey,
   vaultRootId,
 } from "../lib/vaultSession";
+
+// The database layouts (table/board/calendar/gallery/timeline, the filter
+// builder, the property menu) are code-split: a doc page never needs
+// them. Row pages still need cells, so RowPropsPanel — and with it Cell,
+// dbviews and formula — stays in the entry. Warmed shortly after boot, so
+// opening a database finds it resident.
+const databaseViewModule = lazyModule(() => import("./database/DatabaseView"));
+warmChunk(databaseViewModule.load);
+
+/**
+ * Holds a database's PageBody back until the code-split DatabaseView has
+ * arrived. It gates the WHOLE body on purpose, so the page still appears
+ * atomically — title and table together — exactly as when it was one bundle.
+ * The gate only ever opens (a loaded module stays loaded), so PageBody's
+ * state is never reset by it. A failed load is terminal for the document
+ * (the browser memoizes the failed fetch — lib/lazyModule.ts), so the failed
+ * state offers a reload rather than pretending to retry. Doc pages pass
+ * straight through: the editor is in the entry.
+ *
+ * Deliberately not React.lazy + Suspense — see lib/lazyModule.ts.
+ */
+function PageBodyGate({
+  isDatabase,
+  children,
+}: {
+  isDatabase: boolean;
+  children: React.ReactNode;
+}) {
+  const databaseView = databaseViewModule.use(isDatabase);
+  if (!isDatabase || databaseView.value) return <>{children}</>;
+  if (databaseView.failed) {
+    return <ChunkFailed title="This database couldn’t be loaded" />;
+  }
+  return <div className="page-loading" />;
+}
 
 interface PageViewProps {
   pageId: PageId;
@@ -64,12 +101,14 @@ export default function PageView({ pageId, index }: PageViewProps) {
   }
 
   return (
-    <PageBody
-      key={page._id}
-      page={page}
-      index={index}
-      database={isRow ? (database ?? null) : null}
-    />
+    <PageBodyGate key={page._id} isDatabase={page.type === "database"}>
+      <PageBody
+        key={page._id}
+        page={page}
+        index={index}
+        database={isRow ? (database ?? null) : null}
+      />
+    </PageBodyGate>
   );
 }
 
@@ -151,12 +190,14 @@ function VaultPageGate({ page, index }: { page: PageDoc; index: PagesIndex }) {
   }
 
   return (
-    <PageBody
-      key={page._id}
-      page={{ ...page, title: dec.title, content: dec.content }}
-      index={index}
-      database={null}
-    />
+    <PageBodyGate key={page._id} isDatabase={page.type === "database"}>
+      <PageBody
+        key={page._id}
+        page={{ ...page, title: dec.title, content: dec.content }}
+        index={index}
+        database={null}
+      />
+    </PageBodyGate>
   );
 }
 
@@ -224,6 +265,8 @@ function PageBody({
   }, [page._id]);
 
   const isDatabase = page.type === "database";
+  // Resident by now: PageBodyGate does not render a database until it is.
+  const DatabaseView = databaseViewModule.get();
   // A viewer-role shared page renders exactly like a locked page — same
   // read-only affordances, different note below.
   const isViewer = page.role === "viewer";
@@ -320,7 +363,9 @@ function PageBody({
         {database && <RowPropsPanel row={page} database={database} />}
 
         {isDatabase ? (
-          <DatabaseView page={page} index={index} locked={locked} />
+          DatabaseView && (
+            <DatabaseView page={page} index={index} locked={locked} />
+          )
         ) : (
           <>
             {showTemplatePrompt && (
