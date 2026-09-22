@@ -21,7 +21,9 @@ export const PageMentionSpec = createReactInlineContentSpec(
     content: "none" as const,
   },
   {
-    render: ({ inlineContent }) => {
+    // Named, not an arrow: BlockNote mounts `render` as a component, and the
+    // name is how react-hooks/rules-of-hooks knows to check the hook below.
+    render: function PageMentionView({ inlineContent }) {
       const pageId = inlineContent.props.pageId as string;
       const pages = useSyncExternalStore(subscribeRegistry, registrySnapshot);
       const page = pages.get(pageId);

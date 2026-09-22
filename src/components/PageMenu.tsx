@@ -17,7 +17,7 @@ import {
   History,
 } from "lucide-react";
 import Popover from "./ui/Popover";
-import { PageId, PageMeta, PagesIndex, childrenKey } from "../lib/types";
+import { PageMeta, PagesIndex, childrenKey } from "../lib/types";
 import { useMutations, usePage, useVersionHistory } from "../data";
 import HistoryModal from "./HistoryModal";
 import { useNav } from "../state";

@@ -24,7 +24,9 @@ export const EmbedSpec = createReactBlockSpec(
     content: "none" as const,
   },
   {
-    render: ({ block, editor }) => {
+    // Named, not an arrow: BlockNote mounts `render` as a component, and the
+    // name is how react-hooks/rules-of-hooks knows to check the hooks below.
+    render: function EmbedBlockView({ block, editor }) {
       const url = block.props.url as string;
       const [draft, setDraft] = useState("");
       const [editing, setEditing] = useState(false);

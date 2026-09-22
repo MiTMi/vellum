@@ -1,4 +1,3 @@
-/* eslint-disable no-undef */
 /**
  * Vellum's service worker — hand-rolled, deliberately small.
  *

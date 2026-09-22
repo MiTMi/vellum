@@ -43,7 +43,6 @@ export default function PageTreeItem({
   toggleExpanded,
   drag,
   siblings,
-  position,
 }: ItemProps) {
   const { pageId, navigate } = useNav();
   const mutations = useMutations();

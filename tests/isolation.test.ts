@@ -190,7 +190,7 @@ test("both users bootstrap their own welcome page independently", async () => {
 });
 
 test("published pages never leak foreign titles through link blocks", async () => {
-  const { tc, a, b, pageA } = await twoUsers();
+  const { tc, b, pageA } = await twoUsers();
   // B publishes a page whose content embeds A's page id as a link block.
   const evil = await b.as.mutation(api.pages.create, { type: "doc", title: "evil" });
   await b.as.mutation(api.pages.updateContent, {

@@ -33,7 +33,9 @@ export const TocSpec = createReactBlockSpec(
     content: "none" as const,
   },
   {
-    render: ({ editor }) => {
+    // Named, not an arrow: BlockNote mounts `render` as a component, and the
+    // name is how react-hooks/rules-of-hooks knows to check the hooks below.
+    render: function TocBlockView({ editor }) {
       const [headings, setHeadings] = useState<Heading[]>([]);
 
       useEffect(() => {

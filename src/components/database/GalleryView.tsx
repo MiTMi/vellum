@@ -2,7 +2,7 @@ import { Plus } from "lucide-react";
 import { PageDoc, PageMeta } from "../../lib/types";
 import { useMutations } from "../../data";
 import { usePagesIndex } from "../../hooks/usePagesIndex";
-import { requestPeek, useNav } from "../../state";
+import { requestPeek } from "../../state";
 import { coverBackground } from "../../lib/colors";
 import CardProps from "./CardProps";
 
@@ -21,7 +21,6 @@ export default function GalleryView({
 }) {
   const mutations = useMutations();
   const index = usePagesIndex();
-  const { navigate } = useNav();
   const dbProps = page.dbProps ?? [];
   const cardProps = dbProps.filter((p) => p.type !== "checkbox").slice(0, 3);
 

@@ -324,15 +324,8 @@ export default function PageEditor({ page }: EditorProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiAllowed, wrapEl, editor]);
 
-  const insertPageLink = (pageId: string) => {
-    insertOrUpdateBlockForSlashMenu(
-      editor as unknown as BlockNoteEditor,
-      { type: "pageLink", props: { pageId } } as never,
-    );
-  };
-
   // Inline chip inside the current paragraph (Notion's @-mention), as
-  // opposed to insertPageLink's standalone block.
+  // opposed to the standalone pageLink block the "/" menu inserts.
   const insertPageMention = (pageId: string) => {
     editor.insertInlineContent([
       { type: "pageMention", props: { pageId } },

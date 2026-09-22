@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { DbProp, PageDoc, PageMeta, PageId, SelectOption } from "../../lib/types";
 import { useMutations } from "../../data";
-import { requestPeek, useNav } from "../../state";
+import { requestPeek } from "../../state";
 import Cell from "./Cell";
 import PropertyMenu, { PROP_TYPE_META } from "./PropertyMenu";
 import { uid } from "../../lib/ranks";
@@ -41,7 +41,6 @@ export default function TableView({
   locked,
 }: TableViewProps) {
   const mutations = useMutations();
-  const { navigate } = useNav();
   const dbProps = useMemo(() => page.dbProps ?? [], [page.dbProps]);
   const [menuFor, setMenuFor] = useState<{ propId: string; anchor: HTMLElement } | null>(null);
   const [titleEdit, setTitleEdit] = useState<{ id: PageId; value: string } | null>(null);

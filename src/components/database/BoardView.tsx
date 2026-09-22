@@ -3,7 +3,7 @@ import { Plus, ArrowUpRight } from "lucide-react";
 import { DbProp, DbView, PageDoc, PageMeta, PageId } from "../../lib/types";
 import { useMutations } from "../../data";
 import { usePagesIndex } from "../../hooks/usePagesIndex";
-import { requestPeek, useNav } from "../../state";
+import { requestPeek } from "../../state";
 import CardProps from "./CardProps";
 
 interface BoardViewProps {
@@ -17,7 +17,6 @@ interface BoardViewProps {
 export default function BoardView({ page, view, rows, locked }: BoardViewProps) {
   const mutations = useMutations();
   const index = usePagesIndex();
-  const { navigate } = useNav();
   const dbProps = page.dbProps ?? [];
   const [dragRow, setDragRow] = useState<PageId | null>(null);
   const [overCol, setOverCol] = useState<string | null>(null);

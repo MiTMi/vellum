@@ -693,7 +693,7 @@ test("agent: every gated web op lands in the audit log with its verdict", async 
 test("agent: over-length queries are refused before any guard or send", async () => {
   process.env.TAVILY_API_KEY = "tvly-x";
   const longQuery = "leak ".repeat(60); // ~300 chars
-  fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+  fetchMock.mockImplementation(async (_url: string, _init?: RequestInit) => {
     const agentCalls = fetchMock.mock.calls.filter(
       (c) => !String(c[1]?.body).includes("You are a safety filter"),
     ).length;

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { FileText, Lock, LockOpen, Plus, ShieldCheck } from "lucide-react";
-import { PageDoc, PageId, PagesIndex } from "../lib/types";
+import { PageDoc, PagesIndex } from "../lib/types";
 import { useMutations } from "../data";
 import { useNav } from "../state";
 import {

@@ -12,7 +12,6 @@ import { collectStorageKeys } from "./lib/fileRefs";
 import {
   getAccessiblePage,
   pagesOf,
-  readOwnedPage,
   requireUser,
   writeOwnedPage,
 } from "./lib/auth";
@@ -585,7 +584,6 @@ export const setIcon = mutation({
     // loudly, missing pages no-op (see getAccessiblePage).
     const access = await getAccessiblePage(ctx, userId, args.id, "write");
     if (!access) return;
-    const page = access.page;
     await ctx.db.patch("pages", args.id, {
       icon: args.icon === null ? undefined : args.icon,
       updatedAt: Date.now(),
@@ -601,7 +599,6 @@ export const setCover = mutation({
     // loudly, missing pages no-op (see getAccessiblePage).
     const access = await getAccessiblePage(ctx, userId, args.id, "write");
     if (!access) return;
-    const page = access.page;
     await ctx.db.patch("pages", args.id, {
       cover: args.cover === null ? undefined : args.cover,
       updatedAt: Date.now(),
@@ -626,7 +623,6 @@ export const setPageOptions = mutation({
     // loudly, missing pages no-op (see getAccessiblePage).
     const access = await getAccessiblePage(ctx, userId, args.id, "write");
     if (!access) return;
-    const page = access.page;
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.font !== undefined) patch.font = args.font;
     if (args.smallText !== undefined) patch.smallText = args.smallText;
@@ -971,7 +967,6 @@ export const updateDbProps = mutation({
     // loudly, missing pages no-op (see getAccessiblePage).
     const access = await getAccessiblePage(ctx, userId, args.id, "write");
     if (!access) return;
-    const page = access.page;
     await ctx.db.patch("pages", args.id, {
       dbProps: args.dbProps,
       updatedAt: Date.now(),
@@ -1008,7 +1003,6 @@ export const setView = mutation({
     // loudly, missing pages no-op (see getAccessiblePage).
     const access = await getAccessiblePage(ctx, userId, args.id, "write");
     if (!access) return;
-    const page = access.page;
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.activeView !== undefined) patch.activeView = args.activeView;
     if (args.boardGroupBy !== undefined) patch.boardGroupBy = args.boardGroupBy;
@@ -1030,7 +1024,6 @@ export const setViews = mutation({
     // loudly, missing pages no-op (see getAccessiblePage).
     const access = await getAccessiblePage(ctx, userId, args.id, "write");
     if (!access) return;
-    const page = access.page;
     await ctx.db.patch("pages", args.id, {
       views: args.views,
       updatedAt: Date.now(),

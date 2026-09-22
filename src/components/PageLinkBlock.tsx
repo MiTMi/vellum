@@ -20,7 +20,9 @@ export const PageLinkSpec = createReactBlockSpec(
     content: "none" as const,
   },
   {
-    render: (props) => {
+    // Named, not an arrow: BlockNote mounts `render` as a component, and the
+    // name is how react-hooks/rules-of-hooks knows to check the hook below.
+    render: function PageLinkBlockView(props) {
       const pageId = props.block.props.pageId as string;
       const pages = useSyncExternalStore(subscribeRegistry, registrySnapshot);
       const page = pages.get(pageId);

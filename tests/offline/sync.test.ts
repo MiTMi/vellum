@@ -1,10 +1,8 @@
 /// <reference types="vite/client" />
 // Integration tests: the real sync engine + outbox + store, wired to a
 // convex-test backend through a transport with a controllable connection.
-import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import { api } from "../../convex/_generated/api";
-import schema from "../../convex/schema";
 import { PageDoc, PageId } from "../../src/lib/types";
 import { createMemoryDb } from "../../src/offline/idb";
 import { createOfflineMutations } from "../../src/offline/mutations";

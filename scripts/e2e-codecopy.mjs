@@ -1,6 +1,5 @@
 /** E2E: copy button on code blocks. */
 import { chromium } from "playwright";
-import fs from "fs";
 
 let failures = 0;
 const results = [];

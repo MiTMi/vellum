@@ -222,7 +222,7 @@ export const _wipeUserContent = internalMutation({
   handler: async (ctx, args): Promise<void> => {
     const releasing = new Set(args.releasing);
     let phase = args.phase;
-    let more = false;
+    let more: boolean;
 
     if (phase === "pages") {
       const pages = await ctx.db

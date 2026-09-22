@@ -295,7 +295,6 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
       closeTab,
       selectTab,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [pageId, navigate, back, forward, theme, toggleTheme, tabs, activeTabId,
      newTab, closeTab, selectTab, h.back.length, h.fwd.length],
   );

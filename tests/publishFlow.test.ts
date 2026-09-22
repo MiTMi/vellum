@@ -6,10 +6,8 @@
  * stop being served even while they hold a slug, and Vault pages can't be
  * published at all.
  */
-import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import { api, internal } from "../convex/_generated/api";
-import schema from "../convex/schema";
 
 import { ownerBackend } from "./helpers";
 
