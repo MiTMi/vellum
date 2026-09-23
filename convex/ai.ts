@@ -18,6 +18,7 @@ import {
   AgentOp,
   blockLines,
   parseAgentJson,
+  partialReply,
   salvageAgentReply,
   validatePlan,
 } from "./lib/agentPlan";
@@ -248,10 +249,15 @@ export const transform = action({
       ? `${instructionFor(args.kind, args.option)}\n\n---\n${text}\n---`
       : blankInstructionFor(args.kind, args.option);
 
-    return await meteredChat(ctx, userId, [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content },
-    ]);
+    return await meteredChat(
+      ctx,
+      userId,
+      [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content },
+      ],
+      { task: "fast" },
+    );
   },
 });
 
@@ -359,7 +365,7 @@ export const fillProperty = action({
           content: `${propInstruction(args.kind, args.prompt)}\n\nPage title: ${title}\n\n---\n${body}\n---`,
         },
       ],
-      { maxTokens: 400 },
+      { maxTokens: 400, task: "fast" },
     );
   },
 });
@@ -752,7 +758,7 @@ async function webGuardVerdict(
         { role: "system", content: WEB_GUARD_SYSTEM },
         { role: "user", content: `${kind === "search" ? "Search query" : "URL"}: ${text.slice(0, 500)}` },
       ],
-      { maxTokens: 60 },
+      { maxTokens: 60, task: "fast" },
     );
     const parsed = parseAgentJson(verdict);
     if (parsed && parsed.allowed === true) return { allowed: true, reason: "" };
@@ -813,9 +819,100 @@ export const agent = action({
      *  default — nothing touches the web unless the user opted in. */
     allowWeb: v.optional(v.boolean()),
     persona: v.optional(v.string()),
+    /** Client-minted id of an aiStreams row to report progress into
+     *  (status lines, then the reply as it arrives). Optional: without it
+     *  the call behaves exactly as before. */
+    streamId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<AgentResult> => {
     const userId = await requireUser(ctx);
+    const stream = streamWriter(ctx, userId, args.streamId);
+    try {
+      return await runAgent(ctx, userId, args, stream);
+    } finally {
+      await stream?.close();
+    }
+  },
+});
+
+type AgentArgs = {
+  messages: { role: "user" | "assistant"; content: string }[];
+  pageId?: Id<"pages">;
+  useWorkspace?: boolean;
+  allowWeb?: boolean;
+  persona?: string;
+};
+
+/** Minimum gap between progress writes; one write is in flight at a time. */
+const STREAM_WRITE_GAP_MS = 150;
+const MAX_STREAM_ID_CHARS = 64;
+
+/**
+ * Progress reporting for one agent request (streaming, 2026-09-22). Convex
+ * actions can't push to the client, so progress lands in an `aiStreams` row
+ * the panel subscribes to: a status line during tool rounds ("Searching
+ * your workspace…"), then the reply text as the model writes it. Writes
+ * are serialized and spaced, so a long reply costs a few dozen tiny
+ * mutations, not one per token. The row is deleted when the request ends —
+ * the action's return value, not the row, is the final answer.
+ */
+function streamWriter(
+  ctx: ActionCtx,
+  userId: Id<"users">,
+  streamId: string | undefined,
+) {
+  if (!streamId || streamId.length > MAX_STREAM_ID_CHARS) return null;
+  let status: string | undefined;
+  let text = "";
+  let inflight: Promise<void> | null = null;
+  let dirty = false;
+  let closed = false;
+  const pump = () => {
+    if (closed) return;
+    if (inflight) {
+      dirty = true;
+      return;
+    }
+    dirty = false;
+    inflight = ctx
+      .runMutation(internal.aiStreams._write, { userId, streamId, status, text })
+      .then(() => undefined, () => undefined)
+      .finally(() => {
+        inflight = null;
+        if (dirty && !closed) setTimeout(pump, STREAM_WRITE_GAP_MS);
+      });
+  };
+  return {
+    setStatus(next: string) {
+      status = next;
+      text = "";
+      pump();
+    },
+    setText(next: string) {
+      if (next === text) return;
+      text = next;
+      pump();
+    },
+    async close() {
+      closed = true;
+      await inflight;
+      await ctx
+        .runMutation(internal.aiStreams._clear, { userId, streamId })
+        .catch(() => {});
+    },
+  };
+}
+
+type StreamWriter = ReturnType<typeof streamWriter>;
+
+async function runAgent(
+  ctx: ActionCtx,
+  userId: Id<"users">,
+  args: AgentArgs,
+  stream: StreamWriter,
+): Promise<AgentResult> {
+  {
+    stream?.setStatus("Thinking…");
 
     const history = args.messages.slice(-MAX_HISTORY_TURNS);
     const latest = [...history].reverse().find((m) => m.role === "user");
@@ -915,6 +1012,15 @@ export const agent = action({
         ],
         {
           maxTokens: finalRound ? AGENT_FINAL_MAX_TOKENS : AGENT_TOOL_MAX_TOKENS,
+          // Streamed when the client is listening: the reply shows up as
+          // it is written. Tool rounds decode to nothing, so the status
+          // line from the previous step stays up.
+          onDelta: stream
+            ? (soFar) => {
+                const reply = partialReply(soFar);
+                if (reply) stream.setText(reply);
+              }
+            : undefined,
         },
       );
 
@@ -950,6 +1056,7 @@ export const agent = action({
       }
 
       if (!finalRound && parsed.tool === "search" && typeof parsed.query === "string") {
+        stream?.setStatus("Searching your workspace…");
         const docs: { pageId: string; title: string; icon: string | null; text: string }[] =
           await ctx.runQuery(internal.ai._retrieve, {
             question: parsed.query,
@@ -969,6 +1076,7 @@ export const agent = action({
       }
 
       if (!finalRound && parsed.tool === "read" && typeof parsed.pageId === "string") {
+        stream?.setStatus("Reading a page…");
         let result = "That page is not available.";
         try {
           const page: Doc<"pages"> | null = await ctx.runQuery(
@@ -991,6 +1099,7 @@ export const agent = action({
       }
 
       if (!finalRound && parsed.tool === "webSearch" && typeof parsed.query === "string") {
+        stream?.setStatus("Searching the web…");
         if (!searchEnabled || webOps >= MAX_WEB_OPS) {
           convo.push(
             `Tool result for webSearch: unavailable${webOps >= MAX_WEB_OPS ? " (web budget for this request is used up)" : ""} — answer from what you have.`,
@@ -1033,6 +1142,7 @@ export const agent = action({
       }
 
       if (!finalRound && parsed.tool === "fetchUrl" && typeof parsed.url === "string") {
+        stream?.setStatus("Reading a web page…");
         if (!webEnabled || webOps >= MAX_WEB_OPS) {
           convo.push("Tool result for fetchUrl: unavailable — answer from what you have.");
           continue;
@@ -1125,5 +1235,5 @@ export const agent = action({
 
     // Unreachable (the last round always returns), but typecheck-honest.
     throw new ConvexError("The agent ran out of rounds without answering.");
-  },
-});
+  }
+}

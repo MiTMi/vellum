@@ -292,11 +292,30 @@ export const _wipeUserContent = internalMutation({
           .withIndex("by_user_month", (q) => q.eq("userId", args.userId))
           .take(WIPE_BATCH);
         for (const u of usage) await ctx.db.delete("aiUsage", u._id);
-        more = usage.length === WIPE_BATCH;
+        // Saved chats and any in-flight stream row belong to the account too.
+        const threads = await ctx.db
+          .query("aiThreads")
+          .withIndex("by_owner_updated", (q) => q.eq("ownerId", args.userId))
+          .take(WIPE_BATCH);
+        for (const t of threads) await ctx.db.delete("aiThreads", t._id);
+        const streams = await ctx.db
+          .query("aiStreams")
+          .withIndex("by_owner", (q) => q.eq("ownerId", args.userId))
+          .take(WIPE_BATCH);
+        for (const s of streams) await ctx.db.delete("aiStreams", s._id);
+        more =
+          usage.length === WIPE_BATCH ||
+          threads.length === WIPE_BATCH ||
+          streams.length === WIPE_BATCH;
       }
     }
 
-    const done = !more && phase === "traces";
+    // Done only after a pass that RAN the traces phase and emptied it.
+    // Testing the advanced-to phase instead (`phase === "traces"`) ended the
+    // chain the moment files finished, so traces — web audit rows, AI
+    // usage, saved chats — were never deleted with an account (found
+    // 2026-09-23 by the saved-chats wipe test).
+    const done = !more && args.phase === "traces";
     const overflowing = releasing.size >= MAX_CARRIED_KEYS;
     if (done || overflowing) {
       if (releasing.size > 0) {
@@ -346,6 +365,8 @@ const RESET_TABLES: TableNames[] = [
   "webAudit",
   "files",
   "aiUsage",
+  "aiThreads",
+  "aiStreams",
   "invites",
   "authRefreshTokens",
   "authVerificationCodes",

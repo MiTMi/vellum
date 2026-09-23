@@ -17,6 +17,7 @@ import {
   PageId,
   VersionDoc,
   VersionMeta,
+  AiChatMessage,
 } from "../lib/types";
 import { createPageStore } from "../offline/store";
 import { createStoreReadHooks } from "../offline/storeHooks";
@@ -405,7 +406,7 @@ const mockApi: DataApi = {
     // exercise the menus and the apply/discard flow without a network call
     // or an API key, and demo mode gets something coherent to show.
     return useMemo<AiApi>(
-      () => ({
+      () => withMockExtras({
         available: true,
         transform: async ({ text, kind, option }) => {
           // Mirrors the OpenRouter guardrail, which redacts card numbers on the
@@ -555,6 +556,7 @@ const mockApi: DataApi = {
       [],
     );
   },
+  // (withMockExtras is defined below the implementation object.)
   useGetDoc() {
     return useCallback(async (id: PageId) => {
       const doc = store.get(id);
@@ -564,3 +566,76 @@ const mockApi: DataApi = {
 };
 
 export default mockApi;
+
+/* ---------------------- mock AI: streaming + threads ---------------------- */
+
+const MOCK_THREADS_KEY = "vellum:mock-ai-threads";
+
+type MockThread = { _id: string; title: string; messages: AiChatMessage[]; updatedAt: number };
+
+function loadMockThreads(): MockThread[] {
+  try {
+    return JSON.parse(localStorage.getItem(MOCK_THREADS_KEY) ?? "[]") as MockThread[];
+  } catch {
+    return [];
+  }
+}
+
+function storeMockThreads(threads: MockThread[]) {
+  try {
+    localStorage.setItem(MOCK_THREADS_KEY, JSON.stringify(threads));
+  } catch {
+    /* quota / private mode: demo chats just won't persist */
+  }
+}
+
+const mockSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Demo-mode stand-ins for the server halves: the agent "streams" its canned
+ * answer in two steps (so e2e can see a partial reply), and threads live in
+ * localStorage (so e2e can reload and find the chat again).
+ */
+function withMockExtras(base: Omit<AiApi, "threads">): AiApi {
+  return {
+    ...base,
+    agent: async (args, onProgress) => {
+      const result = await base.agent(args);
+      if (onProgress) {
+        onProgress({ status: "Thinking…", text: "" });
+        await mockSleep(250);
+        const half = result.answer.slice(0, Math.ceil(result.answer.length / 2));
+        onProgress({ status: "Thinking…", text: half });
+        await mockSleep(400);
+      }
+      return result;
+    },
+    threads: {
+      available: true,
+      list: async () =>
+        loadMockThreads()
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .map(({ _id, title, updatedAt, messages }) => ({
+            _id,
+            title,
+            updatedAt,
+            messageCount: messages.length,
+          })),
+      get: async (id) => loadMockThreads().find((t) => t._id === id) ?? null,
+      save: async ({ id, title, messages }) => {
+        const all = loadMockThreads();
+        const existing = id ? all.find((t) => t._id === id) : undefined;
+        const clean = JSON.parse(JSON.stringify(messages)) as AiChatMessage[];
+        if (existing) {
+          Object.assign(existing, { title, messages: clean, updatedAt: Date.now() });
+          storeMockThreads(all);
+          return existing._id;
+        }
+        const _id = `thread_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+        storeMockThreads([...all, { _id, title, messages: clean, updatedAt: Date.now() }]);
+        return _id;
+      },
+      remove: async (id) => storeMockThreads(loadMockThreads().filter((t) => t._id !== id)),
+    },
+  };
+}

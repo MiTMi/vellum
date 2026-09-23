@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
+import { aiThreadMessage } from "./lib/aiThreadShape";
 
 /**
  * Vellum data model.
@@ -185,6 +186,34 @@ export default defineSchema({
    * micro-USD from OpenRouter's per-call accounting. The owner is exempt
    * and never recorded, so the by_month sum IS the shared non-owner pool.
    */
+  /**
+   * In-flight agent progress (streaming, 2026-09-22): the status line and
+   * the reply-so-far of ONE request, keyed by a client-minted id and read by
+   * the panel through `aiStreams.get`. Deleted when the request ends, so
+   * the table is empty at rest.
+   */
+  aiStreams: defineTable({
+    ownerId: v.id("users"),
+    streamId: v.string(),
+    status: v.optional(v.string()),
+    text: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_stream", ["streamId"])
+    .index("by_owner", ["ownerId"]),
+
+  /**
+   * Saved AI chats (2026-09-22). Server-only like comments — never in the
+   * replica, sync index or outbox — and one document per thread with its
+   * messages inline (capped in `aiThreads.save`).
+   */
+  aiThreads: defineTable({
+    ownerId: v.id("users"),
+    title: v.string(),
+    messages: v.array(aiThreadMessage),
+    updatedAt: v.number(),
+  }).index("by_owner_updated", ["ownerId", "updatedAt"]),
+
   aiUsage: defineTable({
     userId: v.id("users"),
     month: v.string(), // "2026-08" (UTC)

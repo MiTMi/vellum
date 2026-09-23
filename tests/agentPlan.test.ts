@@ -491,3 +491,16 @@ test("replaceText: a line copied from blockLines matches a multi-run block", () 
   const line = blockLines([block]);
   expect(findReplaceTargets([block], line)).toHaveLength(1);
 });
+
+import { partialReply } from "../convex/lib/agentPlan";
+
+test("partialReply decodes the reply string as far as it has streamed", () => {
+  expect(partialReply("")).toBeNull();
+  expect(partialReply('{"tool":"search","query":"x"}')).toBeNull(); // tool round: nothing to show
+  expect(partialReply('{"reply":"Hel')).toBe("Hel");
+  expect(partialReply('{"reply":"Line one\\nLine \\"two\\"')).toBe('Line one\nLine "two"');
+  expect(partialReply('{"reply":"ends here\\')).toBe("ends here"); // escape split across chunks
+  expect(partialReply('{"reply":"caf\\u00e9 done","plan":[')).toBe("café done");
+  expect(partialReply('```json\n{"reply":"fenced')).toBe("fenced");
+  expect(partialReply("Plain prose streams as-is")).toBe("Plain prose streams as-is");
+});

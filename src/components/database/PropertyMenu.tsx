@@ -30,7 +30,8 @@ import {
 } from "../../lib/types";
 import { SELECT_COLORS, randomColor } from "../../lib/colors";
 import { uid } from "../../lib/ranks";
-import { usePage, usePagesList } from "../../data";
+import { useAi, useMutations, usePage, usePagesList } from "../../data";
+import type { PageMeta } from "../../lib/types";
 import { checkFormula } from "../../lib/formula";
 
 export const PROP_TYPE_META: Record<
@@ -81,6 +82,9 @@ interface PropertyMenuProps {
   update: (next: DbProp) => void;
   remove: () => void;
   sort?: (dir: "asc" | "desc" | null) => void;
+  /** The rows the view shows — an AI column can fill all of them. */
+  rows?: PageMeta[];
+  locked?: boolean;
 }
 
 export default function PropertyMenu({
@@ -91,6 +95,8 @@ export default function PropertyMenu({
   update,
   remove,
   sort,
+  rows = [],
+  locked,
 }: PropertyMenuProps) {
   const [typeOpen, setTypeOpen] = useState(false);
   const [name, setName] = useState(prop.name);
@@ -181,7 +187,9 @@ export default function PropertyMenu({
         <FormulaConfig prop={prop} dbProps={dbProps} update={update} />
       )}
 
-      {prop.type === "ai" && <AiConfig prop={prop} update={update} />}
+      {prop.type === "ai" && (
+        <AiConfig prop={prop} update={update} rows={rows} locked={locked} />
+      )}
 
       {isSelect && (
         <>
@@ -268,14 +276,71 @@ export default function PropertyMenu({
  * surprise. Existing values stay put when the kind changes; the user
  * regenerates the rows they care about.
  */
+/** Rows filled concurrently by "Fill empty rows" — gentle on the rate limit. */
+const FILL_CONCURRENCY = 2;
+
 function AiConfig({
   prop,
   update,
+  rows,
+  locked,
 }: {
   prop: DbProp;
   update: (next: DbProp) => void;
+  rows: PageMeta[];
+  locked?: boolean;
 }) {
   const kind: AiPropKind = prop.aiKind ?? "summary";
+  const ai = useAi();
+  const mutations = useMutations();
+  const [fill, setFill] = useState<{ done: number; total: number; error?: string } | null>(
+    null,
+  );
+  // Only rows without a value, and never read-only ones: a whole-column
+  // fill is N paid calls, so it must not overwrite what the user kept.
+  const empty = rows.filter((r) => {
+    const v = r.props?.[prop.id];
+    return r.role !== "viewer" && !(typeof v === "string" && v.trim());
+  });
+  const running = fill !== null && fill.done < fill.total && !fill.error;
+
+  /** Item 9 (2026-09-22): fill every empty row in the visible view, two at
+   *  a time. Stops at the first failure — almost always the monthly AI
+   *  budget, where carrying on would just fail N more times. */
+  const fillEmpty = async () => {
+    const queue = [...empty];
+    const total = queue.length;
+    let done = 0;
+    let failed: string | undefined;
+    setFill({ done, total });
+    const worker = async () => {
+      while (queue.length > 0 && !failed) {
+        const row = queue.shift()!;
+        try {
+          const value = await ai.fillProperty({
+            pageId: row._id,
+            kind,
+            prompt: prop.aiPrompt,
+          });
+          await mutations.setRowProp({ id: row._id, propId: prop.id, value });
+          done++;
+          setFill({ done, total });
+        } catch (err) {
+          const data = (err as { data?: unknown }).data;
+          failed =
+            typeof data === "string"
+              ? data
+              : err instanceof Error
+                ? err.message
+                : "Generation failed.";
+          setFill({ done, total, error: failed });
+        }
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(FILL_CONCURRENCY, total) }, worker),
+    );
+  };
   return (
     <>
       <div className="prop-menu-label">Generate</div>
@@ -301,6 +366,28 @@ function AiConfig({
       <div className="formula-hint">
         Values are generated per row from that page's content, then stored.
       </div>
+      {ai.available && !locked && (
+        <>
+          <button
+            className="menu-item ai-fill-all"
+            disabled={running || empty.length === 0}
+            onClick={() => void fillEmpty()}
+          >
+            {running
+              ? `Filling ${fill!.done}/${fill!.total}…`
+              : empty.length === 0
+                ? "Every row is filled"
+                : `Fill ${empty.length} empty ${empty.length === 1 ? "row" : "rows"}`}
+          </button>
+          {fill && !running && (
+            <div className="formula-hint">
+              {fill.error
+                ? `Stopped after ${fill.done} of ${fill.total}: ${fill.error}`
+                : `Filled ${fill.done} ${fill.done === 1 ? "row" : "rows"}.`}
+            </div>
+          )}
+        </>
+      )}
     </>
   );
 }

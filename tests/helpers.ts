@@ -10,6 +10,8 @@ export const modules = import.meta.glob([
   "../convex/pages.ts",
   "../convex/shares.ts",
   "../convex/ai.ts",
+  "../convex/aiStreams.ts",
+  "../convex/aiThreads.ts",
   "../convex/account.ts",
   "../convex/admin.ts",
   "../convex/files.ts",

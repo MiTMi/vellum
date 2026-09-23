@@ -210,6 +210,41 @@ try {
       );
       await page.screenshot({ path: `${SHOTS}/04-ai-cell.png` });
     }
+
+    // Fill a whole column at once: two more empty rows, then the menu's
+    // "Fill N empty rows" — the already-filled row must not be redone.
+    for (const title of ["Budget plan", "Hiring notes"]) {
+      await page.click(".new-row-btn");
+      await page.waitForTimeout(250);
+      await page.keyboard.type(title);
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(300);
+    }
+    await page.click(".db-table thead th:nth-last-child(2)");
+    const fillBtn = await page
+      .waitForSelector(".ai-fill-all", { timeout: 4000 })
+      .catch(() => null);
+    check("the AI column menu offers a fill-all action", !!fillBtn);
+    if (fillBtn) {
+      const label = await fillBtn.textContent();
+      check("it counts only the empty rows", /Fill 2 empty rows/.test(label), label);
+      await fillBtn.click();
+      const finished = await page
+        .waitForFunction(
+          () => /Filled 2 rows/.test(document.querySelector(".prop-menu")?.textContent ?? ""),
+          null,
+          { timeout: 6000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      check("fill-all reports every row filled", finished);
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+      check(
+        "all three AI cells now hold a value",
+        (await page.locator(".ai-cell-value").count()) === 3,
+      );
+    }
   }
 
   /* ---------------- 4. floating launcher + chat panel ---------------- */
@@ -476,6 +511,62 @@ try {
       (await page.locator(".ai-msg-body").last().textContent()).includes("updated"),
     );
   }
+
+  /* ------------- 7. the reply streams in, and chats are saved ------------- */
+
+  await page.fill(".ai-panel-composer textarea", "Summarize my week");
+  await page.keyboard.press("Enter");
+  const streamed = await page
+    .waitForSelector(".ai-msg-streaming", { timeout: 3000 })
+    .then(() => true)
+    .catch(() => false);
+  check("the reply streams in before it is complete", streamed);
+  await page.waitForSelector(".ai-msg-streaming", { state: "detached", timeout: 5000 });
+  check(
+    "the finished reply replaces the streaming one",
+    (await page.locator(".ai-msg-assistant").last().textContent()).includes("Summarize my week"),
+  );
+
+  // A reload keeps the conversation: the panel reopens the latest chat.
+  await page.waitForTimeout(600); // let the save settle
+  await page.reload();
+  await page.waitForSelector(".page-title", { timeout: 10000 });
+  await page.keyboard.press(`${mod}+Shift+J`);
+  await page.waitForSelector(".ai-panel", { timeout: 4000 });
+  const restored = await page
+    .waitForFunction(
+      () => (document.querySelector(".ai-panel-thread")?.textContent ?? "").includes("Summarize my week"),
+      null,
+      { timeout: 4000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  check("the chat survives a reload", restored);
+
+  await page.click(".ai-panel-head-actions .icon-btn[title='New chat']");
+  check("New chat starts an empty thread", await page.locator(".ai-panel-empty").isVisible());
+  await page.click(".ai-panel-title");
+  await page.waitForSelector(".ai-history", { timeout: 3000 });
+  const items = await page.locator(".ai-history-item").count();
+  check("the history menu lists saved chats", items >= 1, `${items} chats`);
+  await page.locator(".ai-history-open").first().click();
+  const reopened = await page
+    .waitForFunction(
+      () => (document.querySelector(".ai-panel-thread")?.textContent ?? "").includes("Summarize my week"),
+      null,
+      { timeout: 3000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  check("picking a chat from history reopens it", reopened);
+  await page.click(".ai-panel-title");
+  await page.waitForSelector(".ai-history", { timeout: 3000 });
+  await page.locator(".ai-history-item .icon-btn[title='Delete chat']").first().click();
+  await page.waitForTimeout(300);
+  check(
+    "deleting a chat removes it from the history",
+    (await page.locator(".ai-history-item").count()) === items - 1,
+  );
 } catch (err) {
   check(`threw: ${err.message}`, false);
   await page.screenshot({ path: `${SHOTS}/crash.png` }).catch(() => {});

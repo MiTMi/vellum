@@ -4774,6 +4774,66 @@ tbody.db-group + tbody.db-group .group-row td {
   align-items: center;
   gap: 5px;
 }
+/* Saved-chat history, dropped from the panel title. */
+.ai-panel-head {
+  position: relative;
+}
+.ai-history {
+  position: absolute;
+  top: 100%;
+  left: 8px;
+  right: 8px;
+  z-index: 20;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.ai-history-empty {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.ai-history-item {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+.ai-history-item:hover,
+.ai-history-item.active {
+  background: var(--bg-secondary);
+}
+.ai-history-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 8px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.ai-history-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-history-date {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
 /* A replaceText step renders as the diff it is: gone text struck, new text
    added, before Apply. */
 .ai-plan-diff {

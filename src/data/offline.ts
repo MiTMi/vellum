@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { api } from "../../convex/_generated/api";
+import { agentWithProgress, remoteThreads } from "./aiRemote";
 import { Id } from "../../convex/_generated/dataModel";
 import {
   AccountApi,
@@ -13,7 +14,6 @@ import {
   VersionHistoryApi,
 } from "./api";
 import {
-  AgentAnswer,
   AiAnswer,
   CommentMeta,
   LinkPreview,
@@ -280,11 +280,9 @@ const offlineApi: DataApi = {
             ...args,
             pageId: args.pageId as Id<"pages"> | undefined,
           }) as Promise<string>,
-        agent: (args) =>
-          convexClient().action(api.ai.agent, {
-            ...args,
-            pageId: args.pageId as Id<"pages"> | undefined,
-          }) as Promise<AgentAnswer>,
+        agent: (args, onProgress) =>
+          agentWithProgress(convexClient(), args, onProgress),
+        threads: remoteThreads(convexClient, connected),
       }),
       [connected],
     );

@@ -26,8 +26,19 @@ import { ConvexError } from "convex/values";
  */
 const DEFAULT_MODEL = "google/gemini-2.5-flash";
 
-export function aiModel(): string {
-  return process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
+/**
+ * Which job a call is doing (2026-09-22). "fast" is the short, mechanical
+ * work — selection rewrites, AI-column fills, the web safety verdict — and
+ * may run on a cheaper model via OPENROUTER_MODEL_FAST; everything else
+ * (chat, Q&A, planning) stays on OPENROUTER_MODEL. Unset, both are the same
+ * model, so this is a no-op until someone opts in — and the fast slug must
+ * be on the guardrail's allowlist like any other.
+ */
+export type AiTask = "fast" | "smart";
+
+export function aiModel(task: AiTask = "smart"): string {
+  const main = process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
+  return task === "fast" ? process.env.OPENROUTER_MODEL_FAST || main : main;
 }
 
 /**
@@ -149,12 +160,13 @@ const SLOW_CALL_MS = 10_000;
  * stand out in a scroll of successes.
  */
 function logCall(
+  model: string,
   status: number | "timeout" | "network",
   started: number,
   attempt: number,
 ) {
   const ms = Date.now() - started;
-  const line = `[ai] openrouter ${aiModel()} status=${status} ${ms}ms attempt=${attempt + 1}`;
+  const line = `[ai] openrouter ${model} status=${status} ${ms}ms attempt=${attempt + 1}`;
   if (ms >= SLOW_CALL_MS || typeof status !== "number" || status >= 400) {
     console.warn(line);
   } else {
@@ -168,11 +180,68 @@ export interface ChatResult {
   costMicroUsd: number;
 }
 
+/**
+ * Reads an OpenRouter server-sent-event stream, reporting the accumulated
+ * text after every delta. The final event carries `usage` (requested with
+ * `usage: {include: true}`), so metering works the same as unstreamed.
+ */
+async function readStream(
+  body: ReadableStream<Uint8Array>,
+  onDelta: (soFar: string) => void,
+): Promise<{ text: string; usage?: { cost?: number; total_tokens?: number } }> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let text = "";
+  let usage: { cost?: number; total_tokens?: number } | undefined;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = pending.indexOf("\n")) >= 0) {
+      const line = pending.slice(0, nl).trim();
+      pending = pending.slice(nl + 1);
+      // Comment lines (": OPENROUTER PROCESSING") keep the socket alive.
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (data === "[DONE]") continue;
+      let event: {
+        choices?: { delta?: { content?: string } }[];
+        usage?: { cost?: number; total_tokens?: number };
+        error?: { message?: string };
+      };
+      try {
+        event = JSON.parse(data);
+      } catch {
+        continue;
+      }
+      if (event.error) {
+        throw new ConvexError(event.error.message || "The AI provider reported an error.");
+      }
+      const delta = event.choices?.[0]?.delta?.content;
+      if (typeof delta === "string" && delta) {
+        text += delta;
+        onDelta(text);
+      }
+      if (event.usage) usage = event.usage;
+    }
+  }
+  return { text, usage };
+}
+
 export async function chat(
   messages: ChatMessage[],
-  opts: { maxTokens?: number } = {},
+  opts: {
+    maxTokens?: number;
+    task?: AiTask;
+    /** Stream the reply, reporting the text so far after each delta. A
+     *  retried attempt restarts from empty, which callers display as-is. */
+    onDelta?: (soFar: string) => void;
+  } = {},
 ): Promise<ChatResult> {
   const key = apiKey();
+  const model = aiModel(opts.task);
   let lastError = "AI request failed.";
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -192,8 +261,9 @@ export async function chat(
           "X-Title": "Vellum",
         },
         body: JSON.stringify({
-          model: aiModel(),
+          model,
           messages,
+          ...(opts.onDelta ? { stream: true } : {}),
           max_tokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS,
           temperature: 0.3,
           // Ask OpenRouter to include this call's actual cost in the
@@ -203,13 +273,21 @@ export async function chat(
         }),
       });
 
-      logCall(res.status, started, attempt);
+      logCall(model, res.status, started, attempt);
       if (res.ok) {
-        const body = (await res.json()) as {
-          choices?: { message?: { content?: string } }[];
-          usage?: { cost?: number; total_tokens?: number };
-        };
-        const text = body.choices?.[0]?.message?.content?.trim();
+        let raw: string | undefined;
+        let usage: { cost?: number; total_tokens?: number } | undefined;
+        if (opts.onDelta && res.body) {
+          ({ text: raw, usage } = await readStream(res.body, opts.onDelta));
+        } else {
+          const body = (await res.json()) as {
+            choices?: { message?: { content?: string } }[];
+            usage?: { cost?: number; total_tokens?: number };
+          };
+          raw = body.choices?.[0]?.message?.content;
+          usage = body.usage;
+        }
+        const text = raw?.trim();
         if (!text) {
           // A reasoning model can spend its whole budget thinking and return
           // empty content. Retrying is pointless; say so plainly.
@@ -218,10 +296,10 @@ export async function chat(
           );
         }
         let costMicroUsd: number;
-        if (typeof body.usage?.cost === "number") {
-          costMicroUsd = Math.max(0, Math.ceil(body.usage.cost * 1_000_000));
+        if (typeof usage?.cost === "number") {
+          costMicroUsd = Math.max(0, Math.ceil(usage.cost * 1_000_000));
         } else {
-          costMicroUsd = estimateMicroUsd(body.usage?.total_tokens);
+          costMicroUsd = estimateMicroUsd(usage?.total_tokens);
           console.warn(
             "OpenRouter response carried no usage.cost — using conservative estimate",
             { costMicroUsd },
@@ -250,7 +328,7 @@ export async function chat(
       // retry, or a misconfigured key would look like a network blip.
       if (err instanceof ConvexError) throw err;
       const timedOut = err instanceof Error && err.name === "AbortError";
-      logCall(timedOut ? "timeout" : "network", started, attempt);
+      logCall(model, timedOut ? "timeout" : "network", started, attempt);
       lastError = timedOut
         ? "The AI request timed out."
         : "Could not reach OpenRouter.";

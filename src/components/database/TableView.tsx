@@ -202,6 +202,8 @@ export default function TableView({
           sort={(dir) =>
             setSort(dir ? { key: menuFor.propId, dir } : null)
           }
+          rows={rows}
+          locked={locked}
         />
       )}
     </div>

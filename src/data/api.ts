@@ -1,6 +1,7 @@
 import {
   AgentAnswer,
   AiAnswer,
+  AiChatMessage,
   AiChatTurn,
   AiPropKind,
   AiTransformKind,
@@ -104,7 +105,41 @@ export interface AiApi {
     /** The composer's globe toggle — web tools are off unless set. */
     allowWeb?: boolean;
     persona?: string;
-  }): Promise<AgentAnswer>;
+  },
+  /** Called while the agent works: a status line during tool rounds,
+   *  then the reply text as it is written. The resolved value is final. */
+  onProgress?: (p: AgentProgress) => void,
+  ): Promise<AgentAnswer>;
+  /** Saved chats — server-only; `available` mirrors the AI's own. */
+  threads: AiThreadsApi;
+}
+
+export interface AgentProgress {
+  status: string | null;
+  text: string;
+}
+
+export interface AiThreadMeta {
+  _id: string;
+  title: string;
+  updatedAt: number;
+  messageCount: number;
+}
+
+export interface AiThreadsApi {
+  available: boolean;
+  /** Most recent first. */
+  list(): Promise<AiThreadMeta[]>;
+  get(
+    id: string,
+  ): Promise<{ _id: string; title: string; messages: AiChatMessage[] } | null>;
+  /** Upserts the whole thread; returns its id (new on first save). */
+  save(args: {
+    id?: string | null;
+    title: string;
+    messages: AiChatMessage[];
+  }): Promise<string>;
+  remove(id: string): Promise<void>;
 }
 
 export interface AccountApi {

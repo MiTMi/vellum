@@ -715,3 +715,78 @@ test("agent: over-length queries are refused before any guard or send", async ()
   const last = fetchMock.mock.calls.pop()!;
   expect(JSON.parse(last[1].body as string).messages[1].content).toContain("too long to send");
 });
+
+/* ------------------------------------------ task routing + streaming */
+
+test("OPENROUTER_MODEL_FAST routes the quick jobs; chat stays on the main model", async () => {
+  process.env.OPENROUTER_MODEL_FAST = "google/gemini-2.5-flash-lite";
+  try {
+    fetchMock.mockResolvedValue(ok("x"));
+    const as = await t();
+    await as.action(api.ai.transform, { text: "y", kind: "fix" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe(
+      "google/gemini-2.5-flash-lite",
+    );
+    fetchMock.mockResolvedValue(ok('{"reply":"hi"}'));
+    await as.action(api.ai.agent, { messages: [{ role: "user", content: "hello" }] });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).model).toBe(
+      "google/gemini-2.5-flash",
+    );
+  } finally {
+    delete process.env.OPENROUTER_MODEL_FAST;
+  }
+});
+
+/** An OpenRouter server-sent-event stream delivering `chunks` of content. */
+function sse(chunks: string[], cost = 0.00001) {
+  const enc = new TextEncoder();
+  const lines = [
+    ": OPENROUTER PROCESSING\n\n",
+    ...chunks.map(
+      (c) => `data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`,
+    ),
+    `data: ${JSON.stringify({ choices: [{ delta: {} }], usage: { cost } })}\n\n`,
+    "data: [DONE]\n\n",
+  ];
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers(),
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        // Split mid-line too, the way a real socket does.
+        const all = lines.join("");
+        for (let i = 0; i < all.length; i += 17) {
+          controller.enqueue(enc.encode(all.slice(i, i + 17)));
+        }
+        controller.close();
+      },
+    }),
+  } as unknown as Response;
+}
+
+test("agent with a streamId streams the reply and leaves no stream row behind", async () => {
+  const { tc, as } = await (await import("./helpers")).ownerBackend();
+  fetchMock.mockResolvedValue(sse(['{"reply":"Hel', 'lo \\"world\\""}']));
+  const res = await as.action(api.ai.agent, {
+    messages: [{ role: "user", content: "hello" }],
+    streamId: "stream-test-1",
+  });
+  expect(res.answer).toBe('Hello "world"');
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).stream).toBe(true);
+  await tc.run(async (ctx) => {
+    expect(await ctx.db.query("aiStreams").collect()).toHaveLength(0);
+    // Streamed calls are metered from the final usage event like any other.
+    const usage = await ctx.db.query("aiUsage").collect();
+    expect(usage[0].costMicroUsd).toBe(10);
+  });
+});
+
+test("agent without a streamId does not stream (unchanged request shape)", async () => {
+  fetchMock.mockResolvedValue(ok('{"reply":"plain"}'));
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "hello" }],
+  });
+  expect(res.answer).toBe("plain");
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).stream).toBeUndefined();
+});

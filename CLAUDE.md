@@ -1229,6 +1229,47 @@ stricter because fills write back. `useGetDoc` on the DataApi is the
 executor's imperative replica read. Mock mode returns a canned plan for
 creation-shaped asks ("create/make/set up/build") so e2e can apply it.
 
+**Streaming, saved chats, fast model, fill-all (2026-09-23).**
+
+- **Streaming.** A Convex action can't push to the client, so the agent
+  reports progress into an **`aiStreams`** row keyed by a client-minted id
+  (`agentWithProgress` in `src/data/aiRemote.ts` mints it and watches
+  `aiStreams.get` via `watchQuery` — offline mode has no ConvexProvider).
+  `streamWriter` in `ai.ts` writes a status line per tool round
+  ("Searching your workspace…") and then the reply as it arrives:
+  `chat()` streams SSE when given `onDelta`, and `partialReply`
+  (`convex/lib/agentPlan.ts`) decodes the `reply` string out of the
+  still-incomplete protocol JSON. Writes are serialized with a 150 ms gap
+  (a few dozen tiny mutations per reply, not one per token), bound to the
+  owner (a foreign row under the same id is left alone), and the row is
+  deleted when the action ends — the return value is the final answer.
+  Metering is unchanged: the last SSE event carries `usage.cost`.
+  Verified against the real provider on dev: the row showed a status,
+  then 229 of 496 characters mid-call, then nothing.
+- **Saved chats.** **`aiThreads`** — one document per thread, messages
+  inline (capped at 60 and ~800 KB in `aiThreads.save`), owner-only and
+  never shared (a chat can quote anything its owner reads). Server-only
+  like comments; exposed as `useAi().threads`. The panel reopens the most
+  recent thread on mount, saves after every settled change through a
+  serialized chain (so the first save's id is known before the next), and
+  the title button opens the history menu. Mock mode keeps threads in
+  localStorage (`vellum:mock-ai-threads`).
+- **`OPENROUTER_MODEL_FAST`** (optional Convex env var): selection
+  rewrites, AI-column fills and the web guard use it; chat, Q&A and
+  planning stay on `OPENROUTER_MODEL`. Unset = same model everywhere. It
+  must be on the guardrail allowlist like any slug.
+- **Fill all.** The AI column's property menu has "Fill N empty rows"
+  (visible rows only, never overwrites a value, two at a time, stops at
+  the first failure — usually the monthly budget).
+- **Account wipe bug fixed alongside:** `_wipeUserContent` ended the
+  chain as soon as the files phase finished (it tested the phase it had
+  just *advanced to*), so the traces phase — web audit rows, AI usage,
+  and now saved chats — never ran for a deleted account. `done` now
+  requires a pass that ran traces; `tests/aiThreads.test.ts` pins it.
+- Semantic (vector) retrieval was considered and **deliberately skipped**
+  (2026-09-23): it would send every page's text to OpenRouter on every
+  edit, not just when AI is used; revisit when the workspace is large.
+
 **Web access (2026-08-12, opt-in).** The composer's globe toggle (off by
 default, per-device `vellum:ai-web`) adds two more agent tools:
 `fetchUrl` (free — fetches one page's text server-side, same pattern as
@@ -1259,7 +1300,7 @@ outbound reads, no new access to workspace data).
 **Tests.** `tests/ai.test.ts` (18) stubs `fetch` and covers the guards —
 auth, the vault, empty/oversized input, error translation, env-driven model
 selection, and that only `content` is ever returned. `scripts/e2e-ai.mjs`
-(50 checks) clicks every surface in mock mode: the selection menu, writing
+(61 checks) clicks every surface in mock mode: the selection menu, writing
 from a blank line, the redaction guard on Replace, a diffed replaceText edit
 applied through the panel, AI database columns, the floating launcher's position and
 show/hide, and the panel's multi-turn history, context chip and persona

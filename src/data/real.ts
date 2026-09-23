@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useQuery, useMutation, useAction, useConvex } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { agentWithProgress, remoteThreads } from "./aiRemote";
 import {
   AiApi,
   CommentsApi,
@@ -13,7 +14,6 @@ import {
   VersionHistoryApi,
 } from "./api";
 import {
-  AgentAnswer,
   AiAnswer,
   BacklinkMeta,
   CommentMeta,
@@ -261,7 +261,7 @@ const realApi: DataApi = {
     const ask = useAction(api.ai.ask);
     const converse = useAction(api.ai.converse);
     const deckOutline = useAction(api.ai.deckOutline);
-    const agent = useAction(api.ai.agent);
+    const client = useConvex();
     return useMemo<AiApi>(
       () => ({
         available: true,
@@ -279,13 +279,10 @@ const realApi: DataApi = {
             ...args,
             pageId: args.pageId as Id<"pages"> | undefined,
           }) as Promise<string>,
-        agent: (args) =>
-          agent({
-            ...args,
-            pageId: args.pageId as Id<"pages"> | undefined,
-          }) as Promise<AgentAnswer>,
+        agent: (args, onProgress) => agentWithProgress(client, args, onProgress),
+        threads: remoteThreads(() => client, true),
       }),
-      [transform, fillProperty, ask, converse, deckOutline, agent],
+      [transform, fillProperty, ask, converse, deckOutline, client],
     );
   },
 

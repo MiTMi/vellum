@@ -14,8 +14,10 @@ import {
   UserRoundCog,
   FileText,
   Loader2,
+  Trash2,
   X,
 } from "lucide-react";
+import type { AgentProgress, AiThreadMeta } from "../data/api";
 import { AiChatMessage, PageId, PageMeta } from "../lib/types";
 import { useAi, useGetDoc, useMutations } from "../data";
 import { isVaultPage } from "../lib/vaultSession";
@@ -107,6 +109,15 @@ export default function AiChatPanel({
       }
       return !v;
     });
+  /** Live progress of the request in flight (streaming): a status line,
+   *  then the reply as it is written. Null when idle. */
+  const [progress, setProgress] = useState<AgentProgress | null>(null);
+  /** Saved chats (server-side). The id lives in a ref so the save chain
+   *  below always upserts the thread it created, never a second copy. */
+  const threadIdRef = useRef<string | null>(null);
+  const saveChain = useRef<Promise<void>>(Promise.resolve());
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [threadList, setThreadList] = useState<AiThreadMeta[]>([]);
   const [personaOpen, setPersonaOpen] = useState(false);
   const [persona, setPersona] = useState(loadPersona);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -120,6 +131,81 @@ export default function AiChatPanel({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Reopen the most recent chat, so closing the panel or reloading the app
+  // never loses a conversation.
+  const threads = ai.threads;
+  useEffect(() => {
+    if (!threads.available) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const [latest] = await threads.list();
+        if (!latest || !alive) return;
+        const t = await threads.get(latest._id);
+        if (!t || !alive) return;
+        threadIdRef.current = t._id;
+        setMessages((cur) => (cur.length === 0 ? t.messages : cur));
+      } catch {
+        // Offline or a transient failure: start fresh, nothing is lost.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // Once per mount: `threads` changes identity with connectivity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Save after every settled change. Serialized, so the first save's new
+  // id is known before the next one runs.
+  useEffect(() => {
+    if (busy || messages.length === 0 || !threads.available) return;
+    const snapshot = messages;
+    const firstUser = snapshot.find((m) => m.role === "user")?.content ?? "";
+    const title = firstUser.replace(/\s+/g, " ").trim().slice(0, 60) || "Untitled chat";
+    saveChain.current = saveChain.current.then(async () => {
+      try {
+        threadIdRef.current = await threads.save({
+          id: threadIdRef.current,
+          title,
+          messages: snapshot,
+        });
+      } catch {
+        // Saving is best-effort; the chat on screen is unaffected.
+      }
+    });
+  }, [messages, busy, threads]);
+
+  const openHistory = async () => {
+    if (historyOpen) return setHistoryOpen(false);
+    setHistoryOpen(true);
+    try {
+      setThreadList(await threads.list());
+    } catch {
+      setThreadList([]);
+    }
+  };
+
+  const loadThread = async (id: string) => {
+    setHistoryOpen(false);
+    if (busy) return;
+    await saveChain.current;
+    const t = await threads.get(id).catch(() => null);
+    if (!t) return;
+    threadIdRef.current = t._id;
+    setMessages(t.messages);
+  };
+
+  const deleteThread = async (id: string) => {
+    await saveChain.current;
+    await threads.remove(id).catch(() => {});
+    setThreadList((l) => l.filter((t) => t._id !== id));
+    if (threadIdRef.current === id) {
+      threadIdRef.current = null;
+      setMessages([]);
+    }
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -165,13 +251,16 @@ export default function AiChatPanel({
     try {
       // The workspace agent: same grounding as converse, plus an optional
       // additive plan rendered as an Apply/Dismiss card.
-      const res = await ai.agent({
-        messages: next.map(({ role, content }) => ({ role, content })),
-        pageId: useContext && contextPage ? contextPage._id : undefined,
-        useWorkspace,
-        allowWeb,
-        persona: persona.trim() || undefined,
-      });
+      const res = await ai.agent(
+        {
+          messages: next.map(({ role, content }) => ({ role, content })),
+          pageId: useContext && contextPage ? contextPage._id : undefined,
+          useWorkspace,
+          allowWeb,
+          persona: persona.trim() || undefined,
+        },
+        setProgress,
+      );
       setMessages([
         ...next,
         { role: "assistant", content: res.answer, sources: res.sources, plan: res.plan },
@@ -192,6 +281,7 @@ export default function AiChatPanel({
         },
       ]);
     } finally {
+      setProgress(null);
       setBusy(false);
     }
   };
@@ -318,6 +408,8 @@ export default function AiChatPanel({
   };
 
   const startNewChat = () => {
+    threadIdRef.current = null;
+    setHistoryOpen(false);
     setMessages([]);
     setInput("");
     inputRef.current?.focus();
@@ -334,10 +426,46 @@ export default function AiChatPanel({
       />
 
       <header className="ai-panel-head">
-        <button className="ai-panel-title" onClick={startNewChat}>
+        <button
+          className="ai-panel-title"
+          onClick={() => (threads.available ? void openHistory() : startNewChat())}
+          title={threads.available ? "Chat history" : undefined}
+        >
           {messages.length > 0 ? "AI chat" : "New AI chat"}
           <ChevronDown size={14} />
         </button>
+        {historyOpen && (
+          <div className="ai-history" role="menu">
+            {threadList.length === 0 ? (
+              <div className="ai-history-empty">No saved chats yet.</div>
+            ) : (
+              threadList.map((t) => (
+                <div
+                  key={t._id}
+                  className={`ai-history-item ${t._id === threadIdRef.current ? "active" : ""}`}
+                >
+                  <button className="ai-history-open" onClick={() => void loadThread(t._id)}>
+                    <span className="ai-history-title">{t.title}</span>
+                    <span className="ai-history-date">
+                      {new Date(t.updatedAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                  </button>
+                  <button
+                    className="icon-btn"
+                    title="Delete chat"
+                    aria-label="Delete chat"
+                    onClick={() => void deleteThread(t._id)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
         <div className="ai-panel-head-actions">
           <button className="icon-btn" title="New chat" onClick={startNewChat}>
             <MessageSquarePlus size={16} />
@@ -477,13 +605,22 @@ export default function AiChatPanel({
                 )}
               </div>
             ))}
-            {busy && (
-              <div className="ai-msg ai-msg-assistant">
-                <div className="ai-msg-body ai-msg-thinking">
-                  <Loader2 size={14} className="ai-spin" /> Thinking…
+            {busy &&
+              (progress?.text ? (
+                // The reply as it is being written (streamed).
+                <div className="ai-msg ai-msg-assistant ai-msg-streaming">
+                  <div className="ai-msg-body">
+                    <ChatMarkdown text={progress.text} />
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="ai-msg ai-msg-assistant">
+                  <div className="ai-msg-body ai-msg-thinking">
+                    <Loader2 size={14} className="ai-spin" />{" "}
+                    {progress?.status ?? "Thinking…"}
+                  </div>
+                </div>
+              ))}
           </div>
         )}
       </div>

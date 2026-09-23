@@ -108,6 +108,43 @@ export function blockLines(content: unknown, depth = 0): string {
   return lines.join("\n");
 }
 
+/**
+ * The user-visible reply inside a PARTIAL agent response, for streaming.
+ * The agent answers in JSON ({"reply":"…","plan":[…]}), so the raw
+ * stream can't be shown; this decodes the reply string as far as it has
+ * arrived. Plain prose (no leading brace or fence) streams through as-is.
+ * Null while nothing displayable exists yet — a tool call, or JSON before
+ * the reply key.
+ */
+export function partialReply(buffer: string): string | null {
+  const t = buffer.trimStart();
+  if (!t) return null;
+  if (!t.startsWith("{") && !t.startsWith("`")) return t;
+  const m = /"reply"\s*:\s*"/.exec(t);
+  if (!m) return null;
+  let out = "";
+  for (let i = m.index + m[0].length; i < t.length; i++) {
+    const c = t[i];
+    if (c === '"') return out;
+    if (c !== "\\") {
+      out += c;
+      continue;
+    }
+    const n = t[i + 1];
+    if (n === undefined) return out; // escape split across chunks
+    if (n === "u") {
+      const hex = t.slice(i + 2, i + 6);
+      if (!/^[0-9a-fA-F]{4}$/.test(hex)) return out;
+      out += String.fromCharCode(parseInt(hex, 16));
+      i += 5;
+    } else {
+      out += n === "n" ? "\n" : n === "t" ? "\t" : n === "r" ? "" : n;
+      i++;
+    }
+  }
+  return out;
+}
+
 export const MAX_PLAN_OPS = 20;
 const MIN_FIND_CHARS = 3;
 const MAX_FIND_CHARS = 2000;
