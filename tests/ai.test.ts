@@ -790,3 +790,16 @@ test("agent without a streamId does not stream (unchanged request shape)", async
   expect(res.answer).toBe("plain");
   expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).stream).toBeUndefined();
 });
+
+test("agent keeps a reply that was cut off mid-string instead of apologizing", async () => {
+  const long = "Local-first software keeps your data on your own device. ".repeat(4);
+  fetchMock.mockResolvedValue(ok(`{"reply":"${long}and then the stream st`));
+  const res = await (await t()).action(api.ai.agent, {
+    messages: [{ role: "user", content: "write an essay" }],
+  });
+  expect(res.answer).toContain("Local-first software keeps your data");
+  expect(res.answer).toContain("cut off");
+  expect(res.answer).not.toContain("garbled");
+  // Every round gets the full output budget.
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).max_tokens).toBe(4000);
+});

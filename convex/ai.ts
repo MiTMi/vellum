@@ -655,10 +655,13 @@ export const deckOutline = action({
 
 /** Model calls per agent request, tool rounds included. Each is metered. */
 const MAX_AGENT_CALLS = 4;
-/** Tool-round replies are tiny JSON; the final round may carry a whole
- *  plan with markdown content. */
-const AGENT_TOOL_MAX_TOKENS = 600;
-const AGENT_FINAL_MAX_TOKENS = 4000;
+/** Output cap per agent round. Every round gets the full budget: the
+ *  model often answers outright in round one, and a 600-token cap on
+ *  "tool rounds" truncated every long answer into unparseable JSON — seen
+ *  live 2026-09-23, where a streamed essay was replaced by "I garbled
+ *  that reply". The cap only bounds a runaway; billing is per token used,
+ *  so a short tool call costs the same either way. */
+const AGENT_MAX_TOKENS = 4000;
 /** Body budget for the agent's `read` tool and search results. */
 const AGENT_READ_CHARS = 6000;
 /** Web tool calls per request — protects the search providers' free
@@ -1011,7 +1014,7 @@ async function runAgent(
           },
         ],
         {
-          maxTokens: finalRound ? AGENT_FINAL_MAX_TOKENS : AGENT_TOOL_MAX_TOKENS,
+          maxTokens: AGENT_MAX_TOKENS,
           // Streamed when the client is listening: the reply shows up as
           // it is written. Tool rounds decode to nothing, so the status
           // line from the previous step stays up.
@@ -1039,6 +1042,20 @@ async function runAgent(
             answer:
               salvaged +
               "\n\n_(I lost the rest of that reply while composing it — if I mentioned creating something, ask me again.)_",
+            plan: null,
+            sources,
+            model: aiModel(),
+          };
+        }
+        // A reply cut off mid-string (the output cap, a dropped stream) is
+        // still mostly a good answer — and with streaming the user has
+        // already watched it arrive. Keep it rather than swap in an apology.
+        const partial = partialReply(text);
+        if (partial && partial.trim().length >= 40) {
+          return {
+            answer:
+              partial.trimEnd() +
+              "\n\n_(My reply was cut off here — ask me to continue.)_",
             plan: null,
             sources,
             model: aiModel(),
