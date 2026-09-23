@@ -1,5 +1,6 @@
 import { DbProp, PageMeta } from "./types";
 import { downloadFile, getActiveEditor, safeFilename } from "./editorRegistry";
+import { withAutoDir } from "../../convex/lib/htmlDir";
 
 const escapeHtml = (s: string) =>
   s.replace(
@@ -46,7 +47,8 @@ function sanitizeExportHtml(html: string): string {
 
 function printableHtml(title: string, rawBody: string): string {
   const heading = escapeHtml(title || "Untitled");
-  const body = sanitizeExportHtml(rawBody);
+  // Per-block direction, so Hebrew exports read right-to-left.
+  const body = withAutoDir(sanitizeExportHtml(rawBody));
   return `<!doctype html>
 <html>
 <head>
@@ -67,7 +69,7 @@ function printableHtml(title: string, rawBody: string): string {
   h2 { font-size: 1.45em; margin: 1.4em 0 0.4em; }
   h3 { font-size: 1.2em; margin: 1.2em 0 0.3em; }
   p, li { margin: 0.4em 0; }
-  ul, ol { padding-left: 1.4em; }
+  ul, ol { padding-inline-start: 1.4em; }
   a { color: #2383e2; }
   code {
     background: #f2f1ee;
@@ -84,13 +86,13 @@ function printableHtml(title: string, rawBody: string): string {
   pre code { background: none; padding: 0; }
   blockquote {
     margin: 0.8em 0;
-    padding-left: 1em;
-    border-left: 3px solid #d9d8d4;
+    padding-inline-start: 1em;
+    border-inline-start: 3px solid #d9d8d4;
     color: #5f5e5a;
   }
   img { max-width: 100%; }
   table { border-collapse: collapse; width: 100%; margin: 0.8em 0; }
-  th, td { border: 1px solid #d9d8d4; padding: 0.4em 0.6em; text-align: left; }
+  th, td { border: 1px solid #d9d8d4; padding: 0.4em 0.6em; text-align: start; }
   th { background: #f7f6f3; }
   /* Keep headings with the text that follows, and never split a block. */
   h1, h2, h3 { break-after: avoid; }
@@ -98,7 +100,7 @@ function printableHtml(title: string, rawBody: string): string {
 </style>
 </head>
 <body>
-<h1>${heading}</h1>
+<h1 dir="auto">${heading}</h1>
 ${body}
 </body>
 </html>`;

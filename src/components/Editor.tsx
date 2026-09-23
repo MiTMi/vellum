@@ -47,6 +47,7 @@ import CodeCopyOverlay from "./CodeCopyOverlay";
 import { isVaultPage } from "../lib/vaultSession";
 import AiMenu from "./AiMenu";
 import { useAi } from "../data";
+import { autoDirExtension } from "../lib/autoDir";
 
 export const schema = BlockNoteSchema.create({
   blockSpecs: {
@@ -169,6 +170,8 @@ export default function PageEditor({ page }: EditorProps) {
       schema,
       initialContent: initialContent as never,
       uploadFile: uploadForPage,
+      // Per-block text direction for Hebrew/Arabic (lib/autoDir.ts).
+      extensions: [autoDirExtension()],
       tables: {
         splitCells: true,
         cellBackgroundColor: true,

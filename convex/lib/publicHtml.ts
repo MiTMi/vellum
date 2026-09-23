@@ -1,3 +1,5 @@
+import { withAutoDir } from "./htmlDir";
+
 /**
  * Server-side rendering of a page for "Publish to web".
  *
@@ -237,7 +239,7 @@ export interface PublicPageInput {
 
 export function renderPublicPage(input: PublicPageInput): string {
   const title = input.title.trim() || "Untitled";
-  const body = renderBlocks(input.blocks, input.titles ?? {});
+  const body = withAutoDir(renderBlocks(input.blocks, input.titles ?? {}));
   const updated = new Date(input.updatedAt).toISOString().slice(0, 10);
 
   return `<!doctype html>
@@ -266,12 +268,12 @@ export function renderPublicPage(input: PublicPageInput): string {
   h3 { font-size: 1.2rem; margin: 1.4em 0 .3em; }
   p, li { margin: .45em 0; }
   a { color: var(--accent); }
-  ul, ol { padding-left: 1.5em; }
-  li.task { list-style: none; margin-left: -1.2em; }
+  ul, ol { padding-inline-start: 1.5em; }
+  li.task { list-style: none; margin-inline-start: -1.2em; }
   code { background: var(--soft); border-radius: 3px; padding: .1em .35em; font-size: .9em; }
   pre { background: var(--soft); border-radius: 6px; padding: 1em; overflow-x: auto; }
   pre code { background: none; padding: 0; }
-  blockquote { margin: .8em 0; padding-left: 1em; border-left: 3px solid var(--line); color: var(--muted); }
+  blockquote { margin: .8em 0; padding-inline-start: 1em; border-inline-start: 3px solid var(--line); color: var(--muted); }
   img, video { max-width: 100%; border-radius: 6px; }
   figure { margin: 1em 0; }
   figcaption { font-size: .85em; color: var(--muted); margin-top: .4em; }
@@ -289,7 +291,7 @@ export function renderPublicPage(input: PublicPageInput): string {
 <body>
 <main>
 ${input.icon ? `<div class="icon">${escapeHtml(input.icon)}</div>` : ""}
-<h1>${escapeHtml(title)}</h1>
+<h1 dir="auto">${escapeHtml(title)}</h1>
 ${body}
 <footer>Last updated ${updated} · Published with Vellum</footer>
 </main>

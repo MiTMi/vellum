@@ -602,6 +602,42 @@ ProseMirror (fragile): `CodeCopyOverlay` (copy code, block's top-right) and
 anchor button out of the left gutter** — BlockNote's drag handle and "+" sit
 there and swallow the click.
 
+### Right-to-left text (2026-09-23)
+
+Hebrew/Arabic work alongside English on the same page, with direction
+**derived from the text, never stored** — so old, synced and pasted
+content all get it, and nothing in the schema changed.
+
+- **Editor:** `src/lib/autoDir.ts` is a BlockNote extension whose
+  ProseMirror plugin puts a `dir="auto"` node decoration on every
+  `blockContainer` (`.bn-block-outer`), so each block resolves its own
+  direction from its first strong character. A decoration, not a DOM
+  write — BlockNote owns that DOM and would clobber an attribute set from
+  outside. BlockNote's layout is left-anchored, so `app.css` mirrors it
+  under **`:dir(rtl)`** (nested-group indent and guide line, the depth
+  animation, checkbox spacing, the quote bar). `[dir="rtl"]` would never
+  match — the attribute is `auto`; `:dir()` matches the resolved value.
+- **Fields and labels:** one CSS rule — `unicode-bidi: plaintext` on
+  every input/textarea and the label classes listed under "RIGHT-TO-LEFT"
+  in `app.css` — rather than `dir` on ~40 components (verified in
+  Chromium: plaintext resolves inputs, textareas and blocks by content).
+  Navigation labels (sidebar, tabs, breadcrumbs, ⌘K…) add `text-align:
+  left` so Hebrew names stay beside their icon. **A new text-bearing
+  class must be added to that list.**
+- **Chat replies:** `ChatMarkdown` puts `dir="auto"` on each block and on
+  lists *and* items (the list's side decides where markers go).
+- **Published pages and HTML/PDF export:** `withAutoDir`
+  (`convex/lib/htmlDir.ts`, shared by `publicHtml.ts` and `exporters.ts`)
+  tags block elements with `dir="auto"` as a string pass — the published
+  page is server-rendered and PDF export runs with JS disabled — and both
+  stylesheets use logical properties (`padding-inline-start`,
+  `border-inline-start`) so quotes and list indents flip.
+- Deliberately **not** mirrored: the app chrome itself (sidebar on the
+  left, BlockNote's drag handle/+ in the left gutter), as in Notion.
+- Tests: `scripts/e2e-rtl.mjs` asserts geometry (checkbox right of the
+  text, nested indent from the right, English stays LTR, survives reload);
+  `tests/htmlDir.test.ts` covers the helper and published pages.
+
 ### Backlinks
 
 `extractPageLinks` (`convex/lib/pageLinks.ts`) is shared by the server

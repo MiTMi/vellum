@@ -4774,6 +4774,99 @@ tbody.db-group + tbody.db-group .group-row td {
   align-items: center;
   gap: 5px;
 }
+/* ============================================================
+   RIGHT-TO-LEFT (Hebrew, Arabic) — 2026-09-23
+   Direction is detected from the text itself, never stored: editor
+   blocks carry dir="auto" (lib/autoDir.ts), and text fields and labels
+   use unicode-bidi: plaintext, which makes each run of text find its own
+   direction and alignment. The :dir(rtl) rules mirror BlockNote's
+   left-anchored layout for blocks that resolved right-to-left.
+   ============================================================ */
+input,
+textarea,
+.tree-title,
+.tab-title,
+.crumb,
+.qs-title,
+.qs-snippet,
+.qs-crumb,
+.lib-name,
+.comment-text,
+.page-link-title,
+.cell-value,
+.title-cell,
+.row-title,
+.board-card-title,
+.gallery-card-title,
+.cal-card-title,
+.timeline-bar-title,
+.ai-cell-value,
+.th-label,
+.col-title,
+.option-name,
+.db-chip,
+.relation-chip,
+.people-name,
+.view-menu-name,
+.ai-history-title,
+.ai-msg-body,
+.ai-menu-result,
+.ai-plan-steps li,
+.ai-plan-diff > div {
+  unicode-bidi: plaintext;
+}
+input,
+textarea {
+  text-align: start;
+}
+/* Navigation labels keep their text next to the icon, like the rest of
+   the list, while still reading in the right order. */
+.tree-title,
+.tab-title,
+.crumb,
+.qs-title,
+.qs-crumb,
+.lib-name,
+.people-name,
+.view-menu-name,
+.ai-history-title,
+.th-label,
+.col-title,
+.option-name {
+  text-align: left;
+}
+
+/* Nested blocks indent from the right. */
+.bn-block-group .bn-block-group:dir(rtl) {
+  margin-left: 0;
+  margin-right: 24px;
+}
+.bn-block-group
+  .bn-block-group
+  > .bn-block-outer:dir(rtl):not([data-prev-depth-changed])::before {
+  left: auto;
+  right: -20px;
+}
+.bn-block-outer[data-prev-depth-change]:dir(rtl) {
+  margin-left: 0;
+  margin-right: calc(10px * var(--x));
+}
+.bn-block-outer[data-prev-depth-change]
+  .bn-block-outer[data-prev-depth-change]:dir(rtl) {
+  margin-right: 0;
+}
+/* Checkbox spacing and the quote bar flip sides. */
+.bn-block-content[data-content-type="checkListItem"]:dir(rtl) > div > input {
+  margin-left: 8px;
+  margin-right: 4px;
+}
+.bn-block-content[data-content-type="quote"]:dir(rtl) blockquote {
+  border-left: 0;
+  border-right: 2px solid rgb(125, 121, 122);
+  padding-left: 0;
+  padding-right: 1em;
+}
+
 /* Saved-chat history, dropped from the panel title. */
 .ai-panel-head {
   position: relative;

@@ -42,22 +42,24 @@ function Block({ block }: { block: ChatBlock }) {
     case "heading": {
       const H = (["h1", "h2", "h3"] as const)[block.level - 1];
       return (
-        <H>
+        <H dir="auto">
           <Inline nodes={block.inline} />
         </H>
       );
     }
     case "quote":
       return (
-        <blockquote>
+        <blockquote dir="auto">
           <Inline nodes={block.inline} />
         </blockquote>
       );
     case "bullets":
       return (
-        <ul>
+        // dir="auto" on the list AND each item: the list's side decides
+        // where the markers go (Hebrew replies get them on the right).
+        <ul dir="auto">
           {block.items.map((item, i) => (
-            <li key={i}>
+            <li key={i} dir="auto">
               <Inline nodes={item} />
             </li>
           ))}
@@ -65,9 +67,9 @@ function Block({ block }: { block: ChatBlock }) {
       );
     case "numbered":
       return (
-        <ol>
+        <ol dir="auto">
           {block.items.map((item, i) => (
-            <li key={i}>
+            <li key={i} dir="auto">
               <Inline nodes={item} />
             </li>
           ))}
@@ -83,7 +85,7 @@ function Block({ block }: { block: ChatBlock }) {
       return <hr />;
     default:
       return (
-        <p>
+        <p dir="auto">
           <Inline nodes={block.inline} />
         </p>
       );
