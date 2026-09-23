@@ -457,3 +457,37 @@ test("executor: replaceText refuses a missing or ambiguous anchor without writin
   expect(result.failures[1].reason).toMatch(/no longer on the page/);
   expect(calls.filter((c) => c.fn === "updateContent")).toHaveLength(0);
 });
+
+import { blockLines } from "../convex/lib/agentPlan";
+
+test("blockLines: one line per block, runs joined without stray spaces, children indented", () => {
+  const doc = [
+    { type: "heading", content: [{ type: "text", text: "Touch ID sign-in", styles: {} }] },
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Offers ", styles: {} },
+        { type: "text", text: "Sign in with Touch ID", styles: { bold: true } },
+        { type: "text", text: " next to the form.", styles: {} },
+      ],
+      children: [{ type: "paragraph", content: [{ type: "text", text: "nested", styles: {} }] }],
+    },
+    { type: "paragraph", content: [] },
+  ];
+  expect(blockLines(doc)).toBe(
+    "Touch ID sign-in\nOffers Sign in with Touch ID next to the form.\n  nested",
+  );
+});
+
+test("replaceText: a line copied from blockLines matches a multi-run block", () => {
+  const block = {
+    type: "paragraph",
+    content: [
+      { type: "text", text: "Offers ", styles: {} },
+      { type: "text", text: "Sign in with Touch ID", styles: { bold: true } },
+      { type: "text", text: " next to the form.", styles: {} },
+    ],
+  };
+  const line = blockLines([block]);
+  expect(findReplaceTargets([block], line)).toHaveLength(1);
+});

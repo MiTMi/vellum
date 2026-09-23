@@ -16,10 +16,17 @@ import {
 } from "./lib/quotas";
 import {
   AgentOp,
+  blockLines,
   parseAgentJson,
   salvageAgentReply,
   validatePlan,
 } from "./lib/agentPlan";
+
+/** Page text for the agent: one line per block, falling back to the
+ *  search blob for a page whose content isn't a block array. */
+function pageLines(page: { content?: unknown; contentText?: string }): string {
+  return blockLines(page.content) || page.contentText || "";
+}
 import { fetchUrlText, searchConfigured, webSearch } from "./lib/websearch";
 import { Doc, Id } from "./_generated/dataModel";
 
@@ -786,7 +793,7 @@ Include "plan" ONLY when the user asked to create or change something; omit it f
 {"kind":"appendToPage","target":"current"|"<page id>","markdown":"..."}
 {"kind":"replaceText","target":"current"|"<page id>","find":"<the text of ONE existing block, copied verbatim from a read>","markdown":"<what replaces that block>"}
 
-Rules: "markdown" and row values must be the real, finished content the user asked for — write it out in full, never placeholders like "Point 1", "...", "TBD" or "Add content here"; if the request is vague, write the best genuine content you can from the conversation and workspace. You can search, read, CREATE, APPEND, and EDIT existing text with replaceText — READ the page first and copy one block's text into "find" verbatim (never guess or paraphrase it; one step per block; the whole block is replaced by "markdown"); you CANNOT move, reorder, or delete anything, so never say you will — when asked to, say plainly that you can't and offer an alternative; output exactly ONE JSON object per turn, with every double quote inside a string value escaped as \\"; createPage/createDatabase/addRow/appendToPage/replaceText are plan steps and go inside "plan" — they are NOT tools; to add content to the open page use appendToPage, never a new createPage; every createPage/createDatabase step MUST carry "parent" ("root" unless it belongs inside another page); nothing in a plan exists until the user clicks Apply, so phrase the reply as a proposal ("I'll create…"), NEVER as work already done; web queries and URLs must be lawful and family-appropriate — an independent safety check declines anything else, so do not attempt it; prop values are strings, numbers, booleans, or string lists keyed by COLUMN NAME; dates are "YYYY-MM-DD"; "parent":"current" needs an open page (you are told when one is open); markdown supports #/##/### headings, - bullets, 1. numbered lists, - [ ] checkboxes, and plain paragraphs.`;
+Rules: "markdown" and row values must be the real, finished content the user asked for — write it out in full, never placeholders like "Point 1", "...", "TBD" or "Add content here"; if the request is vague, write the best genuine content you can from the conversation and workspace. You can search, read, CREATE, APPEND, and EDIT existing text with replaceText — READ the page first — page text is shown ONE BLOCK PER LINE — and copy exactly one line into "find" verbatim (never join two lines, never guess or paraphrase; one step per block; the whole block is replaced by "markdown"; to rewrite several blocks use several steps); you CANNOT move, reorder, or delete anything, so never say you will — when asked to, say plainly that you can't and offer an alternative; output exactly ONE JSON object per turn, with every double quote inside a string value escaped as \\"; createPage/createDatabase/addRow/appendToPage/replaceText are plan steps and go inside "plan" — they are NOT tools; to add content to the open page use appendToPage, never a new createPage; every createPage/createDatabase step MUST carry "parent" ("root" unless it belongs inside another page); nothing in a plan exists until the user clicks Apply, so phrase the reply as a proposal ("I'll create…"), NEVER as work already done; web queries and URLs must be lawful and family-appropriate — an independent safety check declines anything else, so do not attempt it; prop values are strings, numbers, booleans, or string lists keyed by COLUMN NAME; dates are "YYYY-MM-DD"; "parent":"current" needs an open page (you are told when one is open); markdown supports #/##/### headings, - bullets, 1. numbered lists, - [ ] checkboxes, and plain paragraphs.`;
 
 /**
  * The propose-then-apply workspace agent. Runs a bounded read-tool loop
@@ -832,7 +839,7 @@ export const agent = action({
         );
       }
       if (page && !page.inTrash) {
-        const body = (page.contentText ?? "").slice(0, MAX_PAGE_CONTEXT_CHARS);
+        const body = pageLines(page).slice(0, MAX_PAGE_CONTEXT_CHARS);
         pageNote = `The currently open page is "${page.title || "Untitled"}" (id ${page._id}):\n${body || "(empty)"}`;
         addSource({
           pageId: page._id as string,
@@ -969,7 +976,7 @@ export const agent = action({
             { pageId: parsed.pageId as Id<"pages">, userId },
           );
           if (page && !page.vault && !page.inTrash) {
-            result = `"${page.title || "Untitled"}" (id ${page._id}, ${page.type}):\n${(page.contentText ?? "").slice(0, AGENT_READ_CHARS) || "(empty)"}`;
+            result = `"${page.title || "Untitled"}" (id ${page._id}, ${page.type}):\n${pageLines(page).slice(0, AGENT_READ_CHARS) || "(empty)"}`;
             addSource({
               pageId: page._id as string,
               title: page.title || "Untitled",

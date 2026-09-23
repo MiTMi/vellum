@@ -1209,7 +1209,11 @@ calling (guardrail/model support uncertain) — and may return a
 (2026-09-22) **replaceText** — the one edit: it swaps exactly one
 existing block, anchored on that block's text copied verbatim from a
 `read`, shown as a −/+ diff on the card before Apply, undoable from page
-history; the executor refuses zero or several matches. All validated by
+history; the executor refuses zero or several matches. The agent sees
+pages ONE LINE PER BLOCK (`blockLines`) and matching is whitespace-
+normalized — fed the space-joined `contentText` blob, the model anchored
+on text spanning two blocks and every edit was refused (prod, 2026-09-23).
+All validated by
 `convex/lib/agentPlan.ts`. Move and delete stay unrepresentable in the
 vocabulary (the replacement must be non-empty), not merely hidden. The panel
 renders a plan as an Apply/Dismiss card; **Apply executes client-side

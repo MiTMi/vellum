@@ -66,6 +66,48 @@ export type AgentOp =
       markdown: string;
     };
 
+/** Whitespace-insensitive form used on both sides of a `replaceText`
+ *  match: the model copies text it read, and editor text carries stray
+ *  double spaces between styled runs. */
+export function normalizeBlockText(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function inlineText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  let out = "";
+  for (const item of content) {
+    if (!item || typeof item !== "object") continue;
+    const it = item as Record<string, unknown>;
+    if (typeof it.text === "string") out += it.text;
+    else if (it.content !== undefined) out += inlineText(it.content);
+  }
+  return out;
+}
+
+/**
+ * A document as the agent sees it: ONE LINE PER BLOCK, children indented.
+ * `contentText` is a single space-joined search blob with the block
+ * boundaries gone, so a model reading it anchored `replaceText` on text
+ * spanning a heading and the paragraph below it — which matches no block
+ * and was refused 3/3 on prod (2026-09-23). Each line here is exactly the
+ * normalized text the executor compares against.
+ */
+export function blockLines(content: unknown, depth = 0): string {
+  if (!Array.isArray(content)) return "";
+  const lines: string[] = [];
+  for (const b of content) {
+    if (!b || typeof b !== "object") continue;
+    const block = b as { content?: unknown; children?: unknown };
+    const text = normalizeBlockText(inlineText(block.content));
+    if (text) lines.push("  ".repeat(depth) + text);
+    const kids = blockLines(block.children, depth + 1);
+    if (kids) lines.push(kids);
+  }
+  return lines.join("\n");
+}
+
 export const MAX_PLAN_OPS = 20;
 const MIN_FIND_CHARS = 3;
 const MAX_FIND_CHARS = 2000;

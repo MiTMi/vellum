@@ -1,4 +1,4 @@
-import { AgentOp } from "../../convex/lib/agentPlan";
+import { AgentOp, normalizeBlockText } from "../../convex/lib/agentPlan";
 import { Mutations } from "../data/api";
 import { DbProp, PageDoc, PageId, SelectOption } from "./types";
 import { markdownToBlocks } from "./markdownBlocks";
@@ -38,7 +38,7 @@ type AnyBlock = { children?: AnyBlock[] } & Record<string, unknown>;
 
 /** A block's own text, children excluded — what `find` is matched against. */
 function ownText(block: AnyBlock): string {
-  return extractText([{ ...block, children: [] }]).trim();
+  return normalizeBlockText(extractText([{ ...block, children: [] }]));
 }
 
 function collectMatches(
@@ -63,7 +63,7 @@ function collectMatches(
  */
 export function findReplaceTargets(blocks: unknown, find: string): AnyBlock[] {
   if (!Array.isArray(blocks)) return [];
-  const needle = find.trim();
+  const needle = normalizeBlockText(find);
   const hits: AnyBlock[] = [];
   collectMatches(blocks as AnyBlock[], needle, true, hits);
   if (hits.length === 0) collectMatches(blocks as AnyBlock[], needle, false, hits);
