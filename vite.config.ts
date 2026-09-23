@@ -177,6 +177,13 @@ export default defineConfig({
   build: {
     outDir: "dist",
     chunkSizeWarningLimit: 4000,
+    // Browsers the CSS may assume. Without it the minifier "lowers" the
+    // right-to-left rules' `:dir(rtl)` into `:lang(he), :lang(ar)…`, which
+    // never matches (the app's lang is en and direction comes from
+    // dir="auto"), so RTL mirroring worked in dev and vanished in every
+    // build (shipped that way once, 2026-09-23). All four have supported
+    // :dir() natively since 2023; Electron's Chromium is far newer.
+    cssTarget: ["chrome120", "edge120", "firefox115", "safari16.4"],
     rollupOptions: {
       // Four entries: the marketing landing at "/", the SPA at "/app",
       // the Help Center at "/help" and the legal pages at "/legal".

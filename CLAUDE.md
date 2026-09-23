@@ -615,7 +615,11 @@ content all get it, and nothing in the schema changed.
   write — BlockNote owns that DOM and would clobber an attribute set from
   outside. BlockNote's layout is left-anchored, so `app.css` mirrors it
   under **`:dir(rtl)`** (nested-group indent and guide line, the depth
-  animation, checkbox spacing, the quote bar). `[dir="rtl"]` would never
+  animation, checkbox spacing, the quote bar). **`build.cssTarget` in
+  `vite.config.ts` must stay** — without it the minifier lowers `:dir()`
+  to a `:lang(he), :lang(ar)…` list that never matches (lang is `en`),
+  so mirroring worked in dev and vanished in every build (shipped that
+  way once). CI re-runs `e2e-rtl` against the minified preview build. `[dir="rtl"]` would never
   match — the attribute is `auto`; `:dir()` matches the resolved value.
 - **Fields and labels:** one CSS rule — `unicode-bidi: plaintext` on
   every input/textarea and the label classes listed under "RIGHT-TO-LEFT"

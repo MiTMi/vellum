@@ -154,6 +154,15 @@ jobs:
         if: ${{ !cancelled() && steps.pwa_preview.outcome == 'success' }}
         run: node scripts/e2e-pwa.mjs
 
+      # The RTL suite again, against the MINIFIED build: the CSS minifier
+      # once rewrote the :dir(rtl) rules into selectors that never match,
+      # which the dev-server run above cannot see.
+      - name: RTL suite on the built app
+        if: ${{ !cancelled() && steps.pwa_preview.outcome == 'success' }}
+        env:
+          E2E_URL: http://localhost:5197
+        run: node scripts/e2e-rtl.mjs
+
       # The suites write to /tmp/shots, /tmp/shots-<name>/ and a couple of
       # loose /tmp/shots-*.png files; `/tmp/shots*` covers all three shapes.
       # `cancelled()` too: a job that hits timeout-minutes is cancelled, not
