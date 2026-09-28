@@ -1008,6 +1008,52 @@ panel** (`AiChatPanel-*.js` — `App.tsx`) and the **database layouts**
   Trash, History and the exporters would save ~2% and weren't worth a
   boundary.
 
+### Claude Desktop / Claude Code logging (`mcp/`, 2026-09-28)
+
+Every conversation with Claude can be recorded as **one row of a "Claude"
+database** in the owner's workspace. Two pieces, one sign-in, **no backend
+change**: both sign in as the user through the app's own Convex Auth
+password provider (`auth:signIn` from Node via `ConvexHttpClient`) and
+call the ordinary `pages:*` functions, so writes pass the real auth choke
+points and the log is a normal database — outside the Vault, since only
+the app can produce vault ciphertext.
+
+- `mcp/server.mjs` — a **stdio MCP server** Claude Desktop launches
+  (`claude_desktop_config.json`, per machine). Tools in `mcp/lib/tools.mjs`:
+  `vellum_log_conversation` (upsert by `conversation_key`),
+  `vellum_update_conversation`, `vellum_list_conversations`,
+  `vellum_search`, `vellum_list_pages`, `vellum_read_page` (refuses vault
+  pages; databases list as rows), `vellum_create_page`, plus a
+  `log_this_conversation` prompt. **Claude Desktop has no end-of-chat
+  hook**, so desktop logging is instruction-driven (a standing preference
+  telling Claude to call the tool); Claude Code is the automatic half.
+- `mcp/hook.mjs` — a Claude Code `Stop`/`SessionEnd` hook: re-reads the
+  session transcript (`mcp/lib/transcript.mjs`, tool calls and scaffolding
+  dropped, oversized sessions elided in the middle) and upserts **one row
+  per session id**, skipping the content write when the text is unchanged.
+  It always exits 0 — a failing hook must never block Claude.
+- `mcp/lib/claudeDb.mjs` — finds the root database titled "Claude" (or
+  creates it), keeps its columns by **stable id** (date/device/source/
+  project/tags/summary/session; names may be renamed, deleted columns are
+  re-added, select options are matched by name and minted with the
+  executor's colour cycle), and upserts rows on the Session column.
+- `mcp/lib/blocks.mjs` — writes **complete** BlockNote blocks (ids, inline
+  runs, `children: []`), unlike the app's partial-block helper, because no
+  editor ever mounts to fill them in; `extractText` mirrors the app's cap.
+- `mcp/lib/vellum.mjs` — credentials in `~/.config/vellum-mcp/credentials.json`
+  (0600; refresh token, never the password). **Refreshes run under a file
+  lock and re-read the file first**: Convex Auth rotates refresh tokens
+  with reuse detection, and the long-running server and a hook firing at
+  the same moment would otherwise invalidate each other's session.
+- Deep links: `parseAnchor` now also accepts `#/page/<id>` (no block), so
+  the rows' URLs open the page; a block anchor still scrolls and flashes.
+- Over stdio **stdout belongs to the protocol** — the server redirects
+  `console.log` to stderr and the Convex clients are built with
+  `logger: false`. Tests: `tests/mcp.test.ts` (helpers, the database logic
+  against an in-memory pages stand-in, and the tools over
+  `InMemoryTransport`). Setup runbook: `mcp/README.md`. Lint globals for
+  `mcp/**` are Node (`eslint.config.mjs`).
+
 ### One-off migrations (`convex/migrate.ts`)
 
 `rewriteHostBatch` / `rewriteVersionHostBatch` swap a deployment origin inside
