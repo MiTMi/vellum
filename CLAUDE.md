@@ -1051,8 +1051,11 @@ the app can produce vault ciphertext.
   `console.log` to stderr and the Convex clients are built with
   `logger: false`. Tests: `tests/mcp.test.ts` (helpers, the database logic
   against an in-memory pages stand-in, and the tools over
-  `InMemoryTransport`). Setup runbook: `mcp/README.md`. Lint globals for
-  `mcp/**` are Node (`eslint.config.mjs`).
+  `InMemoryTransport`). Setup runbook: `mcp/README.md`; `mcp/install.sh`
+  is the one-line installer for a Mac (clone/update into
+  `~/.vellum-claude`, runtime deps only, login, both config files merged
+  idempotently, Claude Desktop restarted, the standing instruction on the
+  clipboard). Lint globals for `mcp/**` are Node (`eslint.config.mjs`).
 
 ### One-off migrations (`convex/migrate.ts`)
 

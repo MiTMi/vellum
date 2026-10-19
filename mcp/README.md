@@ -20,7 +20,24 @@ Vault and obeys the same rules as anything typed in the app.
 
 ## Set up (once per Mac)
 
-Do this on the Mac mini and again on the MacBook Pro.
+Do this on the Mac mini and again on the MacBook Pro. The short way is one
+line in Terminal:
+
+```sh
+git clone --depth 1 https://github.com/KodKode/vellum.git ~/.vellum-claude; bash ~/.vellum-claude/mcp/install.sh
+```
+
+(Re-running the same line later updates and re-checks everything; the
+`git clone` just reports that the folder exists.) If the repository is
+public this also works without git:
+`curl -fsSL https://raw.githubusercontent.com/KodKode/vellum/main/mcp/install.sh | bash`.
+
+`mcp/install.sh` clones the repo into `~/.vellum-claude` (or updates it),
+installs the runtime dependencies, asks for your Vellum sign-in once, writes
+the Claude Desktop and Claude Code config entries, restarts Claude Desktop,
+and puts the standing instruction (step 4 below) on your clipboard. It is
+safe to re-run. From a checkout, `bash mcp/install.sh` does the same using
+that checkout. The steps it automates, for doing them by hand:
 
 1. Have the repository checked out and installed:
 
