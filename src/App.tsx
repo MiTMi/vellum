@@ -80,14 +80,14 @@ function Workspace() {
 
   useEffect(() => setPeekId(null), [pageId]);
 
-  // Block deep links (#/page/<id>/block/<id>): navigate, then scroll to and
-  // flash the block once the editor has mounted it.
+  // Deep links (#/page/<id>, or #/page/<id>/block/<id>): navigate, then
+  // scroll to and flash the block once the editor has mounted it.
   useEffect(() => {
     const go = () => {
       const anchor = parseAnchor(window.location.hash);
       if (!anchor) return;
       navigate(anchor.pageId as PageId);
-      scrollToBlock(anchor.blockId);
+      if (anchor.blockId) scrollToBlock(anchor.blockId);
       // Clear the hash so a later reload doesn't re-navigate away from
       // wherever the user has since gone.
       history.replaceState(null, "", window.location.pathname);

@@ -133,6 +133,11 @@ export default defineConfig([
     languageOptions: { globals: globals.node },
   },
   {
+    // The Claude Desktop MCP server and the Claude Code hook: plain Node.
+    files: ["mcp/**"],
+    languageOptions: { globals: globals.node },
+  },
+  {
     // Electron main + preload are CommonJS; `require` is the module system.
     files: ["electron/**/*.cjs"],
     languageOptions: { sourceType: "commonjs", globals: globals.node },

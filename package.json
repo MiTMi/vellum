@@ -18,7 +18,10 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p convex",
     "test": "vitest run",
     "lint": "eslint .",
-    "e2e": "node scripts/run-e2e.mjs"
+    "e2e": "node scripts/run-e2e.mjs",
+    "mcp": "node mcp/server.mjs",
+    "mcp:login": "node mcp/server.mjs login",
+    "mcp:check": "node mcp/server.mjs check"
   },
   "dependencies": {
     "@auth/core": "^0.41.3",
@@ -30,12 +33,14 @@
     "@fontsource-variable/newsreader": "^5.3.0",
     "@mantine/core": "^9.6.2",
     "@mantine/hooks": "^9.6.2",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "convex": "^1.46.0",
     "emoji-picker-react": "^4.22.2",
     "katex": "^0.18.7",
     "lucide-react": "^1.47.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
