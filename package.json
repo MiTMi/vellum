@@ -47,7 +47,7 @@
     "concurrently": "^10.0.5",
     "convex-test": "^0.0.59",
     "cross-env": "^10.1.0",
-    "electron": "^43.7.3",
+    "electron": "^43.8.1",
     "electron-builder": "^26.15.3",
     "eslint": "^10.11.0",
     "eslint-plugin-react-hooks": "^7.1.1",
